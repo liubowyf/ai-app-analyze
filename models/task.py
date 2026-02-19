@@ -4,8 +4,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from sqlalchemy import BigInteger, DateTime, Index, Integer, JSON, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import BigInteger, Column, DateTime, Index, Integer, JSON, String, Text
+from sqlalchemy.orm import Mapped
 
 from core.database import Base
 
@@ -58,46 +58,46 @@ class Task(Base):
     __tablename__ = "tasks"
 
     # Primary key
-    id: Mapped[str] = mapped_column(
+    id: Mapped[str] = Column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
 
     # APK file information
-    apk_file_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    apk_file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    apk_md5: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
-    apk_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    apk_storage_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    apk_file_name: Mapped[str] = Column(String(255), nullable=False)
+    apk_file_size: Mapped[int] = Column(BigInteger, nullable=False)
+    apk_md5: Mapped[str] = Column(String(32), nullable=False, index=True)
+    apk_sha256: Mapped[Optional[str]] = Column(String(64), nullable=True)
+    apk_storage_path: Mapped[Optional[str]] = Column(String(500), nullable=True)
 
     # Task status and priority
-    status: Mapped[TaskStatus] = mapped_column(
+    status: Mapped[TaskStatus] = Column(
         default=TaskStatus.PENDING, index=True
     )
-    priority: Mapped[TaskPriority] = mapped_column(default=TaskPriority.NORMAL)
+    priority: Mapped[TaskPriority] = Column(default=TaskPriority.NORMAL)
 
     # Error tracking
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    error_stack: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[Optional[str]] = Column(Text, nullable=True)
+    error_stack: Mapped[Optional[str]] = Column(Text, nullable=True)
+    retry_count: Mapped[int] = Column(Integer, default=0)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(
+    created_at: Mapped[datetime] = Column(
         DateTime, default=datetime.utcnow, nullable=False
     )
-    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(
+    started_at: Mapped[Optional[datetime]] = Column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = Column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = Column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
 
     # Analysis results
-    static_analysis_result: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+    static_analysis_result: Mapped[Optional[Dict[str, Any]]] = Column(
         JSON, nullable=True
     )
-    dynamic_analysis_result: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+    dynamic_analysis_result: Mapped[Optional[Dict[str, Any]]] = Column(
         JSON, nullable=True
     )
-    report_storage_path: Mapped[Optional[str]] = mapped_column(
+    report_storage_path: Mapped[Optional[str]] = Column(
         String(500), nullable=True
     )
 

@@ -4,8 +4,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from sqlalchemy import Boolean, DateTime, Index, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Boolean, Column, DateTime, Index, String
+from sqlalchemy.orm import Mapped
 
 from core.database import Base
 
@@ -39,36 +39,36 @@ class WhitelistRule(Base):
     __tablename__ = "whitelist_rules"
 
     # Primary key
-    id: Mapped[str] = mapped_column(
+    id: Mapped[str] = Column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
 
     # Domain and IP information
-    domain: Mapped[str] = mapped_column(
+    domain: Mapped[str] = Column(
         String(255), nullable=False, index=True, comment="Domain pattern (supports wildcard *)"
     )
-    ip_range: Mapped[Optional[str]] = mapped_column(
+    ip_range: Mapped[Optional[str]] = Column(
         String(50), nullable=True, comment="IP range in CIDR format"
     )
 
     # Category and metadata
-    category: Mapped[WhitelistCategory] = mapped_column(
+    category: Mapped[WhitelistCategory] = Column(
         nullable=False, index=True, comment="Rule category"
     )
-    description: Mapped[Optional[str]] = mapped_column(
+    description: Mapped[Optional[str]] = Column(
         String(500), nullable=True, comment="Description of the rule"
     )
 
     # Status
-    is_active: Mapped[bool] = mapped_column(
+    is_active: Mapped[bool] = Column(
         Boolean, default=True, nullable=False, index=True, comment="Whether the rule is active"
     )
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(
+    created_at: Mapped[datetime] = Column(
         DateTime, default=datetime.utcnow, nullable=False
     )
-    updated_at: Mapped[datetime] = mapped_column(
+    updated_at: Mapped[datetime] = Column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
 

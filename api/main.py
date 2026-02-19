@@ -78,8 +78,10 @@ async def health():
     }
 
 
-# Router imports (placeholders for future implementation)
-# from api.routers import tasks, apk, whitelist
-# app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
-# app.include_router(apk.router, prefix="/api/apk", tags=["apk"])
-# app.include_router(whitelist.router, prefix="/api/whitelist", tags=["whitelist"])
+# Router imports
+from api.routers import apk, tasks, whitelist
+
+# Include routers
+app.include_router(apk.router, prefix="/api/v1/apk", tags=["apk"])
+app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
+app.include_router(whitelist.router, prefix="/api/v1/whitelist", tags=["whitelist"])

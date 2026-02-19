@@ -36,3 +36,8 @@ include = '\.pyi?$'
 profile = "black"
 line_length = 100
 multi_line_output = 3
+
+[dependency-groups]
+dev = [
+    "pytest (>=9.0.2,<10.0.0)"
+]
