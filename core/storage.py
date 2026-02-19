@@ -34,7 +34,8 @@ class StorageManager:
             print(f"Warning: Failed to initialize MinIO client: {e}")
             self.client = None
 
-    def generate_apk_path(self, task_id: str, md5: str) -> str:
+    @staticmethod
+    def generate_apk_path(task_id: str, md5: str) -> str:
         """
         Generate storage path for APK file.
 
@@ -47,7 +48,8 @@ class StorageManager:
         """
         return f"apks/{task_id}/{md5}.apk"
 
-    def generate_screenshot_path(self, task_id: str, step: int) -> str:
+    @staticmethod
+    def generate_screenshot_path(task_id: str, step: int) -> str:
         """
         Generate storage path for screenshot file.
 
@@ -60,7 +62,8 @@ class StorageManager:
         """
         return f"screenshots/{task_id}/step_{step:03d}.png"
 
-    def generate_report_path(self, task_id: str) -> str:
+    @staticmethod
+    def generate_report_path(task_id: str) -> str:
         """
         Generate storage path for analysis report.
 
@@ -130,14 +133,14 @@ class StorageManager:
     def get_presigned_url(
         self,
         object_name: str,
-        expires: timedelta
+        expires: int = 3600
     ) -> Optional[str]:
         """
         Generate presigned URL for file access.
 
         Args:
             object_name: Storage path of the file
-            expires: URL expiration time
+            expires: URL expiration time in seconds (default: 3600)
 
         Returns:
             Presigned URL if successful, None otherwise
@@ -149,7 +152,7 @@ class StorageManager:
             url = self.client.presigned_get_object(
                 bucket_name=self.bucket,
                 object_name=object_name,
-                expires=expires
+                expires=timedelta(seconds=expires)
             )
             return url
         except Exception as e:

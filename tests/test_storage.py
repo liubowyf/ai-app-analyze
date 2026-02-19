@@ -61,29 +61,38 @@ class TestStorageManager:
         assert manager.client is None
 
     def test_generate_apk_path(self):
-        """Test APK path generation."""
-        manager = StorageManager.__new__(StorageManager)
-        manager.bucket = "apk-analysis"
+        """Test APK path generation as static method."""
+        # Test calling via class (spec requirement)
+        path = StorageManager.generate_apk_path("task-123", "abc123def456")
+        assert path == "apks/task-123/abc123def456.apk"
 
+        # Test calling via instance (backward compatibility)
+        manager = StorageManager.__new__(StorageManager)
         path = manager.generate_apk_path("task-123", "abc123def456")
         assert path == "apks/task-123/abc123def456.apk"
 
     def test_generate_screenshot_path(self):
-        """Test screenshot path generation."""
-        manager = StorageManager.__new__(StorageManager)
-        manager.bucket = "apk-analysis"
+        """Test screenshot path generation as static method."""
+        # Test calling via class (spec requirement)
+        path = StorageManager.generate_screenshot_path("task-456", 5)
+        assert path == "screenshots/task-456/step_005.png"
 
+        path = StorageManager.generate_screenshot_path("task-456", 42)
+        assert path == "screenshots/task-456/step_042.png"
+
+        # Test calling via instance (backward compatibility)
+        manager = StorageManager.__new__(StorageManager)
         path = manager.generate_screenshot_path("task-456", 5)
         assert path == "screenshots/task-456/step_005.png"
 
-        path = manager.generate_screenshot_path("task-456", 42)
-        assert path == "screenshots/task-456/step_042.png"
-
     def test_generate_report_path(self):
-        """Test report path generation."""
-        manager = StorageManager.__new__(StorageManager)
-        manager.bucket = "apk-analysis"
+        """Test report path generation as static method."""
+        # Test calling via class (spec requirement)
+        path = StorageManager.generate_report_path("task-789")
+        assert path == "reports/task-789/report.pdf"
 
+        # Test calling via instance (backward compatibility)
+        manager = StorageManager.__new__(StorageManager)
         path = manager.generate_report_path("task-789")
         assert path == "reports/task-789/report.pdf"
 
@@ -177,7 +186,7 @@ class TestStorageManager:
 
     @patch('core.storage.Minio')
     def test_get_presigned_url_success(self, mock_minio_class):
-        """Test successful presigned URL generation."""
+        """Test successful presigned URL generation with int parameter."""
         mock_client = MagicMock()
         mock_minio_class.return_value = mock_client
         mock_client.bucket_exists.return_value = True
@@ -185,10 +194,14 @@ class TestStorageManager:
 
         manager = StorageManager()
 
-        url = manager.get_presigned_url("test/file.txt", timedelta(hours=1))
+        # Test with default expiration (3600 seconds = 1 hour)
+        url = manager.get_presigned_url("test/file.txt")
 
         assert url == "http://localhost:9000/apk-analysis/test/file.txt?signature=abc"
         mock_client.presigned_get_object.assert_called_once()
+        # Verify timedelta conversion
+        call_args = mock_client.presigned_get_object.call_args
+        assert call_args[1]['expires'] == timedelta(seconds=3600)
 
     @patch('core.storage.Minio')
     def test_get_presigned_url_failure(self, mock_minio_class):
@@ -200,7 +213,7 @@ class TestStorageManager:
 
         manager = StorageManager()
 
-        url = manager.get_presigned_url("test/file.txt", timedelta(hours=1))
+        url = manager.get_presigned_url("test/file.txt", 3600)
 
         assert url is None
 
@@ -211,7 +224,7 @@ class TestStorageManager:
 
         manager = StorageManager()
 
-        url = manager.get_presigned_url("test/file.txt", timedelta(hours=1))
+        url = manager.get_presigned_url("test/file.txt", 3600)
 
         assert url is None
 
