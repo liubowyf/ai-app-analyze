@@ -53,7 +53,7 @@ class WhitelistRule(Base):
 
     # Category and metadata
     category: Mapped[WhitelistCategory] = Column(
-        nullable=False, index=True, comment="Rule category"
+        String(20), nullable=False, index=True, comment="Rule category"
     )
     description: Mapped[Optional[str]] = Column(
         String(500), nullable=True, comment="Description of the rule"
@@ -86,10 +86,11 @@ class WhitelistRule(Base):
         Returns:
             String representation with rule ID, domain, and category
         """
+        category = self.category.value if hasattr(self.category, 'value') else self.category
         return (
             f"<WhitelistRule(id={self.id}, "
             f"domain={self.domain}, "
-            f"category={self.category.value})>"
+            f"category={category})>"
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -99,11 +100,12 @@ class WhitelistRule(Base):
         Returns:
             Dictionary with rule data and ISO formatted timestamps
         """
+        category = self.category.value if hasattr(self.category, 'value') else self.category
         result = {
             "id": self.id,
             "domain": self.domain,
             "ip_range": self.ip_range,
-            "category": self.category.value if self.category else None,
+            "category": category if category else None,
             "description": self.description,
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,

@@ -68,4 +68,10 @@ def get_settings() -> Settings:
     return Settings()
 
 
-settings = get_settings()
+@lru_cache()
+def cached_settings() -> Settings:
+    """Get cached settings instance for tests."""
+    return Settings()
+
+
+settings = cached_settings()

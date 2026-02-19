@@ -13,10 +13,10 @@ def test_config_loads_from_env(monkeypatch):
     monkeypatch.setenv("MYSQL_DATABASE", "test-db")
 
     # Clear the cache and import after setting env vars
-    from core.config import get_settings
-    get_settings.cache_clear()
+    from core.config import cached_settings
+    cached_settings.cache_clear()
 
-    from core.config import settings
+    settings = cached_settings()
 
     assert settings.MYSQL_HOST == "test-host"
     assert settings.MYSQL_PORT == 3307
@@ -26,10 +26,10 @@ def test_config_loads_from_env(monkeypatch):
 def test_config_has_defaults():
     """Test that config has sensible defaults."""
     # Clear the cache to get fresh settings
-    from core.config import get_settings
-    get_settings.cache_clear()
+    from core.config import cached_settings
+    cached_settings.cache_clear()
 
-    settings = get_settings()
+    settings = cached_settings()
 
     assert settings.MYSQL_PORT == 3306
     assert settings.REDIS_PORT == 6379

@@ -71,9 +71,9 @@ class Task(Base):
 
     # Task status and priority
     status: Mapped[TaskStatus] = Column(
-        default=TaskStatus.PENDING, index=True
+        String(20), default=TaskStatus.PENDING, index=True
     )
-    priority: Mapped[TaskPriority] = Column(default=TaskPriority.NORMAL)
+    priority: Mapped[TaskPriority] = Column(String(20), default=TaskPriority.NORMAL)
 
     # Error tracking
     error_message: Mapped[Optional[str]] = Column(Text, nullable=True)
@@ -114,10 +114,11 @@ class Task(Base):
         Returns:
             String representation with task ID, file name, and status
         """
+        status = self.status.value if hasattr(self.status, 'value') else self.status
         return (
             f"<Task(id={self.id}, "
             f"apk_file_name={self.apk_file_name}, "
-            f"status={self.status.value})>"
+            f"status={status})>"
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -127,6 +128,8 @@ class Task(Base):
         Returns:
             Dictionary with task data and ISO formatted timestamps
         """
+        status = self.status.value if hasattr(self.status, 'value') else self.status
+        priority = self.priority.value if hasattr(self.priority, 'value') else self.priority
         result = {
             "id": self.id,
             "apk_file_name": self.apk_file_name,
@@ -134,8 +137,8 @@ class Task(Base):
             "apk_md5": self.apk_md5,
             "apk_sha256": self.apk_sha256,
             "apk_storage_path": self.apk_storage_path,
-            "status": self.status.value if self.status else None,
-            "priority": self.priority.value if self.priority else None,
+            "status": status if status else None,
+            "priority": priority if priority else None,
             "error_message": self.error_message,
             "error_stack": self.error_stack,
             "retry_count": self.retry_count,
