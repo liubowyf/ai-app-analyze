@@ -1,6 +1,6 @@
 """Configuration management using Pydantic Settings."""
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: str = ""
     REDIS_DB: int = 0
+    REDIS_CLUSTER_NODES: str = ""  # Comma-separated list of host:port
 
     # MinIO Configuration
     MINIO_ENDPOINT: str = "localhost:9000"
@@ -35,6 +36,12 @@ class Settings(BaseSettings):
     AI_MAX_TOKENS: int = 3000
     AI_TEMPERATURE: float = 0.1
 
+    # Android Emulators Configuration
+    ANDROID_EMULATOR_1: str = "10.16.148.66:5555"
+    ANDROID_EMULATOR_2: str = "10.16.148.66:5556"
+    ANDROID_EMULATOR_3: str = "10.16.148.66:5557"
+    ANDROID_EMULATOR_4: str = "10.16.148.66:5558"
+
     # API Configuration
     API_TOKEN: str = ""
     API_HOST: str = "0.0.0.0"
@@ -46,8 +53,10 @@ class Settings(BaseSettings):
 
     @property
     def mysql_url(self) -> str:
-        """Build MySQL connection URL."""
-        return f"mysql+pymysql://{self.MYSQL_USER}:{self.MYSQL_PASSWORD}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DATABASE}"
+        """Build MySQL connection URL with URL-encoded password."""
+        from urllib.parse import quote_plus
+        encoded_password = quote_plus(self.MYSQL_PASSWORD)
+        return f"mysql+pymysql://{self.MYSQL_USER}:{encoded_password}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DATABASE}"
 
     @property
     def redis_url(self) -> str:
@@ -55,6 +64,23 @@ class Settings(BaseSettings):
         if self.REDIS_PASSWORD:
             return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+
+    @property
+    def redis_cluster_nodes(self) -> List[str]:
+        """Get Redis cluster nodes as list."""
+        if self.REDIS_CLUSTER_NODES:
+            return [node.strip() for node in self.REDIS_CLUSTER_NODES.split(",")]
+        return []
+
+    @property
+    def android_emulators(self) -> List[str]:
+        """Get all Android emulator addresses."""
+        return [
+            self.ANDROID_EMULATOR_1,
+            self.ANDROID_EMULATOR_2,
+            self.ANDROID_EMULATOR_3,
+            self.ANDROID_EMULATOR_4,
+        ]
 
     model_config = SettingsConfigDict(
         env_file=".env",
