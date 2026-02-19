@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ report_title }}</title>
+    <style>
+        body {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .risk-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 5px;
+            font-weight: bold;
+            color: white;
+        }
+        .risk-high { background-color: #dc3545; }
+        .risk-medium { background-color: #ffc107; color: #333; }
+        .risk-low { background-color: #28a745; }
+        .section {
+            margin-bottom: 30px;
+        }
+        .section h2 {
+            color: #0066cc;
+            border-left: 4px solid #0066cc;
+            padding-left: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f8f9fa;
+        }
+        .permission-dangerous {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .footer {
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>APK 动态分析报告</h1>
+        <p>包名: {{ package_name }}</p>
+        <p>版本: {{ version }}</p>
+        <p>风险等级: <span class="risk-badge risk-{{ risk_level }}">{{ risk_level|upper }}</span></p>
+        <p>生成时间: {{ generated_at }}</p>
+    </div>
+
+    <div class="section">
+        <h2>应用基本信息</h2>
+        <table>
+            <tr>
+                <th>字段</th>
+                <th>值</th>
+            </tr>
+            <tr>
+                <td>包名</td>
+                <td>{{ package_name }}</td>
+            </tr>
+            <tr>
+                <td>版本</td>
+                <td>{{ version }}</td>
+            </tr>
+            <tr>
+                <td>文件大小</td>
+                <td>{{ "%.2f"|format(file_size / 1024 / 1024) }} MB</td>
+            </tr>
+            <tr>
+                <td>MD5</td>
+                <td>{{ md5 }}</td>
+            </tr>
+        </table>
+    </div>
+
+    {% if static_analysis %}
+    <div class="section">
+        <h2>静态分析结果</h2>
+
+        <h3>权限分析</h3>
+        <table>
+            <tr>
+                <th>权限</th>
+                <th>保护级别</th>
+                <th>风险等级</th>
+            </tr>
+            {% for perm in static_analysis.permissions %}
+            <tr>
+                <td class="{{ 'permission-dangerous' if perm.risk_level in ['high', 'critical'] else '' }}">{{ perm.name }}</td>
+                <td>{{ perm.protection_level }}</td>
+                <td>{{ perm.risk_level }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <h3>组件分析</h3>
+        <table>
+            <tr>
+                <th>类型</th>
+                <th>名称</th>
+                <th>导出状态</th>
+                <th>风险等级</th>
+            </tr>
+            {% for comp in static_analysis.components %}
+            <tr>
+                <td>{{ comp.component_type }}</td>
+                <td>{{ comp.component_name }}</td>
+                <td>{{ '是' if comp.is_exported else '否' }}</td>
+                <td>{{ comp.risk_level }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    {% endif %}
+
+    {% if network_requests %}
+    <div class="section">
+        <h2>网络行为分析</h2>
+        <p>共捕获 {{ network_requests|length }} 个网络请求</p>
+        <table>
+            <tr>
+                <th>方法</th>
+                <th>域名</th>
+                <th>路径</th>
+                <th>状态码</th>
+            </tr>
+            {% for req in network_requests[:20] %}
+            <tr>
+                <td>{{ req.method }}</td>
+                <td>{{ req.host }}</td>
+                <td>{{ req.path }}</td>
+                <td>{{ req.response_code or 'N/A' }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="section">
+        <h2>风险总结</h2>
+        <p><strong>风险得分:</strong> {{ risk_score }}</p>
+        <p><strong>风险因素:</strong></p>
+        <ul>
+        {% for factor in risk_factors %}
+            <li>{{ factor }}</li>
+        {% endfor %}
+        </ul>
+        <p>{{ summary }}</p>
+    </div>
+
+    <div class="footer">
+        <p>本报告由 APK 智能动态分析平台自动生成</p>
+    </div>
+</body>
+</html>
