@@ -147,19 +147,38 @@ Return JSON with:
             )
 
             content = response.choices[0].message.content
+            logger.info(f"AI response: {content}")
+
             # Parse JSON from response
             import json
             import re
 
-            # Extract JSON from markdown if present
-            match = re.search(r'\{.*\}', content, re.DOTALL)
+            # Try multiple patterns to extract JSON
+            # Pattern 1: JSON in markdown code block
+            match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
             if match:
-                data = json.loads(match.group())
-                return Operation(
-                    type=OperationType(data.get("type", "Wait")),
-                    params=data.get("params", {}),
-                    description=data.get("description", ""),
-                )
+                json_str = match.group(1)
+            else:
+                # Pattern 2: Raw JSON object
+                match = re.search(r'\{[^{}]*"type"[^{}]*\}', content, re.DOTALL)
+                if match:
+                    json_str = match.group()
+                else:
+                    # Pattern 3: Any JSON object
+                    match = re.search(r'\{.*?\}', content, re.DOTALL)
+                    json_str = match.group() if match else None
+
+            if json_str:
+                try:
+                    data = json.loads(json_str)
+                    return Operation(
+                        type=OperationType(data.get("type", "Wait")),
+                        params=data.get("params", {}),
+                        description=data.get("description", ""),
+                    )
+                except json.JSONDecodeError as je:
+                    logger.error(f"Failed to parse JSON: {je}")
+                    logger.error(f"JSON string was: {json_str}")
 
         except Exception as e:
             logger.error(f"Failed to decide operation: {e}")

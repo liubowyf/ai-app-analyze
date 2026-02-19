@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     MINIO_SECURE: bool = False
 
     # AI Model Configuration
-    AI_BASE_URL: str = "http://localhost:8000/v1"
-    AI_MODEL_NAME: str = "autoglm-phone-9b"
+    AI_BASE_URL: str = "http://10.16.148.66:6000/v1"
+    AI_MODEL_NAME: str = "/models/AutoGLM-Phone"
     AI_API_KEY: str = "EMPTY"
     AI_MAX_TOKENS: int = 3000
     AI_TEMPERATURE: float = 0.1
