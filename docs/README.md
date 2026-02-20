@@ -25,6 +25,14 @@
   - 网络诊断
   - 常见问题
 
+### 测试指南
+- **TESTING.md** - 测试框架和测试指南
+  - 测试结构说明
+  - 运行测试方法
+  - 测试分类详解
+  - 编写测试规范
+  - 测试覆盖率
+
 ---
 
 ## 📖 项目说明
@@ -44,14 +52,15 @@
 │   ├── README.md          # 本文件 - 文档导航
 │   ├── PRD.md             # 产品需求文档
 │   ├── ARCHITECTURE.md    # 系统架构文档
-│   └── OPERATIONS.md      # 运维指南
+│   ├── OPERATIONS.md      # 运维指南
+│   └── TESTING.md         # 测试指南
 │
 ├── api/                   # API接口
 ├── core/                  # 核心配置
 ├── models/                # 数据模型
 ├── modules/               # 功能模块
 ├── workers/               # Celery任务
-└── tests/                 # 单元测试
+└── tests/                 # 单元测试 (详见 TESTING.md)
 ```
 
 ---
@@ -77,6 +86,7 @@
 - 架构设计 → `docs/ARCHITECTURE.md`
 - 实现细节 → `docs/ARCHITECTURE.md` 中的模块说明
 - 运维操作 → `docs/OPERATIONS.md`
+- 测试指南 → `docs/TESTING.md`
 
 ---
 
@@ -88,6 +98,7 @@
 - **ARCHITECTURE.md** - 架构变更时更新
 - **README.md** - 使用方式变更时更新
 - **OPERATIONS.md** - 运维操作变更时更新
+- **TESTING.md** - 测试结构变更时更新
 
 ### 版本历史
 
@@ -97,5 +108,5 @@
 ---
 
 **最后更新**: 2026-02-20
-**文档数量**: 3个核心文档
+**文档数量**: 4个核心文档
 **维护建议**: 保持文档与代码实现同步

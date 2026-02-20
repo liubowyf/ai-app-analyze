@@ -161,6 +161,7 @@ curl "http://localhost:8000/api/v1/tasks/your-task-id/report" -o report.pdf
 - [产品需求文档 (PRD)](docs/PRD.md) - 完整的产品需求和功能说明
 - [系统架构文档 (ARCHITECTURE)](docs/ARCHITECTURE.md) - 技术架构和实现细节
 - [运维指南 (OPERATIONS)](docs/OPERATIONS.md) - 环境配置、服务启动、问题排查
+- [测试指南 (TESTING)](docs/TESTING.md) - 测试框架、测试结构、运行方法
 
 ## 分析流程
 
