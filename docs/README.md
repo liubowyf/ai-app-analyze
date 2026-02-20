@@ -9,12 +9,21 @@
   - 技术指标
   - 实施状态
 
-### 技术架构  
+### 技术架构
 - **ARCHITECTURE.md** - 系统架构文档 v2.0
   - 系统架构设计
   - 核心模块实现
   - 技术栈说明
   - API设计
+
+### 运维指南
+- **OPERATIONS.md** - 运维操作指南
+  - 环境准备
+  - 数据库初始化
+  - 服务启动
+  - Android 模拟器配置
+  - 网络诊断
+  - 常见问题
 
 ---
 
@@ -34,15 +43,15 @@
 ├── docs/
 │   ├── README.md          # 本文件 - 文档导航
 │   ├── PRD.md             # 产品需求文档
-│   └── ARCHITECTURE.md    # 系统架构文档
+│   ├── ARCHITECTURE.md    # 系统架构文档
+│   └── OPERATIONS.md      # 运维指南
 │
 ├── api/                   # API接口
 ├── core/                  # 核心配置
 ├── models/                # 数据模型
 ├── modules/               # 功能模块
 ├── workers/               # Celery任务
-├── tests/                 # 单元测试
-└── scripts/               # 工具脚本
+└── tests/                 # 单元测试
 ```
 
 ---
@@ -67,6 +76,7 @@
 - 功能需求 → `docs/PRD.md`
 - 架构设计 → `docs/ARCHITECTURE.md`
 - 实现细节 → `docs/ARCHITECTURE.md` 中的模块说明
+- 运维操作 → `docs/OPERATIONS.md`
 
 ---
 
@@ -77,6 +87,7 @@
 - **PRD.md** - 新增功能需求时更新
 - **ARCHITECTURE.md** - 架构变更时更新
 - **README.md** - 使用方式变更时更新
+- **OPERATIONS.md** - 运维操作变更时更新
 
 ### 版本历史
 
@@ -85,6 +96,6 @@
 
 ---
 
-**最后更新**: 2026-02-20  
-**文档数量**: 2个核心文档  
+**最后更新**: 2026-02-20
+**文档数量**: 3个核心文档
 **维护建议**: 保持文档与代码实现同步

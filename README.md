@@ -90,12 +90,18 @@ AI_MODEL_NAME=autoglm-phone-9b
 ### 启动服务
 
 ```bash
-# 启动 API 服务
+# 1. 初始化数据库 (首次运行)
+source venv/bin/activate
+python init_db.py
+
+# 2. 启动 API 服务
 uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 
-# 启动 Celery Worker
+# 3. 启动 Celery Worker
 celery -A workers.celery_app worker -l info -Q default,static,dynamic,report
 ```
+
+> 详细操作请参考 [运维指南](docs/OPERATIONS.md)
 
 ### API 使用
 
@@ -154,6 +160,7 @@ curl "http://localhost:8000/api/v1/tasks/your-task-id/report" -o report.pdf
 
 - [产品需求文档 (PRD)](docs/PRD.md) - 完整的产品需求和功能说明
 - [系统架构文档 (ARCHITECTURE)](docs/ARCHITECTURE.md) - 技术架构和实现细节
+- [运维指南 (OPERATIONS)](docs/OPERATIONS.md) - 环境配置、服务启动、问题排查
 
 ## 分析流程
 
