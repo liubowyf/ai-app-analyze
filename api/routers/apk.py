@@ -118,11 +118,24 @@ async def upload_apk(
     db.commit()
     db.refresh(task)
 
+    # Trigger Celery task chain for analysis
+    # 临时跳过静态分析,直接测试动态分析
+    from workers.dynamic_analyzer import run_dynamic_analysis
+    from workers.report_generator import generate_report
+    from celery import chain
+
+    # Create task chain: dynamic analysis -> report generation (skip static analysis)
+    workflow = chain(
+        run_dynamic_analysis.s(str(task.id)),  # 直接从动态分析开始
+        generate_report.s()
+    )
+    workflow.apply_async()
+
     # Return response
     return APKUploadResponse(
         task_id=task.id,
         file_name=task.apk_file_name,
         file_size=task.apk_file_size,
         md5=task.apk_md5,
-        message="APK file uploaded successfully",
+        message="APK file uploaded successfully and analysis started",
     )

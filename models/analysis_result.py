@@ -29,7 +29,7 @@ class PermissionInfo(BaseModel):
 
     name: str
     protection_level: str
-    description: str
+    description: Optional[str] = None
     risk_level: RiskLevel = RiskLevel.LOW
     risk_reason: Optional[str] = None
 

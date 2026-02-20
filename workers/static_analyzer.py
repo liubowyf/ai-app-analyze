@@ -48,8 +48,23 @@ def run_static_analysis(self, task_id: str) -> dict:
             md5=task.apk_md5,
         )
 
-        # Store results
-        task.static_analysis_result = result.model_dump()
+        # Store results - convert datetime to string for JSON serialization
+        result_dict = result.model_dump()
+        # Convert any datetime objects to ISO format strings
+        def convert_datetime(obj):
+            """递归转换datetime对象为字符串"""
+            if isinstance(obj, dict):
+                return {k: convert_datetime(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_datetime(item) for item in obj]
+            elif hasattr(obj, 'isoformat'):
+                return obj.isoformat()
+            else:
+                return obj
+
+        result_dict = convert_datetime(result_dict)
+
+        task.static_analysis_result = result_dict
         db.commit()
 
         logger.info(f"Static analysis completed for task {task_id}")

@@ -3,7 +3,7 @@ from celery import Celery
 
 from core.config import settings
 
-# Create Celery app
+# 使用RabbitMQ作为broker和result backend
 celery_app: Celery = Celery(
     "workers",
     broker=settings.CELERY_BROKER_URL,
@@ -25,7 +25,11 @@ celery_app.conf.update(
     worker_max_tasks_per_child=50,
     result_expires=86400,  # 24 hours
     task_ignore_result=False,  # Ensure results are stored
-    # Task routing
+    # AMQP specific settings
+    broker_connection_retry_on_startup=True,
+    broker_connection_max_retries=5,
+    broker_connection_retry_delay=5,
+    # Task routing - send different task types to different queues
     task_routes={
         "workers.static_analyzer.*": {"queue": "static"},
         "workers.dynamic_analyzer.*": {"queue": "dynamic"},

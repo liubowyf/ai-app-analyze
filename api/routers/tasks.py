@@ -57,6 +57,10 @@ def create_task(request: TaskCreateRequest, db: Session = Depends(get_db)):
     db.refresh(task)
 
     # Convert to response
+    # Handle both enum and string status/priority values
+    status_value = task.status.value if hasattr(task.status, 'value') else task.status
+    priority_value = task.priority.value if hasattr(task.priority, 'value') else task.priority
+
     return TaskResponse(
         id=task.id,
         apk_file_name=task.apk_file_name,
@@ -64,8 +68,8 @@ def create_task(request: TaskCreateRequest, db: Session = Depends(get_db)):
         apk_md5=task.apk_md5,
         apk_sha256=task.apk_sha256,
         apk_storage_path=task.apk_storage_path,
-        status=task.status.value,
-        priority=task.priority.value,
+        status=status_value,
+        priority=priority_value,
         error_message=task.error_message,
         error_stack=task.error_stack,
         retry_count=task.retry_count,
@@ -99,6 +103,10 @@ def get_task(task_id: str, db: Session = Depends(get_db)):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    # Handle both enum and string status/priority values
+    status_value = task.status.value if hasattr(task.status, 'value') else task.status
+    priority_value = task.priority.value if hasattr(task.priority, 'value') else task.priority
+
     return TaskResponse(
         id=task.id,
         apk_file_name=task.apk_file_name,
@@ -106,8 +114,8 @@ def get_task(task_id: str, db: Session = Depends(get_db)):
         apk_md5=task.apk_md5,
         apk_sha256=task.apk_sha256,
         apk_storage_path=task.apk_storage_path,
-        status=task.status.value,
-        priority=task.priority.value,
+        status=status_value,
+        priority=priority_value,
         error_message=task.error_message,
         error_stack=task.error_stack,
         retry_count=task.retry_count,

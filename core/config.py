@@ -15,12 +15,12 @@ class Settings(BaseSettings):
     MYSQL_PASSWORD: str = ""
     MYSQL_DATABASE: str = "apk_analysis"
 
-    # Redis Configuration
-    REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 6379
-    REDIS_PASSWORD: str = ""
-    REDIS_DB: int = 0
-    REDIS_CLUSTER_NODES: str = ""  # Comma-separated list of host:port
+    # RabbitMQ Configuration (替代Redis)
+    RABBITMQ_HOST: str = "localhost"
+    RABBITMQ_PORT: int = 5672
+    RABBITMQ_USER: str = "guest"
+    RABBITMQ_PASSWORD: str = "guest"
+    RABBITMQ_VHOST: str = "/"
 
     # MinIO Configuration
     MINIO_ENDPOINT: str = "localhost:9000"
@@ -59,18 +59,11 @@ class Settings(BaseSettings):
         return f"mysql+pymysql://{self.MYSQL_USER}:{encoded_password}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DATABASE}"
 
     @property
-    def redis_url(self) -> str:
-        """Build Redis connection URL."""
-        if self.REDIS_PASSWORD:
-            return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
-        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
-
-    @property
-    def redis_cluster_nodes(self) -> List[str]:
-        """Get Redis cluster nodes as list."""
-        if self.REDIS_CLUSTER_NODES:
-            return [node.strip() for node in self.REDIS_CLUSTER_NODES.split(",")]
-        return []
+    def rabbitmq_url(self) -> str:
+        """Build RabbitMQ connection URL."""
+        from urllib.parse import quote_plus
+        encoded_password = quote_plus(self.RABBITMQ_PASSWORD)
+        return f"amqp://{self.RABBITMQ_USER}:{encoded_password}@{self.RABBITMQ_HOST}:{self.RABBITMQ_PORT}/{self.RABBITMQ_VHOST}"
 
     @property
     def android_emulators(self) -> List[str]:

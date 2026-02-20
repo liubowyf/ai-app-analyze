@@ -57,12 +57,20 @@ def generate_report(self, task_id: str) -> dict:
         if dynamic_result and "suspicious_requests" in dynamic_result:
             network_requests = dynamic_result["suspicious_requests"]
 
+        # Extract screenshots from dynamic analysis
+        screenshots = []
+        if dynamic_result and "exploration_result" in dynamic_result:
+            exploration_result = dynamic_result["exploration_result"]
+            if isinstance(exploration_result, dict) and "screenshots" in exploration_result:
+                screenshots = exploration_result["screenshots"]
+
         # Generate report data
         report_data = generate_analysis_report(
             task_data=task_data,
             static_result=static_result,
             dynamic_result=dynamic_result,
             network_requests=network_requests,
+            screenshots=screenshots,
         )
 
         # Generate PDF
@@ -78,7 +86,7 @@ def generate_report(self, task_id: str) -> dict:
         # Upload to MinIO
         report_path = f"reports/{task_id}/report.pdf"
         storage_client.upload_file(
-            file_data=pdf_bytes,
+            data=pdf_bytes,
             object_name=report_path,
             content_type="application/pdf",
         )

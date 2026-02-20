@@ -111,7 +111,7 @@ class ApkAnalyzer:
             md5=md5,
             sha256=sha256,
             signature=self._get_signature_info(),
-            is_debuggable=self.apk.is_debuggable(),
+            is_debuggable=self._is_debuggable(),
             is_packed=False,
             packer_name=None,
         )
@@ -162,6 +162,24 @@ class ApkAnalyzer:
         except Exception as e:
             logger.warning(f"Failed to get signature: {e}")
         return ""
+
+    def _is_debuggable(self) -> bool:
+        """Check if APK is debuggable."""
+        if not self.apk:
+            return False
+        try:
+            # Check AndroidManifest for android:debuggable attribute
+            manifest = self.apk.get_android_manifest_xml()
+            if manifest is not None:
+                application = manifest.find("application")
+                if application is not None:
+                    debuggable = application.get(
+                        "{http://schemas.android.com/apk/res/android}debuggable", "false"
+                    )
+                    return debuggable == "true" or debuggable is True
+        except Exception as e:
+            logger.warning(f"Failed to check debuggable: {e}")
+        return False
 
     def analyze(self, apk_path: str = None, apk_content: bytes = None,
                 file_size: int = 0, md5: str = "", sha256: str = "") -> StaticAnalysisResult:
