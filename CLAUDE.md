@@ -149,6 +149,34 @@ On failure: transition to `failed`, can retry via `/tasks/{id}/retry` endpoint.
 - Factors: POST/PUT requests, sensitive data, non-standard ports, private IPs, non-HTTPS
 - Whitelist filters: CDN, ads, analytics domains
 
+**Domain ML Classifier** (`modules/domain_analyzer/ml_classifier.py`)
+- RandomForest classifier with 100 estimators
+- Domain feature extraction (length, numbers, TLD, etc.)
+- Supports master/cdn/tracker/normal classification
+- Model persistence via pickle
+
+**Training Data Generator** (`modules/domain_analyzer/training_data.py`)
+- Generates labeled training data for ML model
+- 4 domain categories: master, cdn, tracker, normal
+- Domain variation generation for robustness
+
+**Feature Extractor** (`modules/domain_analyzer/feature_extractor.py`)
+- Extracts domain features for ML classification
+- Features: length, dots, numbers, TLD, IP detection, subdomains
+- Private IP detection (RFC 1918)
+
+**Sensitive Data Detection** (`modules/domain_analyzer/sensitive_patterns.py`)
+- Detects sensitive data in network requests
+- Supported types: phone numbers, emails, ID cards, bank cards, JWT tokens, API keys, passwords, IMEI, MAC addresses, IP addresses
+- Pattern-based detection with priority matching
+- Data masking functionality
+
+**Threat Intelligence** (`modules/domain_analyzer/threat_intel.py`)
+- External threat intelligence API integration
+- 24-hour cache TTL for query results
+- Domain threat scoring and malicious domain detection
+- Multiple source aggregation support
+
 **Report Generator** (`modules/report_generator/`)
 - Jinja2 templates + WeasyPrint for PDF generation
 - Includes screenshots, network analysis, domain threats
