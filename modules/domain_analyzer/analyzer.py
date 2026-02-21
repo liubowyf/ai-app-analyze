@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from collections import Counter
 
 from modules.traffic_monitor import NetworkRequest
+from .ml_classifier import MLDomainClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,7 @@ class MasterDomainAnalyzer:
         self.ad_regex = [re.compile(p, re.IGNORECASE) for p in self.AD_DOMAINS]
         self.analytics_regex = [re.compile(p, re.IGNORECASE) for p in self.ANALYTICS_DOMAINS]
         self.sensitive_regex = [re.compile(p, re.IGNORECASE) for p in self.SENSITIVE_PATTERNS]
+        self.ml_classifier = MLDomainClassifier()
 
     def is_cdn_domain(self, domain: str) -> bool:
         """Check if domain is a CDN."""
@@ -326,3 +328,37 @@ class MasterDomainAnalyzer:
                 "low_confidence": len([md for md in master_domains if md.confidence == "low"]),
             }
         }
+
+    def train_ml_model(self, training_data: List[Dict]) -> None:
+        """
+        Train ML model for domain classification.
+
+        Args:
+            training_data: List of dicts with 'domain' and 'label' keys
+        """
+        self.ml_classifier.train(training_data)
+        logger.info("Trained ML model for domain classification")
+
+    def analyze_domain(self, domain: str) -> Dict:
+        """
+        Analyze a single domain with ML enhancement.
+
+        Args:
+            domain: Domain to analyze
+
+        Returns:
+            Analysis result dict
+        """
+        result = {
+            'domain': domain,
+            'ml_prediction': None
+        }
+
+        if self.ml_classifier.is_trained:
+            try:
+                ml_pred = self.ml_classifier.predict(domain)
+                result['ml_prediction'] = ml_pred
+            except Exception as e:
+                logger.error(f"ML prediction failed: {e}")
+
+        return result
