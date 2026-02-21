@@ -90,7 +90,7 @@ class Task(Base):
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
 
-    # Analysis results
+    # Analysis results (legacy JSON storage - kept for backward compatibility)
     static_analysis_result: Mapped[Optional[Dict[str, Any]]] = Column(
         JSON, nullable=True
     )
@@ -100,6 +100,14 @@ class Task(Base):
     report_storage_path: Mapped[Optional[str]] = Column(
         String(500), nullable=True
     )
+
+    # Relationships to normalized tables
+    # Note: These will be defined after the table classes are imported
+    # static_table = relationship("StaticAnalysisTable", back_populates="task", uselist=False)
+    # dynamic_table = relationship("DynamicAnalysisTable", back_populates="task", uselist=False)
+    # network_requests = relationship("NetworkRequestTable", back_populates="task")
+    # master_domains_table = relationship("MasterDomainTable", back_populates="task")
+    # screenshots_table = relationship("ScreenshotTable", back_populates="task")
 
     # Add explicit indexes
     __table_args__ = (

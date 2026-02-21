@@ -471,6 +471,20 @@ class AppExplorer:
         for screenshot in all_screenshots:
             self.screenshot_manager.save_to_minio(screenshot)
 
+        # Cleanup: Uninstall the app after analysis
+        if package_name:
+            try:
+                logger.info(f"Uninstalling app {package_name}...")
+                output = self.android_runner.execute_adb_remote(host, port, f"uninstall {package_name}")
+                if "Success" in output:
+                    logger.info(f"Successfully uninstalled {package_name}")
+                else:
+                    logger.warning(f"Failed to uninstall {package_name}: {output}")
+            except Exception as e:
+                logger.warning(f"Error during app cleanup: {e}")
+        else:
+            logger.warning("Package name not available, skipping uninstall")
+
         return ExplorationResult(
             total_steps=len(self.exploration_history),
             screenshots=self.screenshot_manager.get_all_for_report(),
