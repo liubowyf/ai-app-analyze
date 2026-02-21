@@ -1,119 +1,402 @@
-# 项目文档规范
+# CLAUDE.md
 
-## 📝 文档组织原则
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**所有设计和说明文档必须放在 `docs/plans/` 目录下**
+## Project Overview
 
-### 文档分类
+APK Intelligent Dynamic Analysis Platform - An AI-powered system for automated APK dynamic analysis through simulated user behavior, traffic monitoring, and threat detection.
 
-1. **产品设计文档**
-   - 产品需求文档 (PRD)
-   - 功能规划文档
-   
-2. **技术设计文档**
-   - 架构设计文档
-   - 实现方案文档
-   - API设计文档
-   
-3. **项目说明文档**
-   - README.md
-   - 安装部署指南
-   - 使用说明
+## Common Development Commands
 
-4. **文档索引**
-   - DOCUMENTATION_INDEX.md - 所有文档的导航索引
+### Environment Setup
 
----
+```bash
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate
 
-## 🗂️ 文件组织结构
+# Install dependencies
+pip install -r requirements.txt
 
-```
-项目根目录/
-├── CLAUDE.md                     # 本文件 - 文档规范
-├── README.md                     # 项目入口文档（指向docs/plans/）
-│
-├── docs/
-│   └── plans/                    # ⭐ 所有设计和说明文档
-│       ├── DOCUMENTATION_INDEX.md # 文档索引
-│       ├── README.md             # 项目详细说明
-│       ├── *.md                  # 各类设计文档
-│
-├── api/                          # API代码
-├── core/                         # 核心配置
-├── models/                       # 数据模型
-├── modules/                      # 功能模块
-├── workers/                      # 后台任务
-├── tests/                        # 测试代码
-└── scripts/                      # 工具脚本
+# Create .env file from template
+cp .env.example .env
+# Edit .env with your configuration
 ```
 
----
+### Running Services
 
-## ✅ 文档创建规则
+```bash
+# Start API server (development)
+uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 
-### 必须遵循
+# Start Celery worker (development - all queues)
+celery -A workers.celery_app worker -l info -Q default,static,dynamic,report
 
-1. **位置**: 所有 `.md` 文档文件必须放在 `docs/plans/` 目录
-2. **命名**: 使用有意义的文件名，格式为 `YYYY-MM-DD-描述.md` 或 `功能名称.md`
-3. **索引**: 新增文档后必须更新 `docs/plans/DOCUMENTATION_INDEX.md`
-4. **根目录**: 根目录只保留 `README.md` 和 `CLAUDE.md`
+# Start Celery worker (production - separate queues)
+celery -A workers.celery_app worker -l info -Q static --concurrency=2 --max-tasks-per-child=50
+celery -A workers.celery_app worker -l info -Q dynamic --concurrency=4 --max-tasks-per-child=20
+celery -A workers.celery_app worker -l info -Q report --concurrency=2 --max-tasks-per-child=100
 
-### 禁止行为
+# API with gunicorn (production)
+gunicorn api.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+```
 
-- ❌ 在根目录创建新的 `.md` 文档
-- ❌ 在代码目录创建 `.md` 文档
-- ❌ 创建临时测试报告文档
+### Testing
 
----
+```bash
+# Run all tests
+pytest
 
-## 📖 文档访问
+# Run with verbose output
+pytest -v
 
-### 快速导航
+# Run specific test file
+pytest tests/test_apk_router.py
 
-- **所有文档**: `docs/plans/DOCUMENTATION_INDEX.md`
-- **项目说明**: `docs/plans/README.md`
-- **设计文档**: `docs/plans/` 目录
+# Run specific test class
+pytest tests/test_apk_router.py::TestAPKUpload
 
-### 文档查找
+# Run specific test method
+pytest tests/test_apk_router.py::TestAPKUpload::test_upload_apk_success
 
-1. 查看 `docs/plans/DOCUMENTATION_INDEX.md` 找到需要的文档
-2. 根据索引中的描述定位具体文档
-3. 所有文档都在 `docs/plans/` 目录下
+# Run with coverage report
+pytest --cov=. --cov-report=html
 
----
+# Run tests in parallel (requires pytest-xdist)
+pytest -n auto
+```
 
-## 🔧 文档维护
+### Database Operations
 
-### 新增文档
+```bash
+# Initialize database (first time setup)
+# Tables are auto-created by FastAPI lifespan in api/main.py on startup
+# No separate migration script needed for initial setup
 
-1. 在 `docs/plans/` 目录创建新的 `.md` 文件
-2. 按照命名规范命名文件
-3. 更新 `docs/plans/DOCUMENTATION_INDEX.md` 索引
-4. 提交到Git仓库
+# For schema migrations (if using Alembic)
+alembic revision --autogenerate -m "description"
+alembic upgrade head
+```
 
-### 更新文档
+## Architecture
 
-1. 直接编辑 `docs/plans/` 目录下的对应文档
-2. 更新文档顶部的"最后更新"时间
-3. 如有重大变更，更新索引中的描述
+### System Layers
 
-### 删除文档
+**API Gateway Layer** (`api/`)
+- FastAPI application with REST endpoints
+- Routes: `/api/v1/apk/upload`, `/api/v1/tasks`, `/api/v1/whitelist`
+- Input validation via Pydantic schemas
 
-1. 删除 `docs/plans/` 目录下的文档文件
-2. 从 `docs/plans/DOCUMENTATION_INDEX.md` 中移除索引项
-3. 检查是否有其他文档引用，如有则更新引用
+**Task Queue Layer** (`workers/`)
+- Celery-based async task processing
+- Task routing by queue: `static`, `dynamic`, `report`
+- Redis as message broker and result backend
 
----
+**Execution Layer** (`modules/`)
+- Functional modules for analysis stages
+- Coordinate with external services (emulators, AI)
 
-## 🎯 规范目的
+**Infrastructure Layer**
+- MySQL: Task metadata and analysis results
+- MinIO: APK files, screenshots, reports
+- Redis: Celery broker and result storage
+- Android Emulators: Remote device pool (10.16.148.66:5555-5558)
+- AI Service: AutoGLM-Phone at 10.16.148.66:6000
 
-1. **统一管理**: 所有文档集中在一个目录，易于查找和维护
-2. **避免混乱**: 防止文档散落在项目各处
-3. **提高效率**: 开发者能快速找到需要的文档
-4. **保持整洁**: 项目根目录简洁明了
+### Analysis Pipeline
 
----
+```
+Upload APK → Static Analysis → Dynamic Analysis → Report Generation
+                (30s)              (8 min)            (15s)
+```
 
-**规范版本**: v1.0  
-**生效日期**: 2026-02-20  
-**适用范围**: 本项目所有文档文件
+**Task Status Flow**:
+`pending` → `queued` → `static_analyzing` → `dynamic_analyzing` → `report_generating` → `completed`
+
+On failure: transition to `failed`, can retry via `/tasks/{id}/retry` endpoint.
+
+### Key Modules
+
+**APK Analyzer** (`modules/apk_analyzer/`)
+- Uses androguard for static analysis
+- Extracts: package name, permissions, components, signatures
+
+**Android Runner** (`modules/android_runner/`)
+- Remote ADB control for emulators
+- Methods: `connect_remote_emulator`, `install_apk_remote`, `take_screenshot_remote`, `execute_tap`, `execute_swipe`
+
+**Traffic Monitor** (`modules/traffic_monitor/`)
+- mitmproxy-based network interception
+- Captures HTTP/HTTPS traffic with whitelist filtering
+
+**AI Driver** (`modules/ai_driver/`)
+- AutoGLM-Phone integration for intelligent UI interaction
+- Analyzes screenshots and decides next actions
+
+**App Explorer** (`modules/exploration_strategy/`)
+- 4-phase exploration strategy:
+  1. Basic setup (install, grant permissions, launch)
+  2. Navigation exploration (bottom tabs)
+  3. Autonomous exploration (AI-driven, max 50 steps)
+  4. Scenario testing (search, scroll)
+
+**Screenshot Manager** (`modules/screenshot_manager/`)
+- Perceptual hash deduplication (threshold: 10)
+- Reduces duplicate screenshots by ~60%
+
+**Domain Analyzer** (`modules/domain_analyzer/`)
+- Multi-factor scoring for master domain identification
+- Factors: POST/PUT requests, sensitive data, non-standard ports, private IPs, non-HTTPS
+- Whitelist filters: CDN, ads, analytics domains
+
+**Report Generator** (`modules/report_generator/`)
+- Jinja2 templates + WeasyPrint for PDF generation
+- Includes screenshots, network analysis, domain threats
+
+## Important Configuration
+
+### Environment Variables (`.env`)
+
+Critical settings:
+- `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`
+- `RABBITMQ_HOST`, `RABBITMQ_PORT`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD` (Celery broker)
+- `REDIS_HOST`, `REDIS_PORT` (result backend)
+- `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`
+- `AI_BASE_URL`, `AI_MODEL_NAME` (AutoGLM-Phone)
+- `ANDROID_EMULATOR_1` through `ANDROID_EMULATOR_4`
+
+**Note**: The code currently uses RabbitMQ as Celery broker but Redis as result backend. Ensure both services are running.
+
+### Database Connection Pool
+
+Configured in `core/database.py`:
+- Pool size: 20 base connections
+- Max overflow: 10 additional for burst traffic
+- Pool recycle: 3600s (1 hour) to prevent MySQL timeout
+- SSL enabled with certificate verification disabled
+
+### Celery Configuration
+
+In `workers/celery_app.py`:
+- Task timeout: 3600s (1 hour hard limit)
+- Soft timeout: 3300s (55 minutes)
+- Worker prefetch: 1 task per worker
+- Max tasks per child: 50 (recycle worker process)
+- Result expires: 86400s (24 hours)
+
+## API Endpoints
+
+### APK Upload
+```bash
+POST /api/v1/apk/upload
+Content-Type: multipart/form-data
+File field: file
+
+Returns: task_id, apk_md5, status
+```
+
+### Task Management
+```bash
+POST /api/v1/tasks              # Start analysis (status: pending → queued)
+GET  /api/v1/tasks/{task_id}    # Get task status
+GET  /api/v1/tasks              # List tasks (paginated)
+POST /api/v1/tasks/{task_id}/retry  # Retry failed task
+```
+
+### Whitelist Management
+```bash
+GET    /api/v1/whitelist        # List whitelist rules
+POST   /api/v1/whitelist        # Create whitelist rule
+PUT    /api/v1/whitelist/{id}   # Update whitelist rule
+DELETE /api/v1/whitelist/{id}   # Delete whitelist rule
+```
+
+## Emulator Pool Management
+
+Emulator pool defined in `workers/dynamic_analyzer.py`:
+```python
+EMULATOR_POOL = [
+    {"host": "10.16.148.66", "port": 5555, "in_use": False},
+    {"host": "10.16.148.66", "port": 5556, "in_use": False},
+    {"host": "10.16.148.66", "port": 5557, "in_use": False},
+    {"host": "10.16.148.66", "port": 5558, "in_use": False},
+]
+```
+
+- Simple load balancing: first available emulator
+- In-memory `in_use` flag (resets on worker restart)
+- Released in `finally` block to ensure cleanup
+
+## Error Handling
+
+### Task Retry Strategy
+
+Tasks defined with `@shared_task(bind=True, max_retries=2)`:
+- Max 2 retries for transient errors
+- Default retry delay: 300s (5 minutes)
+- Manual retry via API endpoint for failed tasks
+
+### Error Classification
+
+- `EmulatorConnectionError`: Switch emulator, retry after 60s
+- `APKInstallError`: Mark failed, no retry
+- `AIDriverError`: Retry after 300s, max 2 times
+- `TrafficMonitorError`: Continue with warning
+- `ScreenshotError`: Skip step, continue execution
+
+## Performance Characteristics
+
+- Static analysis: ~30 seconds
+- Dynamic analysis: ~8 minutes (50 AI-driven steps)
+- Report generation: ~15 seconds
+- Total pipeline: ~9 minutes per APK
+
+Screenshot deduplication saves ~60% storage.
+
+## Key Dependencies
+
+- **FastAPI**: Web framework
+- **Celery + Redis**: Task queue
+- **SQLAlchemy + PyMySQL**: Database ORM
+- **MinIO**: Object storage
+- **androguard**: APK static analysis
+- **mitmproxy**: Traffic interception
+- **WeasyPrint**: PDF generation
+- **Pillow + imagehash**: Screenshot deduplication
+- **OpenAI client**: AI service communication (AutoGLM-Phone)
+
+## Development Workflow
+
+1. Upload APK via `/api/v1/apk/upload` → returns `task_id`
+2. Start analysis via `/api/v1/tasks` with `task_id` → task queued
+3. Celery worker picks up task, runs static → dynamic → report pipeline
+4. Poll `/api/v1/tasks/{task_id}` for status updates
+5. Download report when status is `completed`
+
+### Task Flow Sequence
+
+Tasks are automatically chained through Celery:
+1. Task created with status `pending`
+2. POST `/api/v1/tasks` → status becomes `queued`
+3. Celery picks up → `static_analyzing` → `dynamic_analyzing` → `report_generating`
+4. Final status: `completed` or `failed`
+
+### Debugging Tips
+
+- Check Celery worker logs: Workers log task progress with task_id
+- Database queries: All task data is in MySQL `tasks` table
+- MinIO storage: APK files stored in bucket defined by `MINIO_BUCKET`
+- Emulator issues: Check `EMULATOR_POOL` in `workers/dynamic_analyzer.py:23-28`
+- AI driver errors: Verify `AI_BASE_URL` is accessible and model is loaded
+
+## Documentation
+
+- `README.md`: Project overview and quick start
+- `docs/ARCHITECTURE.md`: Detailed system architecture
+- `docs/OPERATIONS.md`: Deployment and operations guide
+- `docs/TESTING.md`: Testing framework and conventions
+- `docs/PRD.md`: Product requirements
+
+## Key Implementation Details
+
+### Celery Task Routing
+
+Tasks are routed to specific queues based on type:
+- `workers.static_analyzer.*` → `static` queue
+- `workers.dynamic_analyzer.*` → `dynamic` queue
+- `workers.report_generator.*` → `report` queue
+
+### Screenshot Deduplication
+
+`modules/screenshot_manager/manager.py` uses perceptual hashing (imagehash):
+- Threshold: 10 (hamming distance)
+- Saves ~60% storage by filtering duplicate screenshots
+- Hash comparison happens before upload to MinIO
+
+### Domain Analysis Scoring
+
+`modules/domain_analyzer/analyzer.py` scores domains on:
+- POST/PUT request frequency
+- Presence of sensitive data patterns (user_id, device_id, token, etc.)
+- Non-standard ports
+- Private IP addresses
+- Non-HTTPS connections
+- Automatically filters CDN, ad, and analytics domains
+
+### AI Integration
+
+AI driver (`modules/ai_driver/`) uses OpenAI client SDK:
+- Base URL: `AI_BASE_URL` (default: http://10.16.148.66:6000/v1)
+- Model: AutoGLM-Phone-9B
+- Analyzes screenshots and decides next UI actions
+- Max 50 autonomous exploration steps in Phase 3
+
+### APK Risk Scoring
+
+`modules/apk_analyzer/risk_scorer.py` calculates APK risk scores:
+
+**Risk Factors:**
+- Dangerous permissions: +3 points each
+- Normal permissions: +1 point each
+- Exported components: +2 points each
+- No signature: +5 points
+- Self-signed: +2 points
+
+**Risk Levels:**
+- HIGH: total score >= 20
+- MEDIUM: total score >= 10
+- LOW: total score < 10
+
+**Caching:**
+- LRU cache for APK parsing (max 100 entries)
+- Uses MD5 hash as cache key to avoid re-parsing
+
+### Scenario Testing
+
+`modules/scenario_testing/detector.py` detects UI scenarios:
+
+**Supported Scenarios:**
+- **Login**: Detects login buttons and credential inputs
+- **Payment**: Detects payment buttons, amount inputs, and payment methods
+- **Share**: Detects share buttons and social platforms
+
+**Detection Rules:**
+- Supports Chinese and English keywords
+- Analyzes UI element properties (text, class_name, clickable, editable)
+- Pattern matching for common UI patterns
+
+### Exploration Controller
+
+`modules/exploration_strategy/controller.py` manages exploration:
+
+**Depth Control:**
+- Max 50 exploration steps
+- Prevents infinite exploration loops
+
+**Loop Detection:**
+- Tracks screen hashes via MD5
+- Detects when same screen appears 3+ times
+- Window size: last 10 screens
+
+**Backtracking Strategies:**
+- `back`: Go back to previous screen
+- `restart`: Restart app from beginning
+- `skip`: Skip current exploration path
+
+### Traffic Protocol Support
+
+`modules/traffic_monitor/` supports multiple protocols:
+
+**WebSocket Interceptor:**
+- Captures WebSocket messages
+- Tracks message direction (send/receive)
+- Records payload length and opcode
+
+**gRPC Parser:**
+- Detects gRPC requests via content-type header
+- Parses gRPC message format (compressed flag + length + payload)
+- Extracts method path and message data
+
+## Document Organization
+
+All design and documentation files are in `docs/plans/` directory. See `docs/plans/DOCUMENTATION_INDEX.md` for navigation. Root directory contains only `README.md` and `CLAUDE.md`.
