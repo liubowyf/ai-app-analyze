@@ -2,6 +2,7 @@
 import hashlib
 from typing import Dict, List, Any, Optional
 import logging
+from functools import lru_cache
 
 from androguard.misc import AnalyzeAPK
 
@@ -11,8 +12,24 @@ from models.analysis_result import (
     ComponentInfo,
     StaticAnalysisResult,
 )
+from .risk_scorer import RiskScorer
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=100)
+def cached_analyze_apk(apk_path: str, apk_md5: str):
+    """
+    Cache APK parsing results to avoid re-parsing same APK.
+
+    Args:
+        apk_path: Path to APK file
+        apk_md5: MD5 hash of APK (used as cache key)
+
+    Returns:
+        Tuple of (APK object, DalvikVMs, Analysis)
+    """
+    return AnalyzeAPK(apk_path)
 
 
 # Dangerous permissions mapping
