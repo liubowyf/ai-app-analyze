@@ -1,4 +1,5 @@
 """Tasks router for task management endpoints."""
+import logging
 from datetime import datetime
 from typing import Optional
 
@@ -9,6 +10,7 @@ from api.schemas.task import TaskCreateRequest, TaskResponse, TaskListResponse
 from core.database import SessionLocal
 from models.task import Task, TaskStatus
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -55,6 +57,22 @@ def create_task(request: TaskCreateRequest, db: Session = Depends(get_db)):
     task.started_at = datetime.utcnow()
     db.commit()
     db.refresh(task)
+
+    # Schedule Celery task chain: static -> dynamic -> report
+    from workers.static_analyzer import run_static_analysis
+    from workers.dynamic_analyzer import run_dynamic_analysis
+    from workers.report_generator import generate_report
+    from celery import chain
+
+    # Create task chain
+    workflow = chain(
+        run_static_analysis.s(str(task.id)),
+        run_dynamic_analysis.s(),
+        generate_report.s()
+    )
+    workflow.apply_async()
+
+    logger.info(f"Started analysis workflow for task {task.id}")
 
     # Convert to response
     # Handle both enum and string status/priority values
