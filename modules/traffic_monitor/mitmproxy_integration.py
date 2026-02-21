@@ -5,7 +5,6 @@ from typing import Optional, Callable, Dict, Any
 from mitmproxy import proxy, options
 from mitmproxy.tools.dump import DumpMaster
 from mitmproxy.http import HTTPFlow
-from mitmproxy.addons import AddonManager
 
 logger = logging.getLogger(__name__)
 
