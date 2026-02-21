@@ -19,6 +19,9 @@ minio==7.2.3
 # APK Analysis
 androguard==3.4.0a1
 
+# Machine Learning
+scikit-learn==1.8.0
+
 # Traffic Monitor
 mitmproxy==10.1.6
 
