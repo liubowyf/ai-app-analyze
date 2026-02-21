@@ -25,6 +25,7 @@ def run_static_analysis(self, task_id: str) -> dict:
         Analysis result dict
     """
     db: Session = SessionLocal()
+    task = None
     try:
         # Get task from database
         task = db.query(Task).filter(Task.id == task_id).first()
@@ -39,6 +40,23 @@ def run_static_analysis(self, task_id: str) -> dict:
 
         # Download APK from MinIO
         apk_content = storage_client.download_file(task.apk_storage_path)
+
+        # Check if APK is packed/encrypted
+        if _is_packed_apk(apk_content):
+            logger.warning(f"APK {task_id} is packed/encrypted, skipping static analysis")
+            task.static_analysis_result = {
+                "is_packed": True,
+                "message": "APK is packed/encrypted. Static analysis skipped, proceeding to dynamic analysis."
+            }
+            db.commit()
+
+            logger.info(f"Skipping static analysis for packed APK {task_id}")
+
+            return {
+                "task_id": task_id,
+                "status": "skipped",
+                "reason": "APK is packed/encrypted"
+            }
 
         # Run analysis
         analyzer = ApkAnalyzer()
@@ -84,3 +102,88 @@ def run_static_analysis(self, task_id: str) -> dict:
         raise
     finally:
         db.close()
+
+
+def _is_packed_apk(apk_content: bytes) -> bool:
+    """
+    Check if APK is packed or encrypted.
+
+    Args:
+        apk_content: APK file content
+
+    Returns:
+        bool: True if APK is packed/encrypted
+    """
+    import zipfile
+    import io
+
+    try:
+        # Try to open APK as zip file
+        with zipfile.ZipFile(io.BytesIO(apk_content), 'r') as zf:
+            # Check if AndroidManifest.xml can be read
+            # In packed APKs, this file is usually encrypted
+            try:
+                manifest_data = zf.read('AndroidManifest.xml')
+
+                # Check for encryption indicators
+                # Normal AndroidManifest.xml is binary XML starting with specific bytes
+                # Packed APKs may have encrypted data
+                if len(manifest_data) > 0:
+                    # Check if it's encrypted (not valid binary XML)
+                    # Binary XML starts with 0x0003 (version) followed by specific patterns
+                    if not _is_valid_binary_xml(manifest_data):
+                        logger.warning("AndroidManifest.xml appears to be encrypted")
+                        return True
+
+            except Exception as e:
+                # If we can't read the manifest, it's likely packed
+                logger.warning(f"Cannot read AndroidManifest.xml: {e}")
+                return True
+
+        return False
+
+    except Exception as e:
+        logger.error(f"Error checking if APK is packed: {e}")
+        # If we can't determine, assume it's not packed to allow analysis attempt
+        return False
+
+
+def _is_valid_binary_xml(data: bytes) -> bool:
+    """
+    Check if data is valid Android binary XML.
+
+    Args:
+        data: Binary data to check
+
+    Returns:
+        bool: True if data appears to be valid binary XML
+    """
+    if len(data) < 4:
+        return False
+
+    # Android binary XML starts with:
+    # 0x0003 - version (2 bytes)
+    # 0x0008 - file size (2 bytes) or other header data
+    # Check for common binary XML patterns
+
+    # Normal binary XML markers
+    # First 2 bytes should be 0x0003 (version) or similar
+    # Third and fourth bytes usually indicate file structure
+
+    # Simple heuristic: check if first few bytes look like binary XML
+    # Binary XML typically starts with small version numbers
+    if data[0] == 0x03 and data[1] == 0x00:
+        return True
+
+    # Some APKs may have different formats
+    # Check for typical XML structure markers
+    if data[:4] in [b'\x03\x00\x08\x00', b'\x03\x00\x00\x00']:
+        return True
+
+    # If data appears random/encrypted (high entropy), it's likely packed
+    # Simple entropy check: count unique bytes
+    unique_bytes = len(set(data[:256]))
+    if unique_bytes > 200:  # High entropy suggests encryption
+        return False
+
+    return True
