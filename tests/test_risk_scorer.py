@@ -83,6 +83,7 @@ class TestRiskScorer:
                 'android.permission.READ_CONTACTS',
                 'android.permission.ACCESS_FINE_LOCATION',
                 'android.permission.READ_SMS',
+                'android.permission.CAMERA',  # Add one more to reach HIGH threshold
             ],
             'components': {
                 'activities': [{'name': 'MainActivity', 'exported': True}],
@@ -95,7 +96,7 @@ class TestRiskScorer:
         assert result['risk_level'] == "HIGH"
         assert result['total_score'] >= 20
         assert 'breakdown' in result
-        assert result['breakdown']['permission_risk'] == 9
+        assert result['breakdown']['permission_risk'] == 12
         assert result['breakdown']['component_risk'] == 4
         assert result['breakdown']['signature_risk'] == 5
 
