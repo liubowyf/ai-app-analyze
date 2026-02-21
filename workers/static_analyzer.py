@@ -96,10 +96,21 @@ def run_static_analysis(self, task_id: str) -> dict:
     except Exception as e:
         logger.error(f"Static analysis failed for task {task_id}: {e}")
         if task:
-            task.status = TaskStatus.FAILED
-            task.error_message = str(e)
+            # 标记静态分析失败,但不影响后续动态分析
+            task.static_analysis_result = {
+                "error": True,
+                "message": f"Static analysis failed: {str(e)}. Proceeding to dynamic analysis.",
+                "is_packed": "AndroidManifest.xml" in str(e) or "encrypted" in str(e).lower()
+            }
             db.commit()
-        raise
+            logger.info(f"Static analysis failed but proceeding to dynamic analysis for task {task_id}")
+
+        # 返回跳过状态,不抛出异常
+        return {
+            "task_id": task_id,
+            "status": "failed",
+            "reason": str(e)
+        }
     finally:
         db.close()
 

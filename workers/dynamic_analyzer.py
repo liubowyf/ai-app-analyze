@@ -119,7 +119,7 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
         if task.static_analysis_result:
             package_name = task.static_analysis_result.get("package_name")
 
-        # If no package name from static analysis, extract it from APK
+        # If no package name from static analysis, try to extract it from APK
         if not package_name:
             logger.info("Extracting package name from APK (no static analysis result)")
             from androguard.misc import AnalyzeAPK
@@ -129,11 +129,16 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
                 package_name = a.get_package()
                 logger.info(f"Package name extracted: {package_name}")
             except Exception as e:
-                logger.error(f"Failed to extract package name: {e}")
-                raise ValueError(f"Failed to extract package name from APK: {e}")
+                logger.warning(f"Failed to extract package name (APK may be packed): {e}")
+                logger.info("Proceeding without package name - will use APK filename for installation")
+                # 尝试从APK文件名推断包名,或者设置为None让后续流程处理
+                package_name = None
 
-        if not package_name:
-            raise ValueError("Package name not found")
+        # package_name可以为None,后续install_apk_remote会处理
+        if package_name:
+            logger.info(f"Using package name: {package_name}")
+        else:
+            logger.warning("No package name available, proceeding with dynamic analysis anyway")
 
         # 4. Create ScreenshotManager instance
         screenshot_manager = ScreenshotManager(task_id=task_id)

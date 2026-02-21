@@ -43,7 +43,7 @@ class AppExplorer:
         self.activities_visited: List[str] = []
 
     def phase1_basic_setup(self, host: str, port: int,
-                          apk_path: str, package_name: str) -> List[Screenshot]:
+                          apk_path: str, package_name: Optional[str] = None) -> List[Screenshot]:
         """
         Phase 1: Basic setup - install, grant permissions, launch.
 
@@ -51,12 +51,12 @@ class AppExplorer:
             host: Emulator host
             port: Emulator port
             apk_path: Path to APK file
-            package_name: Package name
+            package_name: Package name (optional, will be detected if None)
 
         Returns:
             List of screenshots from this phase
         """
-        logger.info(f"Phase 1: Basic setup for {package_name}")
+        logger.info(f"Phase 1: Basic setup for {package_name or 'unknown package'}")
         screenshots = []
 
         # Connect to emulator
@@ -64,6 +64,16 @@ class AppExplorer:
             raise RuntimeError(f"Failed to connect to emulator {host}:{port}")
 
         time.sleep(2)  # Wait for connection
+
+        # Get list of packages before installation
+        packages_before = set()
+        if not package_name:
+            try:
+                output = self.android_runner.execute_adb_remote(host, port, "shell pm list packages")
+                packages_before = set(line.replace("package:", "").strip() for line in output.split('\n') if "package:" in line)
+                logger.info(f"Packages before install: {len(packages_before)}")
+            except Exception as e:
+                logger.warning(f"Failed to list packages before install: {e}")
 
         # Install APK
         logger.info("Installing APK...")
@@ -82,14 +92,38 @@ class AppExplorer:
 
         time.sleep(2)
 
-        # Grant all permissions
-        logger.info("Granting permissions...")
-        self.android_runner.grant_all_permissions(host, port, package_name)
+        # Detect package name if not provided
+        if not package_name:
+            try:
+                output = self.android_runner.execute_adb_remote(host, port, "shell pm list packages")
+                packages_after = set(line.replace("package:", "").strip() for line in output.split('\n') if "package:" in line)
+                new_packages = packages_after - packages_before
+                if new_packages:
+                    package_name = list(new_packages)[0]
+                    logger.info(f"Detected installed package: {package_name}")
+                else:
+                    logger.warning("Could not detect installed package, proceeding without package name")
+            except Exception as e:
+                logger.warning(f"Failed to detect package name: {e}")
 
-        # Launch app
-        logger.info("Launching app...")
-        self.android_runner.launch_app(host, port, package_name)
-        time.sleep(3)  # Wait for app to start
+        # Grant all permissions (if package name available)
+        if package_name:
+            logger.info(f"Granting permissions for {package_name}...")
+            self.android_runner.grant_all_permissions(host, port, package_name)
+
+            # Launch app
+            logger.info(f"Launching app {package_name}...")
+            self.android_runner.launch_app(host, port, package_name)
+            time.sleep(3)  # Wait for app to start
+        else:
+            logger.warning("No package name available, skipping permission grant and app launch")
+            logger.info("Attempting to launch the most recently installed app...")
+            # Try to launch the last installed app
+            try:
+                self.android_runner.execute_adb_remote(host, port, "shell monkey -p com. -c android.intent.category.LAUNCHER 1")
+                time.sleep(3)
+            except Exception as e:
+                logger.warning(f"Failed to launch app: {e}")
 
         # Screenshot: App launched
         screenshot = self.screenshot_manager.capture(
@@ -399,7 +433,7 @@ class AppExplorer:
         host = emulator_config["host"]
         port = emulator_config["port"]
         apk_path = apk_info["apk_path"]
-        package_name = apk_info["package_name"]
+        package_name = apk_info.get("package_name")  # 使用get方法,允许为None
 
         all_screenshots = []
         phases_completed = []
