@@ -1,5 +1,6 @@
 """Android Runner module for remote Android emulator control."""
 import logging
+import os
 import re
 import shlex
 import subprocess
@@ -323,6 +324,12 @@ class AndroidRunner:
         """
         try:
             device = f"{host}:{port}"
+            timeout_raw = os.getenv("ADB_COMMAND_TIMEOUT_SECONDS", "12")
+            try:
+                timeout = float(timeout_raw)
+            except ValueError:
+                timeout = 12.0
+            timeout = max(2.0, min(timeout, 60.0))
 
             adb_cmd = ["adb", "-s", device]
             if command.startswith("shell "):
@@ -336,7 +343,7 @@ class AndroidRunner:
                 adb_cmd,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=timeout,
             )
             if result.stdout:
                 return result.stdout

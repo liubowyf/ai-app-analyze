@@ -51,6 +51,21 @@ def test_execute_adb_remote_shell_uses_sh_c_for_pipe_commands():
     assert "grep mResumedActivity" in called_args[6]
 
 
+def test_execute_adb_remote_respects_timeout_env(monkeypatch):
+    """ADB command timeout should use runtime env setting."""
+    runner = AndroidRunner()
+
+    completed = Mock()
+    completed.stdout = "ok"
+    completed.stderr = ""
+    monkeypatch.setenv("ADB_COMMAND_TIMEOUT_SECONDS", "7")
+
+    with patch("subprocess.run", return_value=completed) as mocked_run:
+        runner.execute_adb_remote("10.0.0.1", 5558, "shell getprop ro.build.version.release")
+
+    assert mocked_run.call_args.kwargs["timeout"] == 7.0
+
+
 def test_get_current_activity_parses_activity_token_from_dumpsys():
     """Foreground activity parser should extract package/activity token."""
     runner = AndroidRunner()
