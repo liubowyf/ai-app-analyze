@@ -1,7 +1,7 @@
 """Report generator Celery task."""
 import logging
-from typing import Optional
-import io
+import base64
+from typing import Optional, Any
 
 from celery import shared_task
 from sqlalchemy.orm import Session
@@ -14,8 +14,26 @@ from modules.report_generator import ReportGenerator, generate_analysis_report
 logger = logging.getLogger(__name__)
 
 
+def _hydrate_screenshots_from_storage(screenshots: list) -> list:
+    """
+    Fill image_base64 from storage_path when dynamic result stores compact screenshot data.
+    """
+    hydrated = []
+    for shot in screenshots:
+        item = dict(shot)
+        if not item.get("image_base64") and item.get("storage_path"):
+            try:
+                data = storage_client.download_file(item["storage_path"])
+                if data:
+                    item["image_base64"] = base64.b64encode(data).decode("utf-8")
+            except Exception as exc:
+                logger.warning("Failed to load screenshot from %s: %s", item.get("storage_path"), exc)
+        hydrated.append(item)
+    return hydrated
+
+
 @shared_task(bind=True, name="workers.report_generator.generate_report")
-def generate_report(self, task_id: str) -> dict:
+def generate_report(self, task_id: Any) -> dict:
     """
     Generate PDF analysis report for a task.
 
@@ -26,6 +44,8 @@ def generate_report(self, task_id: str) -> dict:
         Report generation result dict
     """
     db: Session = SessionLocal()
+    task: Optional[Task] = None
+    task_id = _resolve_task_id(task_id)
 
     try:
         # Get task from database
@@ -62,7 +82,7 @@ def generate_report(self, task_id: str) -> dict:
         if dynamic_result and "exploration_result" in dynamic_result:
             exploration_result = dynamic_result["exploration_result"]
             if isinstance(exploration_result, dict) and "screenshots" in exploration_result:
-                screenshots = exploration_result["screenshots"]
+                screenshots = _hydrate_screenshots_from_storage(exploration_result["screenshots"])
 
         # Generate report data
         report_data = generate_analysis_report(
@@ -94,6 +114,7 @@ def generate_report(self, task_id: str) -> dict:
         # Update task
         task.report_storage_path = report_path
         task.status = TaskStatus.COMPLETED
+        task.error_message = None
         task.completed_at = func.now()
         db.commit()
 
@@ -119,3 +140,14 @@ def generate_report(self, task_id: str) -> dict:
 
 # Import func for database timestamp
 from sqlalchemy import func
+
+
+def _resolve_task_id(task_ref: Any) -> str:
+    """Resolve Celery chained task input into task_id string."""
+    if isinstance(task_ref, str):
+        return task_ref
+    if isinstance(task_ref, dict):
+        candidate = task_ref.get("task_id")
+        if isinstance(candidate, str) and candidate:
+            return candidate
+    raise ValueError(f"Invalid task reference: {task_ref!r}")

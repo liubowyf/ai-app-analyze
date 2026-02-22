@@ -1,12 +1,26 @@
 """MitmProxy integration for network traffic capture."""
 import asyncio
 import logging
+import os
+import socket
+import threading
 from typing import Optional, Callable, Dict, Any
-from mitmproxy import proxy, options
+from mitmproxy import options
 from mitmproxy.tools.dump import DumpMaster
 from mitmproxy.http import HTTPFlow
 
 logger = logging.getLogger(__name__)
+
+
+def _detach_mitmproxy_handlers() -> None:
+    """Remove mitmproxy logging handlers that may hold closed event loops."""
+    logger_names = ["", "mitmproxy"] + list(logging.root.manager.loggerDict.keys())
+    for name in logger_names:
+        target = logging.getLogger(name)
+        for handler in list(target.handlers):
+            module_name = type(handler).__module__
+            if module_name.startswith("mitmproxy"):
+                target.removeHandler(handler)
 
 
 class TrafficCollector:
@@ -21,6 +35,41 @@ class TrafficCollector:
         """
         self.request_callback = request_callback
         self.flows: list = []
+        self._flow_index: Dict[int, int] = {}
+
+    @staticmethod
+    def _build_flow_data(flow: HTTPFlow, include_response: bool) -> Dict[str, Any]:
+        """Build normalized request/response payload from mitmproxy flow."""
+        return {
+            "url": flow.request.pretty_url,
+            "method": flow.request.method,
+            "host": flow.request.host,
+            "path": flow.request.path,
+            "ip": flow.server_conn.address[0] if flow.server_conn.address else None,
+            "port": flow.server_conn.address[1] if flow.server_conn.address else 80,
+            "scheme": flow.request.scheme,
+            "request_time": flow.request.timestamp_start,
+            "response_code": flow.response.status_code if include_response and flow.response else None,
+            "content_type": flow.response.headers.get("Content-Type", "") if include_response and flow.response else None,
+            "request_headers": dict(flow.request.headers),
+            "response_headers": dict(flow.response.headers) if include_response and flow.response else {},
+            "request_body": flow.request.text if flow.request.content else None,
+            "response_body": flow.response.text if include_response and flow.response and flow.response.content else None,
+        }
+
+    def request(self, flow: HTTPFlow) -> None:
+        """Capture request at request stage to avoid losing no-response traffic."""
+        try:
+            request_data = self._build_flow_data(flow, include_response=False)
+            self.flows.append(request_data)
+            self._flow_index[id(flow)] = len(self.flows) - 1
+
+            if self.request_callback:
+                self.request_callback(request_data)
+
+            logger.debug("Captured request: %s %s", request_data["method"], request_data["host"])
+        except Exception as e:
+            logger.error(f"Failed to process request flow: {e}")
 
     def response(self, flow: HTTPFlow) -> None:
         """
@@ -30,32 +79,25 @@ class TrafficCollector:
             flow: HTTP flow object
         """
         try:
-            # Extract request/response data
-            request_data = {
-                "url": flow.request.pretty_url,
-                "method": flow.request.method,
-                "host": flow.request.host,
-                "path": flow.request.path,
-                "ip": flow.server_conn.address[0] if flow.server_conn.address else None,
-                "port": flow.server_conn.address[1] if flow.server_conn.address else 80,
-                "scheme": flow.request.scheme,
-                "request_time": flow.request.timestamp_start,
-                "response_code": flow.response.status_code if flow.response else None,
-                "content_type": flow.response.headers.get("Content-Type", "") if flow.response else None,
-                "request_headers": dict(flow.request.headers),
-                "response_headers": dict(flow.response.headers) if flow.response else {},
-                "request_body": flow.request.text if flow.request.content else None,
-                "response_body": flow.response.text if flow.response and flow.response.content else None,
-            }
+            flow_id = id(flow)
+            response_data = self._build_flow_data(flow, include_response=True)
 
-            # Store flow
-            self.flows.append(request_data)
+            if flow_id in self._flow_index:
+                idx = self._flow_index[flow_id]
+                if 0 <= idx < len(self.flows):
+                    self.flows[idx].update({
+                        "response_code": response_data["response_code"],
+                        "content_type": response_data["content_type"],
+                        "response_headers": response_data["response_headers"],
+                        "response_body": response_data["response_body"],
+                    })
+                self._flow_index.pop(flow_id, None)
+            else:
+                self.flows.append(response_data)
+                if self.request_callback:
+                    self.request_callback(response_data)
 
-            # Call callback if provided
-            if self.request_callback:
-                self.request_callback(request_data)
-
-            logger.debug(f"Captured: {request_data['method']} {request_data['host']}{request_data['path']}")
+            logger.debug(f"Captured response: {response_data['method']} {response_data['host']}{response_data['path']}")
 
         except Exception as e:
             logger.error(f"Failed to process flow: {e}")
@@ -70,8 +112,10 @@ class MitmProxyManager:
         self.collector: Optional[TrafficCollector] = None
         self.proxy_port: int = 8080
         self._running = False
+        self._thread: Optional[threading.Thread] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
 
-    async def start_proxy(self, port: int = 8080, request_callback: Optional[Callable] = None) -> None:
+    def start_proxy(self, port: int = 8080, request_callback: Optional[Callable] = None) -> None:
         """
         Start mitmproxy server.
 
@@ -91,37 +135,71 @@ class MitmProxyManager:
                 ssl_insecure=True,  # Allow self-signed certificates
             )
 
-            # Create proxy configuration
-            pconf = proxy.config.ProxyConfig(opts)
+            # Mitmproxy master requires an event loop at construction time.
+            self._loop = asyncio.new_event_loop()
 
             # Create master with addon
-            self.master = DumpMaster(opts)
+            self.master = DumpMaster(
+                opts,
+                loop=self._loop,
+                with_termlog=False,
+                with_dumper=False,
+            )
             self.master.addons.add(self.collector)
 
             self._running = True
             logger.info(f"Starting mitmproxy on port {port}")
 
-            # Run in background
-            asyncio.create_task(self._run_proxy())
+            # Run in background thread with dedicated event loop
+            self._thread = threading.Thread(
+                target=self._run_proxy_loop,
+                name=f"mitmproxy-{port}",
+                daemon=True,
+            )
+            self._thread.start()
 
         except Exception as e:
+            self._running = False
+            try:
+                if self.master:
+                    self.master.shutdown()
+            except Exception:
+                pass
+            _detach_mitmproxy_handlers()
             logger.error(f"Failed to start mitmproxy: {e}")
             raise
 
-    async def _run_proxy(self) -> None:
-        """Run the proxy server."""
+    def _run_proxy_loop(self) -> None:
+        """Run proxy coroutine in a dedicated thread loop."""
         try:
-            await self.master.run()
+            asyncio.set_event_loop(self._loop)
+            self._loop.run_until_complete(self.master.run())
         except Exception as e:
             logger.error(f"Proxy server error: {e}")
+        finally:
             self._running = False
+            if self._loop and not self._loop.is_closed():
+                self._loop.close()
+            _detach_mitmproxy_handlers()
 
-    async def stop_proxy(self) -> None:
+    def stop_proxy(self) -> None:
         """Stop mitmproxy server."""
-        if self.master:
-            logger.info("Stopping mitmproxy")
-            self.master.shutdown()
+        try:
+            if self.master:
+                logger.info("Stopping mitmproxy")
+                if self._loop and self._loop.is_running():
+                    self._loop.call_soon_threadsafe(self.master.shutdown)
+                else:
+                    self.master.shutdown()
+                if self._thread and self._thread.is_alive():
+                    self._thread.join(timeout=5)
+        finally:
             self._running = False
+            self.master = None
+            self.collector = None
+            self._loop = None
+            self._thread = None
+            _detach_mitmproxy_handlers()
             logger.info("Mitmproxy stopped")
 
     def get_flows(self) -> list:
@@ -147,6 +225,27 @@ class MitmProxyManager:
         return self._running
 
 
+def _resolve_proxy_host(emulator_host: str) -> str:
+    """
+    Resolve host IP that remote emulator should use to reach this proxy.
+
+    Priority:
+    1) Environment override: MITMPROXY_HOST / TRAFFIC_PROXY_HOST
+    2) Auto-detect outbound interface IP towards emulator host
+    3) Fallback: 127.0.0.1
+    """
+    configured = os.getenv("MITMPROXY_HOST") or os.getenv("TRAFFIC_PROXY_HOST")
+    if configured:
+        return configured
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect((emulator_host, 80))
+            return sock.getsockname()[0]
+    except Exception:
+        return "127.0.0.1"
+
+
 def configure_android_proxy(emulator_host: str, emulator_port: int, proxy_port: int) -> bool:
     """
     Configure Android emulator to use mitmproxy.
@@ -164,9 +263,25 @@ def configure_android_proxy(emulator_host: str, emulator_port: int, proxy_port: 
 
         runner = AndroidRunner()
 
-        # Get host IP that Android can reach
-        # Assuming the proxy runs on the same host as the emulator
-        proxy_host = "10.16.150.4"  # Should be configurable
+        # Prefer adb reverse so remote emulator can always reach local proxy as 127.0.0.1.
+        proxy_host: Optional[str] = None
+        reverse_output = runner.execute_adb_remote(
+            emulator_host, emulator_port,
+            f"reverse tcp:{proxy_port} tcp:{proxy_port}"
+        )
+        if "error" not in (reverse_output or "").lower():
+            proxy_host = "127.0.0.1"
+            logger.info(
+                "Configured adb reverse for %s:%s tcp:%s -> local tcp:%s",
+                emulator_host,
+                emulator_port,
+                proxy_port,
+                proxy_port,
+            )
+
+        # Fallback to network host IP when reverse is unavailable.
+        if not proxy_host:
+            proxy_host = _resolve_proxy_host(emulator_host)
 
         # Set proxy
         result = runner.execute_adb_remote(

@@ -1,10 +1,14 @@
 """Dynamic analysis Celery task."""
+import argparse
 import json
 import logging
-from typing import Optional, Dict
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, Dict, Any
 import tempfile
 import os
 import time
+import uuid
 
 from celery import shared_task
 from sqlalchemy.orm import Session
@@ -152,6 +156,273 @@ def _build_dynamic_result(exploration_result, traffic_monitor, domain_report, ma
         "suspicious_requests": traffic_monitor.get_requests_as_dict()[:max_requests],
         "network_aggregated": traffic_monitor.get_aggregated_requests()[:200],
         "master_domains": domain_report,
+    }
+
+
+def _parse_emulator_address(value: str) -> Optional[Dict[str, Any]]:
+    """Parse emulator address string host:port."""
+    if not value or ":" not in value:
+        return None
+    host, port_raw = value.rsplit(":", 1)
+    try:
+        port = int(port_raw)
+    except ValueError:
+        return None
+    return {"host": host.strip(), "port": port}
+
+
+def _minimal_emulator_candidates() -> list[Dict[str, Any]]:
+    """Build minimal-mode emulator candidates in preferred order."""
+    preferred = [
+        settings.ANDROID_EMULATOR_4,
+        settings.ANDROID_EMULATOR_2,
+        settings.ANDROID_EMULATOR_3,
+    ]
+    candidates: list[Dict[str, Any]] = []
+    seen = set()
+    for item in preferred:
+        parsed = _parse_emulator_address(item)
+        if not parsed:
+            continue
+        key = f"{parsed['host']}:{parsed['port']}"
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append(parsed)
+    return candidates
+
+
+def _detect_package_name(apk_path: str) -> Optional[str]:
+    """Best-effort package detection from APK."""
+    try:
+        from androguard.misc import AnalyzeAPK
+
+        a, _, _ = AnalyzeAPK(apk_path)
+        package = a.get_package()
+        if isinstance(package, str) and package.strip():
+            return package.strip()
+    except Exception as exc:
+        logger.warning("Failed to detect package name from APK: %s", exc)
+    return None
+
+
+def _write_minimal_markdown_report(
+    output_path: Path,
+    apk_path: str,
+    package_name: Optional[str],
+    emulator: Dict[str, Any],
+    exploration_result,
+    traffic_monitor: TrafficMonitor,
+    domain_report: Dict[str, Any],
+) -> None:
+    """Write a local markdown report for minimal-mode run."""
+    requests = traffic_monitor.get_requests_as_dict()
+    aggregated = traffic_monitor.get_aggregated_requests()
+    network_analysis = traffic_monitor.analyze_traffic()
+    screenshots = exploration_result.screenshots or []
+
+    lines = [
+        "# Minimal Dynamic Analysis Report",
+        "",
+        f"- Generated At: {datetime.now().isoformat()}",
+        f"- APK Path: `{apk_path}`",
+        f"- Package Name: `{package_name or 'unknown'}`",
+        f"- Emulator: `{emulator['host']}:{emulator['port']}`",
+        f"- AI Model: `{settings.AI_MODEL_NAME}` ({settings.AI_BASE_URL})",
+        "",
+        "## Exploration Summary",
+        "",
+        f"- Success: `{exploration_result.success}`",
+        f"- Total Steps: `{exploration_result.total_steps}`",
+        f"- Activities Visited: `{len(exploration_result.activities_visited or [])}`",
+        f"- Phases Completed: `{', '.join(exploration_result.phases_completed or [])}`",
+        "",
+        "## Network Summary",
+        "",
+        f"- Total Requests: `{network_analysis.get('total_requests', 0)}`",
+        f"- Unique Hosts: `{network_analysis.get('unique_hosts', 0)}`",
+        "",
+        "## Aggregated Requests (host + path + method)",
+        "",
+        "| Host | Path | Method | Count |",
+        "| --- | --- | --- | ---: |",
+    ]
+
+    for row in aggregated[:30]:
+        lines.append(
+            f"| {row.get('host','')} | {row.get('path','')} | {row.get('method','')} | {row.get('count',0)} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Sample Requests",
+            "",
+            "| Method | URL | Source | Package |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for item in requests[:30]:
+        lines.append(
+            f"| {item.get('method','')} | {item.get('url','')} | {item.get('source','')} | {item.get('package_name','')} |"
+        )
+
+    lines.extend(["", "## Master Domains", ""])
+    masters = domain_report.get("master_domains", []) if isinstance(domain_report, dict) else []
+    if masters:
+        lines.append("| Domain | Score | Confidence |")
+        lines.append("| --- | ---: | --- |")
+        for row in masters:
+            lines.append(
+                f"| {row.get('domain','')} | {row.get('score', 0)} | {row.get('confidence', '')} |"
+            )
+    else:
+        lines.append("- None detected")
+
+    lines.extend(["", "## Screenshots", ""])
+    if screenshots:
+        for shot in screenshots:
+            path = shot.get("storage_path")
+            desc = shot.get("description", "")
+            if path:
+                try:
+                    rel_path = os.path.relpath(path, output_path.parent)
+                except Exception:
+                    rel_path = path
+                lines.append(f"- `{shot.get('stage', '')}` {desc} -> ![]({rel_path})")
+            else:
+                lines.append(f"- `{shot.get('stage', '')}` {desc}")
+    else:
+        lines.append("- None")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def run_dynamic_analysis_minimal(
+    apk_path: str,
+    output_dir: Optional[str] = None,
+    max_steps: Optional[int] = None,
+    emulator: Optional[str] = None,
+) -> dict:
+    """
+    Run minimal dynamic analysis without DB/MinIO persistence.
+
+    Core flow only: install APK -> AI exploration -> network monitoring.
+    Results are written locally as screenshots + markdown report.
+    """
+    apk = Path(apk_path).expanduser().resolve()
+    if not apk.exists():
+        raise FileNotFoundError(f"APK file not found: {apk}")
+
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8]
+    base_dir = Path(output_dir).expanduser().resolve() if output_dir else Path("artifacts/minimal_runs") / run_id
+    screenshot_dir = base_dir / "screenshots"
+    report_path = base_dir / "report.md"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    screenshot_dir.mkdir(parents=True, exist_ok=True)
+
+    android_runner = AndroidRunner()
+    candidates = []
+    if emulator:
+        parsed = _parse_emulator_address(emulator)
+        if not parsed:
+            raise ValueError(f"Invalid emulator address: {emulator}")
+        candidates.append(parsed)
+    candidates.extend(_minimal_emulator_candidates())
+
+    selected = None
+    for item in candidates:
+        if android_runner.connect_remote_emulator(item["host"], item["port"]):
+            selected = item
+            break
+    if not selected:
+        raise RuntimeError("No reachable emulator found for minimal analysis")
+
+    package_name = _detect_package_name(str(apk))
+    if package_name:
+        logger.info("Detected package name for minimal run: %s", package_name)
+    else:
+        logger.warning("Package name detection failed in minimal mode; installer fallback will be used")
+
+    screenshot_manager = ScreenshotManager(task_id=run_id)
+    traffic_monitor = TrafficMonitor()
+    traffic_monitor.set_whitelist([])
+    traffic_monitor.set_filter_policy(
+        {
+            "strict_target_package": bool(package_name),
+        }
+    )
+
+    ai_driver = AIDriver(
+        base_url=settings.AI_BASE_URL,
+        model_name=settings.AI_MODEL_NAME,
+        api_key=settings.AI_API_KEY,
+    )
+    policy = ExplorationPolicy.from_env()
+    if max_steps is not None:
+        policy.max_steps = max(1, min(int(max_steps), 500))
+
+    explorer = AppExplorer(
+        ai_driver=ai_driver,
+        android_runner=android_runner,
+        screenshot_manager=screenshot_manager,
+        policy=policy,
+    )
+
+    old_env_steps = os.getenv("APP_EXPLORATION_MAX_STEPS")
+    if max_steps is not None:
+        os.environ["APP_EXPLORATION_MAX_STEPS"] = str(policy.max_steps)
+
+    try:
+        traffic_monitor.start(
+            emulator_host=selected["host"],
+            emulator_port=selected["port"],
+            target_package=package_name,
+            android_runner=android_runner,
+        )
+
+        exploration_result = explorer.run_full_exploration(
+            emulator_config=selected,
+            apk_info={"apk_path": str(apk), "package_name": package_name},
+            persist_screenshots="local",
+            local_screenshot_dir=str(screenshot_dir),
+        )
+    finally:
+        traffic_monitor.stop()
+        if max_steps is not None:
+            if old_env_steps is None:
+                os.environ.pop("APP_EXPLORATION_MAX_STEPS", None)
+            else:
+                os.environ["APP_EXPLORATION_MAX_STEPS"] = old_env_steps
+
+    network_requests = traffic_monitor.get_requests()
+    domain_analyzer = MasterDomainAnalyzer()
+    master_domains = domain_analyzer.analyze(network_requests)
+    domain_report = domain_analyzer.generate_domain_report(master_domains)
+
+    _write_minimal_markdown_report(
+        output_path=report_path,
+        apk_path=str(apk),
+        package_name=package_name,
+        emulator=selected,
+        exploration_result=exploration_result,
+        traffic_monitor=traffic_monitor,
+        domain_report=domain_report,
+    )
+
+    return {
+        "status": "success",
+        "mode": "minimal",
+        "apk_path": str(apk),
+        "package_name": package_name,
+        "emulator": f"{selected['host']}:{selected['port']}",
+        "output_dir": str(base_dir),
+        "screenshots_dir": str(screenshot_dir),
+        "report_path": str(report_path),
+        "exploration_steps": exploration_result.total_steps,
+        "network_requests": len(network_requests),
+        "aggregated_requests": len(traffic_monitor.get_aggregated_requests()),
     }
 
 
@@ -387,3 +658,30 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
                 logger.error(f"Failed to clean up temporary file: {e}")
 
         db.close()
+
+
+def _build_cli_parser() -> argparse.ArgumentParser:
+    """Build command-line parser for local minimal mode."""
+    parser = argparse.ArgumentParser(description="Dynamic analyzer utility")
+    parser.add_argument("--minimal", action="store_true", help="Run minimal local mode")
+    parser.add_argument("--apk-path", help="Local APK path for minimal mode")
+    parser.add_argument("--output-dir", help="Output directory for minimal artifacts")
+    parser.add_argument("--max-steps", type=int, help="Max exploration steps in minimal mode")
+    parser.add_argument("--emulator", help="Specific emulator host:port")
+    return parser
+
+
+if __name__ == "__main__":
+    cli = _build_cli_parser()
+    args = cli.parse_args()
+    if not args.minimal:
+        cli.error("Only --minimal mode is supported from CLI entrypoint")
+    if not args.apk_path:
+        cli.error("--apk-path is required in --minimal mode")
+    result = run_dynamic_analysis_minimal(
+        apk_path=args.apk_path,
+        output_dir=args.output_dir,
+        max_steps=args.max_steps,
+        emulator=args.emulator,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))

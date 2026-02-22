@@ -904,13 +904,21 @@ class AppExplorer:
 
         return screenshots
 
-    def run_full_exploration(self, emulator_config: Dict, apk_info: Dict) -> ExplorationResult:
+    def run_full_exploration(
+        self,
+        emulator_config: Dict,
+        apk_info: Dict,
+        persist_screenshots: str = "minio",
+        local_screenshot_dir: Optional[str] = None,
+    ) -> ExplorationResult:
         """
         Run complete exploration with all phases.
 
         Args:
             emulator_config: {"host": "10.16.148.66", "port": 5555}
             apk_info: {"apk_path": "/path/to/file.apk", "package_name": "com.example"}
+            persist_screenshots: one of "minio", "local", "none"
+            local_screenshot_dir: local path when persist_screenshots="local"
 
         Returns:
             ExplorationResult with all data
@@ -960,9 +968,16 @@ class AppExplorer:
             success = False
             error_message = str(e)
 
-        # Upload all screenshots to MinIO
-        for screenshot in all_screenshots:
-            self.screenshot_manager.save_to_minio(screenshot)
+        if persist_screenshots == "minio":
+            for screenshot in all_screenshots:
+                self.screenshot_manager.save_to_minio(screenshot)
+        elif persist_screenshots == "local" and local_screenshot_dir:
+            for idx, screenshot in enumerate(all_screenshots, start=1):
+                self.screenshot_manager.save_to_local(
+                    screenshot=screenshot,
+                    base_dir=local_screenshot_dir,
+                    step=idx,
+                )
 
         # Cleanup: Uninstall the app after analysis
         if package_name:

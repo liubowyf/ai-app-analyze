@@ -1,5 +1,6 @@
 """APK router for handling APK file upload operations."""
 import hashlib
+import logging
 from typing import IO
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -11,6 +12,7 @@ from core.storage import storage_client
 from models.task import Task, TaskPriority, TaskStatus
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def get_db():
@@ -94,6 +96,10 @@ async def upload_apk(
         priority=TaskPriority.NORMAL,
     )
 
+    # Ensure task ID is generated before composing storage path.
+    db.add(task)
+    db.flush()
+
     # Generate storage path
     storage_path = storage_client.generate_apk_path(task.id, md5_hash)
 
@@ -114,7 +120,6 @@ async def upload_apk(
     task.apk_storage_path = storage_path
 
     # Save task to database
-    db.add(task)
     db.commit()
     db.refresh(task)
 
@@ -129,7 +134,11 @@ async def upload_apk(
         run_dynamic_analysis.s(str(task.id)),  # 直接从动态分析开始
         generate_report.s()
     )
-    workflow.apply_async()
+    try:
+        workflow.apply_async()
+    except Exception as exc:
+        # Keep upload endpoint resilient when broker is temporarily unavailable.
+        logger.warning("Failed to enqueue analysis workflow for task %s: %s", task.id, exc)
 
     # Return response
     return APKUploadResponse(
@@ -137,5 +146,5 @@ async def upload_apk(
         file_name=task.apk_file_name,
         file_size=task.apk_file_size,
         md5=task.apk_md5,
-        message="APK file uploaded successfully and analysis started",
+        message="APK file uploaded successfully",
     )

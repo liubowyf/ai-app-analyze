@@ -1,6 +1,7 @@
 """Screenshot Manager for capturing and managing analysis screenshots."""
 import io
 import logging
+import os
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 from datetime import datetime
@@ -185,6 +186,32 @@ class ScreenshotManager:
 
         except Exception as e:
             logger.error(f"Failed to save screenshot to MinIO: {e}")
+            return None
+
+    def save_to_local(self, screenshot: Screenshot, base_dir: str, step: int) -> Optional[str]:
+        """
+        Save screenshot to local filesystem.
+
+        Args:
+            screenshot: Screenshot to persist
+            base_dir: Base directory for screenshot files
+            step: Step index for filename ordering
+
+        Returns:
+            Local file path or None on failure
+        """
+        try:
+            os.makedirs(base_dir, exist_ok=True)
+            safe_stage = "".join(ch if ch.isalnum() or ch in ("_", "-") else "_" for ch in screenshot.stage)
+            file_name = f"step_{step:03d}_{safe_stage}.png"
+            file_path = os.path.join(base_dir, file_name)
+            with open(file_path, "wb") as f:
+                f.write(screenshot.image_data)
+            screenshot.storage_path = file_path
+            logger.info("Saved screenshot locally: %s", file_path)
+            return file_path
+        except Exception as e:
+            logger.error(f"Failed to save screenshot locally: {e}")
             return None
 
     def get_all_for_report(self) -> List[Dict]:
