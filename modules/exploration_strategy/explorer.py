@@ -31,6 +31,7 @@ class ExplorationResult:
     success: bool
     error_message: Optional[str] = None
     phases_completed: List[str] = field(default_factory=list)
+    history: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class AppExplorer:
@@ -199,8 +200,14 @@ class AppExplorer:
         # Grant all permissions (if package name available)
         if package_name:
             self.target_package = package_name
-            logger.info(f"Granting permissions for {package_name}...")
-            self.android_runner.grant_all_permissions(host, port, package_name)
+            if self.policy.skip_permission_grant:
+                logger.info(
+                    "Skip upfront permission grant for %s (APP_EXPLORATION_SKIP_PERMISSION_GRANT=true)",
+                    package_name,
+                )
+            else:
+                logger.info(f"Granting permissions for {package_name}...")
+                self.android_runner.grant_all_permissions(host, port, package_name)
 
             # Launch app
             logger.info(f"Launching app {package_name}...")
@@ -250,7 +257,12 @@ class AppExplorer:
 
         return screenshots
 
-    def phase2_navigation_explore(self, host: str, port: int) -> List[Screenshot]:
+    def phase2_navigation_explore(
+        self,
+        host: str,
+        port: int,
+        deadline_ts: Optional[float] = None,
+    ) -> List[Screenshot]:
         """
         Phase 2: Explore navigation elements (tabs, menus).
 
@@ -286,6 +298,9 @@ class AppExplorer:
         ]
 
         for i, x in enumerate(nav_positions):
+            if not self._within_deadline(deadline_ts):
+                logger.info("Phase 2 stopped due to time budget")
+                break
             logger.info(f"Tapping navigation position {i+1}")
             if not self._ensure_target_app_foreground(host, port):
                 logger.warning("Skip nav tap %s: target app not foreground", i + 1)
@@ -320,10 +335,73 @@ class AppExplorer:
                 "position": (x, nav_y)
             })
 
+            # Each navigation tab does one additional interaction to increase coverage.
+            if not self._within_deadline(deadline_ts):
+                continue
+            self.android_runner.execute_swipe(
+                host,
+                port,
+                int(screen_width * 0.5),
+                int(screen_height * 0.82),
+                int(screen_width * 0.5),
+                int(screen_height * 0.35),
+            )
+            time.sleep(1)
+
+            screenshot = self._capture_app_screenshot(
+                host=host,
+                port=port,
+                stage=f"nav_tab_{i+1}_scroll",
+                description=f"Tab{i+1} 内部滚动触发内容加载",
+                require_target=True,
+            )
+            if screenshot:
+                screenshots.append(screenshot)
+
+            # Try one clickable entry point from current tab, then backtrack.
+            ui_xml = self._get_ui_dump_xml(host, port)
+            op = self._pick_ui_candidate_operation(host, port, ui_xml=ui_xml)
+            if op:
+                self._execute_operation(host, port, op)
+                time.sleep(1.5)
+                screenshot = self._capture_app_screenshot(
+                    host=host,
+                    port=port,
+                    stage=f"nav_tab_{i+1}_entry",
+                    description=f"Tab{i+1} 入口探索: {op.description}",
+                    require_target=True,
+                )
+                if screenshot:
+                    screenshots.append(screenshot)
+                self.android_runner.press_back(host, port)
+                time.sleep(0.8)
+            self._record_current_activity(host, port)
+
         return screenshots
 
-    def phase3_autonomous_explore(self, host: str, port: int,
-                                  max_steps: int = 50) -> List[Screenshot]:
+    @staticmethod
+    def _within_deadline(deadline_ts: Optional[float]) -> bool:
+        """Check whether the runtime budget still allows more actions."""
+        if deadline_ts is None:
+            return True
+        return time.time() < deadline_ts
+
+    def _record_current_activity(self, host: str, port: int) -> None:
+        """Record current activity into visited set when it belongs to target app."""
+        activity = self.android_runner.get_current_activity(host, port)
+        if activity and (
+            activity not in self.activities_visited
+            and (not self.target_package or self.target_package in activity)
+        ):
+            self.activities_visited.append(activity)
+
+    def phase3_autonomous_explore(
+        self,
+        host: str,
+        port: int,
+        max_steps: int = 50,
+        deadline_ts: Optional[float] = None,
+    ) -> List[Screenshot]:
         """
         Phase 3: Autonomous exploration driven by AI.
 
@@ -345,6 +423,9 @@ class AppExplorer:
         recovery_count = 0
 
         for step in range(max_steps):
+            if not self._within_deadline(deadline_ts):
+                logger.info("Phase 3 stopped due to time budget")
+                break
             logger.info(f"Exploration step {step + 1}/{max_steps}")
 
             try:
@@ -560,13 +641,10 @@ class AppExplorer:
                 })
 
                 # Record activity
-                activity = self.android_runner.get_current_activity(host, port)
-                if activity and (
-                    activity not in self.activities_visited
-                    and (not self.target_package or self.target_package in activity)
-                ):
-                    self.activities_visited.append(activity)
-                    logger.info(f"Discovered new activity: {activity}")
+                before_count = len(self.activities_visited)
+                self._record_current_activity(host, port)
+                if len(self.activities_visited) > before_count:
+                    logger.info("Discovered new activity: %s", self.activities_visited[-1])
 
             except Exception as e:
                 logger.error(f"Error in exploration step {step + 1}: {e}")
@@ -635,29 +713,33 @@ class AppExplorer:
     ) -> Operation:
         """Run AI decision with a hard timeout to avoid per-step hangs."""
         timeout_seconds = max(1, int(self.policy.ai_step_timeout_seconds))
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(
-                self.ai_driver.analyze_and_decide,
-                screenshot_data,
-                self.exploration_history,
-                goal,
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(
+            self.ai_driver.analyze_and_decide,
+            screenshot_data,
+            self.exploration_history,
+            goal,
+        )
+        try:
+            return future.result(timeout=timeout_seconds)
+        except FuturesTimeoutError:
+            logger.warning("AI decision timeout after %ss, fallback to Wait", timeout_seconds)
+            return Operation(
+                type=OperationType.WAIT,
+                params={"duration": 1},
+                description=f"AI timeout({timeout_seconds}s), fallback wait",
             )
-            try:
-                return future.result(timeout=timeout_seconds)
-            except FuturesTimeoutError:
-                logger.warning("AI decision timeout after %ss, fallback to Wait", timeout_seconds)
-                return Operation(
-                    type=OperationType.WAIT,
-                    params={"duration": 1},
-                    description=f"AI timeout({timeout_seconds}s), fallback wait",
-                )
-            except Exception as exc:
-                logger.warning("AI decision error: %s", exc)
-                return Operation(
-                    type=OperationType.WAIT,
-                    params={"duration": 1},
-                    description="AI error fallback wait",
-                )
+        except Exception as exc:
+            logger.warning("AI decision error: %s", exc)
+            return Operation(
+                type=OperationType.WAIT,
+                params={"duration": 1},
+                description="AI error fallback wait",
+            )
+        finally:
+            if not future.done():
+                future.cancel()
+            executor.shutdown(wait=False, cancel_futures=True)
 
     def _get_display_size(self, host: str, port: int) -> Tuple[int, int]:
         """Get display size from emulator; fallback to 1080x1920."""
@@ -813,7 +895,12 @@ class AppExplorer:
                     self.android_runner.launch_app(host, port, self.target_package)
             return
 
-    def phase4_scenario_test(self, host: str, port: int) -> List[Screenshot]:
+    def phase4_scenario_test(
+        self,
+        host: str,
+        port: int,
+        deadline_ts: Optional[float] = None,
+    ) -> List[Screenshot]:
         """
         Phase 4: Test specific scenarios (search, playback, etc.).
 
@@ -831,13 +918,27 @@ class AppExplorer:
         scenarios = [
             ("search", self._test_search_scenario),
             ("scroll", self._test_scroll_scenario),
+            ("refresh", self._test_refresh_scenario),
+            ("detail_entry", self._test_detail_entry_scenario),
+            ("return_and_retry", self._test_return_and_retry_scenario),
+            ("relaunch_burst", self._test_relaunch_burst_scenario),
         ]
 
+        action_budget = max(4, int(self.policy.scenario_action_budget))
+        used_actions = 0
+
         for scenario_name, scenario_func in scenarios:
+            if not self._within_deadline(deadline_ts):
+                logger.info("Phase 4 stopped due to time budget")
+                break
+            if used_actions >= action_budget:
+                logger.info("Phase 4 stopped due to action budget: %s", action_budget)
+                break
             try:
                 logger.info(f"Testing scenario: {scenario_name}")
-                scenario_screenshots = scenario_func(host, port)
+                scenario_screenshots = scenario_func(host, port, deadline_ts=deadline_ts)
                 screenshots.extend(scenario_screenshots)
+                used_actions += max(1, len(scenario_screenshots))
             except Exception as e:
                 logger.warning(f"Scenario {scenario_name} failed: {e}")
 
@@ -1060,7 +1161,12 @@ class AppExplorer:
             return f"表单输入: {item['label'] or '输入框'}"
         return None
 
-    def _test_search_scenario(self, host: str, port: int) -> List[Screenshot]:
+    def _test_search_scenario(
+        self,
+        host: str,
+        port: int,
+        deadline_ts: Optional[float] = None,
+    ) -> List[Screenshot]:
         """Test search functionality."""
         screenshots = []
 
@@ -1072,6 +1178,8 @@ class AppExplorer:
         ]
 
         for x, y in search_positions:
+            if not self._within_deadline(deadline_ts):
+                break
             if not self._ensure_target_app_foreground(host, port):
                 logger.warning("Skip search scenario step: target app not foreground")
                 break
@@ -1090,12 +1198,19 @@ class AppExplorer:
 
         return screenshots
 
-    def _test_scroll_scenario(self, host: str, port: int) -> List[Screenshot]:
+    def _test_scroll_scenario(
+        self,
+        host: str,
+        port: int,
+        deadline_ts: Optional[float] = None,
+    ) -> List[Screenshot]:
         """Test scrolling."""
         screenshots = []
 
         # Scroll down multiple times
-        for i in range(3):
+        for i in range(4):
+            if not self._within_deadline(deadline_ts):
+                break
             if not self._ensure_target_app_foreground(host, port):
                 logger.warning("Skip scroll scenario step: target app not foreground")
                 break
@@ -1112,6 +1227,158 @@ class AppExplorer:
             if screenshot:
                 screenshots.append(screenshot)
 
+        return screenshots
+
+    def _test_refresh_scenario(
+        self,
+        host: str,
+        port: int,
+        deadline_ts: Optional[float] = None,
+    ) -> List[Screenshot]:
+        """Trigger pull-to-refresh and wait to stimulate network calls."""
+        screenshots: List[Screenshot] = []
+        if not self._within_deadline(deadline_ts):
+            return screenshots
+        if not self._ensure_target_app_foreground(host, port):
+            return screenshots
+
+        screen_w, screen_h = self._get_display_size(host, port)
+        self.android_runner.execute_swipe(
+            host,
+            port,
+            int(screen_w * 0.5),
+            int(screen_h * 0.28),
+            int(screen_w * 0.5),
+            int(screen_h * 0.78),
+            duration=450,
+        )
+        time.sleep(1.8)
+        shot = self._capture_app_screenshot(
+            host=host,
+            port=port,
+            stage="scenario_refresh",
+            description="下拉刷新触发网络请求",
+            require_target=True,
+        )
+        if shot:
+            screenshots.append(shot)
+        return screenshots
+
+    def _test_detail_entry_scenario(
+        self,
+        host: str,
+        port: int,
+        deadline_ts: Optional[float] = None,
+    ) -> List[Screenshot]:
+        """Try entering list/detail pages from multiple hotspots then backtrack."""
+        screenshots: List[Screenshot] = []
+        if not self._ensure_target_app_foreground(host, port):
+            return screenshots
+        screen_w, screen_h = self._get_display_size(host, port)
+        entry_points = [
+            (int(screen_w * 0.5), int(screen_h * 0.36)),
+            (int(screen_w * 0.5), int(screen_h * 0.50)),
+            (int(screen_w * 0.5), int(screen_h * 0.64)),
+        ]
+        for idx, (x, y) in enumerate(entry_points, start=1):
+            if not self._within_deadline(deadline_ts):
+                break
+            if not self._ensure_target_app_foreground(host, port):
+                break
+            self.android_runner.execute_tap(host, port, x, y)
+            time.sleep(1.3)
+            shot = self._capture_app_screenshot(
+                host=host,
+                port=port,
+                stage=f"scenario_detail_{idx}",
+                description=f"尝试进入详情页 {idx}",
+                require_target=True,
+            )
+            if shot:
+                screenshots.append(shot)
+            self.android_runner.press_back(host, port)
+            time.sleep(0.9)
+        return screenshots
+
+    def _test_return_and_retry_scenario(
+        self,
+        host: str,
+        port: int,
+        deadline_ts: Optional[float] = None,
+    ) -> List[Screenshot]:
+        """Back-navigation and reopen flow to emulate user retry behavior."""
+        screenshots: List[Screenshot] = []
+        if not self._within_deadline(deadline_ts):
+            return screenshots
+        if not self._ensure_target_app_foreground(host, port):
+            return screenshots
+
+        self.android_runner.press_back(host, port)
+        time.sleep(0.9)
+        shot = self._capture_app_screenshot(
+            host=host,
+            port=port,
+            stage="scenario_back_once",
+            description="返回上级页面后重试",
+            require_target=True,
+        )
+        if shot:
+            screenshots.append(shot)
+
+        ui_xml = self._get_ui_dump_xml(host, port)
+        op = self._pick_ui_candidate_operation(host, port, ui_xml=ui_xml)
+        if op and self._within_deadline(deadline_ts):
+            self._execute_operation(host, port, op)
+            time.sleep(1.2)
+            shot = self._capture_app_screenshot(
+                host=host,
+                port=port,
+                stage="scenario_retry_entry",
+                description=f"返回后重试入口: {op.description}",
+                require_target=True,
+            )
+            if shot:
+                screenshots.append(shot)
+        return screenshots
+
+    def _test_relaunch_burst_scenario(
+        self,
+        host: str,
+        port: int,
+        deadline_ts: Optional[float] = None,
+    ) -> List[Screenshot]:
+        """
+        Relaunch app repeatedly to force page bootstrap requests.
+
+        This is intentionally aggressive to increase dynamic traffic evidence
+        within a limited time window.
+        """
+        screenshots: List[Screenshot] = []
+        if not self.target_package:
+            return screenshots
+
+        cycles = max(1, int(self.policy.relaunch_cycles))
+        for idx in range(1, cycles + 1):
+            if not self._within_deadline(deadline_ts):
+                break
+            self.android_runner.execute_adb_remote(
+                host,
+                port,
+                f"shell am force-stop {self.target_package}",
+            )
+            time.sleep(0.6)
+            self.android_runner.launch_app(host, port, self.target_package)
+            time.sleep(2.2)
+            self._tap_priority_dialog_action(host, port)
+            shot = self._capture_app_screenshot(
+                host=host,
+                port=port,
+                stage=f"scenario_relaunch_{idx}",
+                description=f"冷启动重放第{idx}次，触发启动链路请求",
+                require_target=True,
+            )
+            if shot:
+                screenshots.append(shot)
         return screenshots
 
     def run_full_exploration(
@@ -1142,9 +1409,25 @@ class AppExplorer:
         except ValueError:
             max_steps = self.policy.max_steps
         max_steps = max(5, min(max_steps, 500))
+        try:
+            time_budget = int(
+                os.getenv(
+                    "APP_EXPLORATION_TIME_BUDGET_SECONDS",
+                    str(self.policy.time_budget_seconds),
+                )
+            )
+        except ValueError:
+            time_budget = self.policy.time_budget_seconds
+        time_budget = max(60, min(time_budget, 3600))
+        deadline_ts = time.time() + time_budget
+
         self._apk_path = apk_path
+        self.exploration_history.clear()
+        self.activities_visited.clear()
         self.screen_action_counts.clear()
+        self.screen_form_action_counts.clear()
         self.clicked_ui_signatures.clear()
+        self.filled_input_signatures.clear()
 
         all_screenshots = []
         phases_completed = []
@@ -1157,19 +1440,27 @@ class AppExplorer:
             phases_completed.append("setup")
 
             # Phase 2: Navigation
-            screenshots = self.phase2_navigation_explore(host, port)
-            all_screenshots.extend(screenshots)
-            phases_completed.append("navigation")
+            if self._within_deadline(deadline_ts):
+                screenshots = self.phase2_navigation_explore(host, port, deadline_ts=deadline_ts)
+                all_screenshots.extend(screenshots)
+                phases_completed.append("navigation")
 
             # Phase 3: Autonomous
-            screenshots = self.phase3_autonomous_explore(host, port, max_steps=max_steps)
-            all_screenshots.extend(screenshots)
-            phases_completed.append("autonomous")
+            if self._within_deadline(deadline_ts):
+                screenshots = self.phase3_autonomous_explore(
+                    host,
+                    port,
+                    max_steps=max_steps,
+                    deadline_ts=deadline_ts,
+                )
+                all_screenshots.extend(screenshots)
+                phases_completed.append("autonomous")
 
             # Phase 4: Scenarios
-            screenshots = self.phase4_scenario_test(host, port)
-            all_screenshots.extend(screenshots)
-            phases_completed.append("scenarios")
+            if self._within_deadline(deadline_ts):
+                screenshots = self.phase4_scenario_test(host, port, deadline_ts=deadline_ts)
+                all_screenshots.extend(screenshots)
+                phases_completed.append("scenarios")
 
             success = True
 
@@ -1210,5 +1501,6 @@ class AppExplorer:
             activities_visited=self.activities_visited,
             success=success,
             error_message=error_message,
-            phases_completed=phases_completed
+            phases_completed=phases_completed,
+            history=self.exploration_history[-1000:],
         )

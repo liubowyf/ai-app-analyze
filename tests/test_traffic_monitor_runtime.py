@@ -194,6 +194,50 @@ def test_get_requests_supports_package_uid_process_filters():
     assert len(monitor.get_requests(process_name="com.target.app")) == 1
 
 
+def test_non_target_request_falls_back_to_candidate_pool_when_strict_enabled():
+    """Strict target filter should keep non-target app traffic in candidate pool."""
+    monitor = TrafficMonitor(proxy_port=8080)
+
+    class FakeRunner:
+        def get_current_package(self, host, port):
+            return "com.target.app"
+
+        def execute_adb_remote(self, host, port, cmd):
+            if "pm list packages -U" in cmd:
+                return "package:com.target.app uid:10123\npackage:com.other.app uid:10199"
+            if "ps -A" in cmd:
+                return "u0_a123  999  1234 com.target.app\nu0_a199  777  3333 com.other.app"
+            return ""
+
+    monitor.set_target_app_context(
+        target_package="com.target.app",
+        emulator_host="10.16.148.66",
+        emulator_port=5558,
+        android_runner=FakeRunner(),
+    )
+
+    # X-Requested-With identifies a non-target package, so strict mode drops from primary.
+    monitor._on_request_captured(
+        {
+            "url": "https://api.target.com/v1/edge",
+            "method": "GET",
+            "host": "api.target.com",
+            "path": "/v1/edge",
+            "request_time": 1700000000.0,
+            "request_headers": {
+                "User-Agent": "okhttp/4.9.3",
+                "X-Requested-With": "com.other.app",
+            },
+        }
+    )
+
+    assert len(monitor.get_requests()) == 0
+    candidates = monitor.get_candidate_requests_as_dict()
+    assert len(candidates) == 1
+    assert candidates[0]["host"] == "api.target.com"
+    assert candidates[0]["package_name"] == "com.other.app"
+
+
 def test_aggregate_requests_groups_by_host_and_path():
     monitor = TrafficMonitor(proxy_port=8080)
 

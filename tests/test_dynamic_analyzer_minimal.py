@@ -32,6 +32,9 @@ class _FakeTrafficMonitor:
     def get_requests(self):
         return []
 
+    def get_candidate_requests(self):
+        return []
+
     def get_requests_as_dict(self):
         return [
             {
@@ -46,8 +49,29 @@ class _FakeTrafficMonitor:
     def get_aggregated_requests(self):
         return [{"host": "api.demo.com", "path": "/v1/home", "method": "GET", "count": 1}]
 
+    def get_candidate_requests_as_dict(self):
+        return [
+            {
+                "url": "https://edge.demo.com/candidate",
+                "method": "GET",
+                "host": "edge.demo.com",
+                "path": "/candidate",
+                "source": "webview",
+                "attribution_confidence": 0.5,
+            }
+        ]
+
+    def get_candidate_aggregated_requests(self):
+        return [{"host": "edge.demo.com", "path": "/candidate", "method": "GET", "count": 1}]
+
     def analyze_traffic(self):
-        return {"total_requests": 1, "hosts": ["api.demo.com"]}
+        return {
+            "total_requests": 1,
+            "hosts": ["api.demo.com"],
+            "candidate_total_requests": 1,
+            "candidate_unique_hosts": 1,
+            "candidate_sources": {"webview": 1},
+        }
 
 
 class _FakeAppExplorer:
@@ -105,7 +129,8 @@ def test_run_dynamic_analysis_minimal_writes_local_markdown(monkeypatch, tmp_pat
     report_path = Path(result["report_path"])
     assert report_path.exists()
     text = report_path.read_text(encoding="utf-8")
-    assert "# Minimal Dynamic Analysis Report" in text
+    assert "# 动态分析线索报告（最简增强版）" in text
     assert "com.demo.app" in text
     assert "api.demo.com" in text
+    assert "edge.demo.com" in text
     assert result["status"] == "success"

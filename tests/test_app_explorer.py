@@ -77,6 +77,35 @@ def test_phase1_clicks_consent_dialog_before_navigation():
     android_runner.execute_tap.assert_any_call("127.0.0.1", 5555, 540, 1145)
 
 
+def test_phase1_can_skip_upfront_permission_grant():
+    """When configured, setup should avoid heavy grant_all_permissions call."""
+    ai_driver = Mock()
+    android_runner = Mock()
+    screenshot_manager = Mock()
+    android_runner.connect_remote_emulator.return_value = True
+    android_runner.install_apk_remote.return_value = True
+    android_runner.get_current_activity.return_value = "com.example/.MainActivity"
+    android_runner.execute_adb_remote.side_effect = [
+        "UI hierchary dumped to: /sdcard/window_dump.xml",
+        '<?xml version="1.0" encoding="UTF-8"?><hierarchy></hierarchy>',
+    ]
+    screenshot_manager.capture.return_value = Mock()
+
+    explorer = AppExplorer(ai_driver, android_runner, screenshot_manager)
+    explorer.policy.skip_permission_grant = True
+
+    with patch("modules.exploration_strategy.explorer.time.sleep", return_value=None):
+        explorer.phase1_basic_setup(
+            host="127.0.0.1",
+            port=5555,
+            apk_path="/tmp/app.apk",
+            package_name="com.example",
+        )
+
+    android_runner.grant_all_permissions.assert_not_called()
+    android_runner.launch_app.assert_called_once_with("127.0.0.1", 5555, "com.example")
+
+
 def test_phase3_handles_priority_dialog_before_ai_operation():
     """Autonomous explore should tap dialog CTA first instead of invoking AI step."""
     ai_driver = Mock()
@@ -229,7 +258,10 @@ def test_run_full_exploration_respects_env_max_steps(monkeypatch):
     )
 
     assert result.success is True
-    explorer.phase3_autonomous_explore.assert_called_once_with("127.0.0.1", 5555, max_steps=20)
+    explorer.phase3_autonomous_explore.assert_called_once()
+    _, kwargs = explorer.phase3_autonomous_explore.call_args
+    assert kwargs["max_steps"] == 20
+    assert "deadline_ts" in kwargs
 
 
 def test_phase3_performs_form_input_and_submit_before_ai_wait():
@@ -315,7 +347,7 @@ def test_decide_operation_with_timeout_returns_wait_fallback():
     ai_driver = Mock()
 
     def slow_decide(*args, **kwargs):
-        time.sleep(1.5)
+        time.sleep(3)
         return Operation(type=OperationType.TAP, params={"x": 1, "y": 1}, description="slow")
 
     ai_driver.analyze_and_decide.side_effect = slow_decide
@@ -324,7 +356,10 @@ def test_decide_operation_with_timeout_returns_wait_fallback():
     explorer = AppExplorer(ai_driver, android_runner, screenshot_manager)
     explorer.policy.ai_step_timeout_seconds = 1
 
+    begin = time.time()
     op = explorer._decide_operation_with_timeout(b"img", goal="explore")
+    elapsed = time.time() - begin
 
     assert op.type == OperationType.WAIT
     assert "timeout" in op.description.lower()
+    assert elapsed < 1.8

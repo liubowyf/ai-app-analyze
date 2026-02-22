@@ -151,10 +151,13 @@ def _build_dynamic_result(exploration_result, traffic_monitor, domain_report, ma
             "success": exploration_result.success,
             "error_message": exploration_result.error_message,
             "phases_completed": exploration_result.phases_completed,
+            "history": exploration_result.history[-300:],
         },
         "network_analysis": traffic_monitor.analyze_traffic(),
         "suspicious_requests": traffic_monitor.get_requests_as_dict()[:max_requests],
+        "candidate_requests": traffic_monitor.get_candidate_requests_as_dict()[:max_requests],
         "network_aggregated": traffic_monitor.get_aggregated_requests()[:200],
+        "candidate_aggregated": traffic_monitor.get_candidate_aggregated_requests()[:200],
         "master_domains": domain_report,
     }
 
@@ -216,58 +219,150 @@ def _write_minimal_markdown_report(
     domain_report: Dict[str, Any],
 ) -> None:
     """Write a local markdown report for minimal-mode run."""
-    requests = traffic_monitor.get_requests_as_dict()
-    aggregated = traffic_monitor.get_aggregated_requests()
+    primary_requests = traffic_monitor.get_requests_as_dict()
+    candidate_requests = getattr(traffic_monitor, "get_candidate_requests_as_dict", lambda: [])()
+    aggregated_primary = traffic_monitor.get_aggregated_requests()
+    aggregated_candidate = getattr(traffic_monitor, "get_candidate_aggregated_requests", lambda: [])()
     network_analysis = traffic_monitor.analyze_traffic()
     screenshots = exploration_result.screenshots or []
+    history = getattr(exploration_result, "history", []) or []
+
+    # Acceptance targets for this phase
+    target_requests = 80
+    target_screenshots = 10
+    target_domains = 3
+    combined_requests = primary_requests + candidate_requests
+    combined_domains = sorted({item.get("host", "") for item in combined_requests if item.get("host")})
+
+    # Build dynamic domain summary from both pools.
+    domain_rows: Dict[str, Dict[str, Any]] = {}
+    for pool_name, rows in (("主池(强归因)", primary_requests), ("候选池(低置信)", candidate_requests)):
+        for item in rows:
+            host = (item.get("host") or "").strip()
+            if not host:
+                continue
+            row = domain_rows.setdefault(
+                host,
+                {
+                    "host": host,
+                    "count": 0,
+                    "ips": set(),
+                    "sources": set(),
+                    "packages": set(),
+                    "pools": set(),
+                },
+            )
+            row["count"] += 1
+            if item.get("ip"):
+                row["ips"].add(item["ip"])
+            if item.get("source"):
+                row["sources"].add(item["source"])
+            if item.get("package_name"):
+                row["packages"].add(item["package_name"])
+            row["pools"].add(pool_name)
+
+    ranked_domains = sorted(domain_rows.values(), key=lambda x: x["count"], reverse=True)
 
     lines = [
-        "# Minimal Dynamic Analysis Report",
+        "# 动态分析线索报告（最简增强版）",
         "",
-        f"- Generated At: {datetime.now().isoformat()}",
-        f"- APK Path: `{apk_path}`",
-        f"- Package Name: `{package_name or 'unknown'}`",
-        f"- Emulator: `{emulator['host']}:{emulator['port']}`",
-        f"- AI Model: `{settings.AI_MODEL_NAME}` ({settings.AI_BASE_URL})",
+        "## 一、任务信息",
         "",
-        "## Exploration Summary",
+        f"- 生成时间: `{datetime.now().isoformat()}`",
+        f"- APK 路径: `{apk_path}`",
+        f"- 包名: `{package_name or 'unknown'}`",
+        f"- 模拟器: `{emulator['host']}:{emulator['port']}`",
+        f"- AI 模型: `{settings.AI_MODEL_NAME}` ({settings.AI_BASE_URL})",
         "",
-        f"- Success: `{exploration_result.success}`",
-        f"- Total Steps: `{exploration_result.total_steps}`",
-        f"- Activities Visited: `{len(exploration_result.activities_visited or [])}`",
-        f"- Phases Completed: `{', '.join(exploration_result.phases_completed or [])}`",
+        "## 二、覆盖率与达标情况",
         "",
-        "## Network Summary",
+        f"- 探索成功: `{exploration_result.success}`",
+        f"- 总步骤: `{exploration_result.total_steps}`",
+        f"- 活动页数量: `{len(exploration_result.activities_visited or [])}`",
+        f"- 截图数量: `{len(screenshots)}` (目标 >= {target_screenshots})",
+        f"- 主池请求数(强归因): `{len(primary_requests)}`",
+        f"- 候选请求数(低置信): `{len(candidate_requests)}`",
+        f"- 合并请求数: `{len(combined_requests)}` (目标 >= {target_requests})",
+        f"- 动态域名数(合并): `{len(combined_domains)}` (目标 >= {target_domains})",
+        f"- 请求数达标: `{'PASS' if len(combined_requests) >= target_requests else 'FAIL'}`",
+        f"- 截图数达标: `{'PASS' if len(screenshots) >= target_screenshots else 'FAIL'}`",
+        f"- 域名数达标: `{'PASS' if len(combined_domains) >= target_domains else 'FAIL'}`",
         "",
-        f"- Total Requests: `{network_analysis.get('total_requests', 0)}`",
-        f"- Unique Hosts: `{network_analysis.get('unique_hosts', 0)}`",
+        "## 三、页面操作时间线（前 120 步）",
         "",
-        "## Aggregated Requests (host + path + method)",
-        "",
-        "| Host | Path | Method | Count |",
-        "| --- | --- | --- | ---: |",
+        "| Step | Phase | Operation | Description |",
+        "| ---: | --- | --- | --- |",
     ]
 
-    for row in aggregated[:30]:
+    if history:
+        for item in history[:120]:
+            lines.append(
+                f"| {item.get('step', '')} | {item.get('phase', '')} | {item.get('operation', item.get('action', ''))} | {item.get('description', '')} |"
+            )
+    else:
+        lines.append("| - | - | - | 无操作历史 |")
+
+    lines.extend(
+        [
+            "",
+            "## 四、动态访问域名信息（主池+候选池）",
+            "",
+            "| 域名 | 请求数 | IP | 来源 | 包名 | 池 |",
+            "| --- | ---: | --- | --- | --- | --- |",
+        ]
+    )
+    for row in ranked_domains[:80]:
         lines.append(
-            f"| {row.get('host','')} | {row.get('path','')} | {row.get('method','')} | {row.get('count',0)} |"
+            f"| {row['host']} | {row['count']} | {', '.join(sorted(row['ips'])) or '-'} | "
+            f"{', '.join(sorted(row['sources'])) or '-'} | {', '.join(sorted(row['packages'])) or '-'} | "
+            f"{', '.join(sorted(row['pools']))} |"
         )
 
     lines.extend(
         [
             "",
-            "## Sample Requests",
+            "## 五、网络请求聚合",
             "",
-            "| Method | URL | Source | Package |",
-            "| --- | --- | --- | --- |",
+            "### 5.1 主池（强归因）",
+            "",
+            "| Host | Path | Method | Count | Sources | Packages |",
+            "| --- | --- | --- | ---: | --- | --- |",
         ]
     )
-    for item in requests[:30]:
+    for row in aggregated_primary[:40]:
         lines.append(
-            f"| {item.get('method','')} | {item.get('url','')} | {item.get('source','')} | {item.get('package_name','')} |"
+            f"| {row.get('host','')} | {row.get('path','')} | {row.get('method','')} | {row.get('count',0)} | "
+            f"{', '.join(row.get('sources', [])) or '-'} | {', '.join(row.get('packages', [])) or '-'} |"
         )
 
-    lines.extend(["", "## Master Domains", ""])
+    lines.extend(
+        [
+            "",
+            "### 5.2 候选池（低置信）",
+            "",
+            "| Host | Path | Method | Count | Sources | Packages |",
+            "| --- | --- | --- | ---: | --- | --- |",
+        ]
+    )
+    for row in aggregated_candidate[:40]:
+        lines.append(
+            f"| {row.get('host','')} | {row.get('path','')} | {row.get('method','')} | {row.get('count',0)} | "
+            f"{', '.join(row.get('sources', [])) or '-'} | {', '.join(row.get('packages', [])) or '-'} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 六、DNS/IP 线索（运行时观测）",
+            "",
+            "| Domain | IP 列表 |",
+            "| --- | --- |",
+        ]
+    )
+    for row in ranked_domains[:50]:
+        lines.append(f"| {row['host']} | {', '.join(sorted(row['ips'])) or '-'} |")
+
+    lines.extend(["", "## 七、主控域名识别", ""])
     masters = domain_report.get("master_domains", []) if isinstance(domain_report, dict) else []
     if masters:
         lines.append("| Domain | Score | Confidence |")
@@ -277,9 +372,40 @@ def _write_minimal_markdown_report(
                 f"| {row.get('domain','')} | {row.get('score', 0)} | {row.get('confidence', '')} |"
             )
     else:
-        lines.append("- None detected")
+        lines.append("- 未识别到主控域名")
 
-    lines.extend(["", "## Screenshots", ""])
+    lines.extend(
+        [
+            "",
+            "## 八、请求样本（前 30 条主池 + 前 30 条候选池）",
+            "",
+            "### 8.1 主池请求样本",
+            "",
+            "| Method | URL | Source | Package | Confidence |",
+            "| --- | --- | --- | --- | ---: |",
+        ]
+    )
+    for item in primary_requests[:30]:
+        lines.append(
+            f"| {item.get('method','')} | {item.get('url','')} | {item.get('source','')} | "
+            f"{item.get('package_name','')} | {item.get('attribution_confidence', 0)} |"
+        )
+    lines.extend(
+        [
+            "",
+            "### 8.2 候选池请求样本",
+            "",
+            "| Method | URL | Source | Package | Confidence |",
+            "| --- | --- | --- | --- | ---: |",
+        ]
+    )
+    for item in candidate_requests[:30]:
+        lines.append(
+            f"| {item.get('method','')} | {item.get('url','')} | {item.get('source','')} | "
+            f"{item.get('package_name','')} | {item.get('attribution_confidence', 0)} |"
+        )
+
+    lines.extend(["", "## 九、运行时截图索引", ""])
     if screenshots:
         for shot in screenshots:
             path = shot.get("storage_path")
@@ -293,7 +419,19 @@ def _write_minimal_markdown_report(
             else:
                 lines.append(f"- `{shot.get('stage', '')}` {desc}")
     else:
-        lines.append("- None")
+        lines.append("- 无截图")
+
+    lines.extend(
+        [
+            "",
+            "## 十、补充统计",
+            "",
+            f"- 主池 unique hosts: `{network_analysis.get('unique_hosts', 0)}`",
+            f"- 主池 source 分布: `{network_analysis.get('sources', {})}`",
+            f"- 候选池 unique hosts: `{network_analysis.get('candidate_unique_hosts', 0)}`",
+            f"- 候选池 source 分布: `{network_analysis.get('candidate_sources', {})}`",
+        ]
+    )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -351,6 +489,7 @@ def run_dynamic_analysis_minimal(
     traffic_monitor.set_filter_policy(
         {
             "strict_target_package": bool(package_name),
+            "candidate_limit": int(os.getenv("TRAFFIC_CANDIDATE_LIMIT", "5000")),
         }
     )
 
@@ -362,6 +501,10 @@ def run_dynamic_analysis_minimal(
     policy = ExplorationPolicy.from_env()
     if max_steps is not None:
         policy.max_steps = max(1, min(int(max_steps), 500))
+    else:
+        # Default to a higher exploration cap for richer dynamic evidence output.
+        policy.max_steps = max(policy.max_steps, 140)
+    policy.time_budget_seconds = min(policy.time_budget_seconds, 540)  # target 10-minute run
 
     explorer = AppExplorer(
         ai_driver=ai_driver,
@@ -397,6 +540,7 @@ def run_dynamic_analysis_minimal(
                 os.environ["APP_EXPLORATION_MAX_STEPS"] = old_env_steps
 
     network_requests = traffic_monitor.get_requests()
+    candidate_requests = getattr(traffic_monitor, "get_candidate_requests", lambda: [])()
     domain_analyzer = MasterDomainAnalyzer()
     master_domains = domain_analyzer.analyze(network_requests)
     domain_report = domain_analyzer.generate_domain_report(master_domains)
@@ -422,7 +566,19 @@ def run_dynamic_analysis_minimal(
         "report_path": str(report_path),
         "exploration_steps": exploration_result.total_steps,
         "network_requests": len(network_requests),
+        "candidate_requests": len(candidate_requests),
+        "combined_requests": len(network_requests) + len(candidate_requests),
+        "combined_domains": len(
+            {
+                req.host
+                for req in list(network_requests) + list(candidate_requests)
+                if getattr(req, "host", None)
+            }
+        ),
         "aggregated_requests": len(traffic_monitor.get_aggregated_requests()),
+        "candidate_aggregated_requests": len(
+            getattr(traffic_monitor, "get_candidate_aggregated_requests", lambda: [])()
+        ),
     }
 
 

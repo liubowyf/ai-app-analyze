@@ -47,6 +47,7 @@ class TrafficMonitor:
 
     def __init__(self, proxy_port: int = 8080):
         self.requests: List[NetworkRequest] = []
+        self.candidate_requests: List[NetworkRequest] = []
         self.whitelist_rules: List[str] = []
         self._running = False
         self.proxy_port = proxy_port
@@ -61,6 +62,7 @@ class TrafficMonitor:
         self._last_foreground_package: Optional[str] = None
         self.filter_policy = TrafficFilterPolicy()
         self._attribution_engine: Optional[AttributionEngine] = None
+        self._candidate_limit = 5000
 
     def set_target_app_context(
         self,
@@ -106,6 +108,11 @@ class TrafficMonitor:
             self.filter_policy.exclude_domains = [str(x) for x in policy["exclude_domains"]]
         if "exclude_process_prefixes" in policy and isinstance(policy["exclude_process_prefixes"], list):
             self.filter_policy.exclude_process_prefixes = [str(x) for x in policy["exclude_process_prefixes"]]
+        if "candidate_limit" in policy:
+            try:
+                self._candidate_limit = max(100, min(int(policy["candidate_limit"]), 20000))
+            except Exception:
+                pass
 
     def _is_system_noise_request(self, host: str, path: str) -> bool:
         if not host:
@@ -242,14 +249,31 @@ class TrafficMonitor:
 
         return True
 
+    def _should_keep_candidate_request(self, request: NetworkRequest) -> bool:
+        """Keep a secondary candidate pool for low-confidence but relevant traffic."""
+        if not request.host:
+            return False
+        if self.is_whitelisted(request.host):
+            return False
+        if self._is_system_noise_request(request.host, request.path):
+            return False
+        # Candidate pool keeps all non-system requests that were excluded from primary set.
+        return True
+
     def add_request(self, request_data: Dict[str, Any]) -> None:
         try:
             request = self._build_request(request_data)
-            if not self._should_capture_request(request):
-                logger.debug("Skipping non-target/noise traffic: %s%s", request.host, request.path)
+            if self._should_capture_request(request):
+                self.requests.append(request)
+                logger.info("Captured(primary): %s %s%s", request.method, request.host, request.path)
                 return
-            self.requests.append(request)
-            logger.info("Captured: %s %s%s", request.method, request.host, request.path)
+
+            if self._should_keep_candidate_request(request):
+                if len(self.candidate_requests) < self._candidate_limit:
+                    self.candidate_requests.append(request)
+                logger.debug("Captured(candidate): %s %s%s", request.method, request.host, request.path)
+            else:
+                logger.debug("Skipping non-target/noise traffic: %s%s", request.host, request.path)
         except Exception as e:
             logger.error("Failed to add request: %s", e)
 
@@ -272,35 +296,38 @@ class TrafficMonitor:
         return items
 
     def get_requests_as_dict(self) -> List[Dict[str, Any]]:
-        result = []
-        for req in self.requests:
-            result.append(
-                {
-                    "url": req.url,
-                    "method": req.method,
-                    "host": req.host,
-                    "path": req.path,
-                    "ip": req.ip,
-                    "port": req.port,
-                    "scheme": req.scheme,
-                    "request_time": req.request_time.isoformat() if req.request_time else None,
-                    "response_code": req.response_code,
-                    "content_type": req.content_type,
-                    "request_headers": req.request_headers,
-                    "response_headers": req.response_headers,
-                    "uid": req.uid,
-                    "package_name": req.package_name,
-                    "process_name": req.process_name,
-                    "source": req.source,
-                    "capture_backend": req.capture_backend,
-                    "attribution_confidence": req.attribution_confidence,
-                }
-            )
-        return result
+        return [self._request_to_dict(req) for req in self.requests]
+
+    def get_candidate_requests(
+        self,
+        domain: Optional[str] = None,
+        package_name: Optional[str] = None,
+        uid: Optional[int] = None,
+        process_name: Optional[str] = None,
+    ) -> List[NetworkRequest]:
+        items = self.candidate_requests
+        if domain:
+            items = [r for r in items if domain in r.host]
+        if package_name:
+            items = [r for r in items if r.package_name == package_name]
+        if uid is not None:
+            items = [r for r in items if r.uid == uid]
+        if process_name:
+            items = [r for r in items if r.process_name == process_name]
+        return items
+
+    def get_candidate_requests_as_dict(self) -> List[Dict[str, Any]]:
+        return [self._request_to_dict(req) for req in self.candidate_requests]
 
     def get_aggregated_requests(self) -> List[Dict[str, Any]]:
+        return self._aggregate(self.requests)
+
+    def get_candidate_aggregated_requests(self) -> List[Dict[str, Any]]:
+        return self._aggregate(self.candidate_requests)
+
+    def _aggregate(self, requests: List[NetworkRequest]) -> List[Dict[str, Any]]:
         grouped: Dict[tuple, Dict[str, Any]] = {}
-        for req in self.requests:
+        for req in requests:
             key = (req.host, req.path, req.method)
             if key not in grouped:
                 grouped[key] = {
@@ -332,11 +359,35 @@ class TrafficMonitor:
         rows.sort(key=lambda x: x["count"], reverse=True)
         return rows
 
+    @staticmethod
+    def _request_to_dict(req: NetworkRequest) -> Dict[str, Any]:
+        return {
+            "url": req.url,
+            "method": req.method,
+            "host": req.host,
+            "path": req.path,
+            "ip": req.ip,
+            "port": req.port,
+            "scheme": req.scheme,
+            "request_time": req.request_time.isoformat() if req.request_time else None,
+            "response_code": req.response_code,
+            "content_type": req.content_type,
+            "request_headers": req.request_headers,
+            "response_headers": req.response_headers,
+            "uid": req.uid,
+            "package_name": req.package_name,
+            "process_name": req.process_name,
+            "source": req.source,
+            "capture_backend": req.capture_backend,
+            "attribution_confidence": req.attribution_confidence,
+        }
+
     def get_suspicious_requests(self) -> List[NetworkRequest]:
         return self.requests
 
     def clear_requests(self) -> None:
         self.requests.clear()
+        self.candidate_requests.clear()
         logger.info("Cleared all captured requests")
 
     def export_to_json(self) -> str:
@@ -360,6 +411,14 @@ class TrafficMonitor:
             source_counts[req.source or "unknown"] += 1
             package_counts[req.package_name or "unknown"] += 1
 
+        candidate_total = len(self.candidate_requests)
+        candidate_hosts = set(r.host for r in self.candidate_requests)
+        candidate_sources: Dict[str, int] = defaultdict(int)
+        candidate_packages: Dict[str, int] = defaultdict(int)
+        for req in self.candidate_requests:
+            candidate_sources[req.source or "unknown"] += 1
+            candidate_packages[req.package_name or "unknown"] += 1
+
         return {
             "total_requests": total_requests,
             "unique_hosts": len(unique_hosts),
@@ -370,6 +429,11 @@ class TrafficMonitor:
             "sources": dict(source_counts),
             "packages": dict(package_counts),
             "aggregated": self.get_aggregated_requests()[:100],
+            "candidate_total_requests": candidate_total,
+            "candidate_unique_hosts": len(candidate_hosts),
+            "candidate_sources": dict(candidate_sources),
+            "candidate_packages": dict(candidate_packages),
+            "candidate_aggregated": self.get_candidate_aggregated_requests()[:100],
         }
 
     def start(
@@ -442,7 +506,11 @@ class TrafficMonitor:
                 logger.error("Error stopping mitmproxy: %s", e)
 
         self._running = False
-        logger.info("Traffic monitor stopped. Captured %s requests", len(self.requests))
+        logger.info(
+            "Traffic monitor stopped. Captured %s primary + %s candidate requests",
+            len(self.requests),
+            len(self.candidate_requests),
+        )
 
     @property
     def is_running(self) -> bool:

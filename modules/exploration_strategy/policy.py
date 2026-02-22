@@ -52,6 +52,10 @@ class ExplorationPolicy:
         "登录", "注册", "下一步", "提交", "确认", "确定", "继续", "完成", "发送", "获取验证码",
     ])
     ai_step_timeout_seconds: int = 20
+    time_budget_seconds: int = 540
+    scenario_action_budget: int = 24
+    relaunch_cycles: int = 4
+    skip_permission_grant: bool = True
     enable_clear_data_recovery: bool = False
     enable_reinstall_recovery: bool = False
 
@@ -84,6 +88,25 @@ class ExplorationPolicy:
                 5,
                 180,
             ),
+            time_budget_seconds=_parse_int(
+                "APP_EXPLORATION_TIME_BUDGET_SECONDS",
+                540,
+                60,
+                3600,
+            ),
+            scenario_action_budget=_parse_int(
+                "APP_EXPLORATION_SCENARIO_ACTION_BUDGET",
+                24,
+                4,
+                200,
+            ),
+            relaunch_cycles=_parse_int(
+                "APP_EXPLORATION_RELAUNCH_CYCLES",
+                4,
+                1,
+                20,
+            ),
+            skip_permission_grant=_parse_bool("APP_EXPLORATION_SKIP_PERMISSION_GRANT", True),
             enable_clear_data_recovery=_parse_bool("APP_EXPLORATION_ENABLE_CLEAR_DATA_RECOVERY", False),
             enable_reinstall_recovery=_parse_bool("APP_EXPLORATION_ENABLE_REINSTALL_RECOVERY", False),
         )
