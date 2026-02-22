@@ -187,12 +187,26 @@ class MitmProxyManager:
         try:
             if self.master:
                 logger.info("Stopping mitmproxy")
-                if self._loop and self._loop.is_running():
-                    self._loop.call_soon_threadsafe(self.master.shutdown)
-                else:
-                    self.master.shutdown()
+                try:
+                    if self._loop and self._loop.is_running():
+                        self._loop.call_soon_threadsafe(self.master.shutdown)
+                    else:
+                        self.master.shutdown()
+                except RuntimeError as exc:
+                    # If the loop already closed in background thread, shutdown is effectively complete.
+                    if "event loop is closed" in str(exc).lower():
+                        logger.debug("Mitmproxy loop already closed during shutdown")
+                    else:
+                        raise
                 if self._thread and self._thread.is_alive():
                     self._thread.join(timeout=5)
+        except RuntimeError as exc:
+            if "event loop is closed" in str(exc).lower():
+                logger.debug("Mitmproxy stop skipped because loop already closed")
+            else:
+                logger.warning("Mitmproxy stop encountered runtime error: %s", exc)
+        except Exception as exc:
+            logger.warning("Mitmproxy stop encountered error: %s", exc)
         finally:
             self._running = False
             self.master = None

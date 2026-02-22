@@ -65,6 +65,27 @@ def test_start_proxy_starts_background_thread(monkeypatch):
     assert "loop" in holder["master"].kwargs
 
 
+def test_stop_proxy_ignores_closed_event_loop():
+    """Shutdown should tolerate already-closed loop without bubbling exception."""
+    manager = integration.MitmProxyManager()
+    manager.master = _DummyMaster()
+
+    class DummyLoop:
+        def is_running(self):
+            return True
+
+        def call_soon_threadsafe(self, callback):
+            raise RuntimeError("Event loop is closed")
+
+    manager._loop = DummyLoop()
+
+    manager.stop_proxy()
+
+    assert manager.master is None
+    assert manager._loop is None
+    assert manager.is_running is False
+
+
 def test_resolve_proxy_host_prefers_env_override(monkeypatch):
     """Explicit env var should override auto-detected host."""
     monkeypatch.setenv("MITMPROXY_HOST", "10.9.8.7")

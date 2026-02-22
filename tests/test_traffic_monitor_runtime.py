@@ -43,6 +43,38 @@ def test_start_retries_next_port_when_default_port_is_busy(monkeypatch):
     assert configured["proxy_port"] == 8081
 
 
+def test_start_raises_when_proxy_cannot_start(monkeypatch):
+    """Traffic monitor should fail fast when proxy startup fails."""
+    state = {"stop_called": 0}
+
+    class FakeManager:
+        def start_proxy(self, port=8080, request_callback=None):
+            raise RuntimeError("proxy bootstrap failed")
+
+        def stop_proxy(self):
+            state["stop_called"] += 1
+
+    monkeypatch.setattr(
+        "modules.traffic_monitor.mitmproxy_integration.MitmProxyManager",
+        FakeManager,
+    )
+    monkeypatch.setattr(
+        "modules.traffic_monitor.mitmproxy_integration.configure_android_proxy",
+        lambda *args, **kwargs: True,
+    )
+
+    monitor = TrafficMonitor(proxy_port=8080)
+
+    try:
+        monitor.start(emulator_host="10.16.148.66", emulator_port=5555)
+        assert False, "Expected RuntimeError when proxy start fails"
+    except RuntimeError as exc:
+        assert "traffic monitor start failed" in str(exc)
+
+    assert monitor.is_running is False
+    assert state["stop_called"] == 1
+
+
 def test_on_request_captured_filters_non_target_foreground_traffic():
     """Only keep requests when target app is currently foreground."""
     monitor = TrafficMonitor(proxy_port=8080)

@@ -310,7 +310,13 @@ class AndroidRunner:
             logger.error(f"Failed to connect to emulator: {e}")
             return False
 
-    def execute_adb_remote(self, host: str, port: int, command: str) -> str:
+    def execute_adb_remote(
+        self,
+        host: str,
+        port: int,
+        command: str,
+        timeout_seconds: Optional[float] = None,
+    ) -> str:
         """
         Execute ADB command on remote emulator.
 
@@ -324,12 +330,16 @@ class AndroidRunner:
         """
         try:
             device = f"{host}:{port}"
-            timeout_raw = os.getenv("ADB_COMMAND_TIMEOUT_SECONDS", "12")
-            try:
-                timeout = float(timeout_raw)
-            except ValueError:
-                timeout = 12.0
-            timeout = max(2.0, min(timeout, 60.0))
+            if timeout_seconds is None:
+                timeout_raw = os.getenv("ADB_COMMAND_TIMEOUT_SECONDS", "12")
+                try:
+                    timeout = float(timeout_raw)
+                except ValueError:
+                    timeout = 12.0
+                timeout = max(2.0, min(timeout, 60.0))
+            else:
+                timeout = float(timeout_seconds)
+                timeout = max(2.0, min(timeout, 600.0))
 
             adb_cmd = ["adb", "-s", device]
             if command.startswith("shell "):
@@ -366,17 +376,52 @@ class AndroidRunner:
         Returns:
             True if successful
         """
+        install_timeout_raw = os.getenv("ADB_INSTALL_TIMEOUT_SECONDS", "180")
+        retry_raw = os.getenv("ADB_INSTALL_RETRIES", "2")
         try:
-            output = self.execute_adb_remote(host, port, f"install -r {apk_path}")
-            success = "Success" in output
-            if success:
-                logger.info(f"APK installed successfully on {host}:{port}")
-            else:
-                logger.error(f"APK installation failed: {output}")
-            return success
-        except Exception as e:
-            logger.error(f"Failed to install APK: {e}")
-            return False
+            install_timeout = float(install_timeout_raw)
+        except ValueError:
+            install_timeout = 180.0
+        install_timeout = max(15.0, min(install_timeout, 600.0))
+
+        try:
+            retries = int(retry_raw)
+        except ValueError:
+            retries = 2
+        retries = max(1, min(retries, 5))
+
+        apk_arg = shlex.quote(apk_path)
+        last_output = ""
+        for attempt in range(1, retries + 1):
+            output = self.execute_adb_remote(
+                host,
+                port,
+                f"install -r {apk_arg}",
+                timeout_seconds=install_timeout,
+            )
+            last_output = output or ""
+            if "Success" in last_output:
+                logger.info(
+                    "APK installed successfully on %s:%s (attempt=%s)",
+                    host,
+                    port,
+                    attempt,
+                )
+                return True
+
+            logger.warning(
+                "APK install attempt %s/%s failed on %s:%s: %s",
+                attempt,
+                retries,
+                host,
+                port,
+                (last_output or "").strip()[:400],
+            )
+            # Reconnect between retries to recover from transient ADB transport issues.
+            self.connect_remote_emulator(host, port)
+
+        logger.error("APK installation failed after %s attempts: %s", retries, last_output)
+        return False
 
     def take_screenshot_remote(self, host: str, port: int) -> bytes:
         """
@@ -411,8 +456,8 @@ class AndroidRunner:
             )
             image_data = result.stdout or b""
             if image_data.startswith(b"\x89PNG"):
-                # Android sometimes returns CRLF, normalize line endings for PNG parser compatibility.
-                return image_data.replace(b"\r\n", b"\n")
+                # exec-out already returns raw PNG bytes; do not normalize CRLF, which can corrupt payload.
+                return image_data
 
             # Take screenshot on device
             subprocess.run(

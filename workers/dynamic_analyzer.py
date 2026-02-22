@@ -744,8 +744,27 @@ def run_dynamic_analysis_minimal(
         domain_report=domain_report,
     )
 
+    combined_requests_count = len(network_requests) + len(candidate_requests)
+    combined_domains_count = len(
+        {
+            req.host
+            for req in list(network_requests) + list(candidate_requests)
+            if getattr(req, "host", None)
+        }
+    )
+    if not exploration_result.success:
+        minimal_status = "failed_exploration"
+        status_reason = "exploration_failed"
+    elif combined_requests_count <= 0:
+        minimal_status = "degraded_no_network"
+        status_reason = "no_network_requests_captured"
+    else:
+        minimal_status = "success"
+        status_reason = "ok"
+
     return {
-        "status": "success",
+        "status": minimal_status,
+        "status_reason": status_reason,
         "mode": "minimal",
         "apk_path": str(apk),
         "package_name": package_name,
@@ -753,17 +772,12 @@ def run_dynamic_analysis_minimal(
         "output_dir": str(base_dir),
         "screenshots_dir": str(screenshot_dir),
         "report_path": str(report_path),
+        "exploration_success": exploration_result.success,
         "exploration_steps": exploration_result.total_steps,
         "network_requests": len(network_requests),
         "candidate_requests": len(candidate_requests),
-        "combined_requests": len(network_requests) + len(candidate_requests),
-        "combined_domains": len(
-            {
-                req.host
-                for req in list(network_requests) + list(candidate_requests)
-                if getattr(req, "host", None)
-            }
-        ),
+        "combined_requests": combined_requests_count,
+        "combined_domains": combined_domains_count,
         "aggregated_requests": len(traffic_monitor.get_aggregated_requests()),
         "candidate_aggregated_requests": len(
             getattr(traffic_monitor, "get_candidate_aggregated_requests", lambda: [])()

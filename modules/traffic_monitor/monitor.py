@@ -492,8 +492,13 @@ class TrafficMonitor:
 
         except Exception as e:
             logger.error("Failed to start traffic monitor: %s", e)
-            self._running = True
-            logger.warning("Running in passive mode (no actual traffic capture)")
+            self._running = False
+            try:
+                if self._mitmproxy_manager:
+                    self._mitmproxy_manager.stop_proxy()
+            except Exception:
+                pass
+            raise RuntimeError(f"traffic monitor start failed: {e}") from e
 
     def _on_request_captured(self, request_data: Dict[str, Any]) -> None:
         self.add_request(request_data)

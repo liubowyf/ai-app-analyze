@@ -30,10 +30,10 @@ class _FakeTrafficMonitor:
         self.started = False
 
     def get_requests(self):
-        return []
+        return [SimpleNamespace(host="api.demo.com")]
 
     def get_candidate_requests(self):
-        return []
+        return [SimpleNamespace(host="edge.demo.com")]
 
     def get_requests_as_dict(self):
         return [
@@ -109,6 +109,51 @@ class _FakeDomainAnalyzer:
         return {"master_domains": []}
 
 
+class _FakeTrafficMonitorNoNetwork(_FakeTrafficMonitor):
+    def get_requests(self):
+        return []
+
+    def get_candidate_requests(self):
+        return []
+
+    def get_requests_as_dict(self):
+        return []
+
+    def get_candidate_requests_as_dict(self):
+        return []
+
+    def get_aggregated_requests(self):
+        return []
+
+    def get_candidate_aggregated_requests(self):
+        return []
+
+    def analyze_traffic(self):
+        return {
+            "total_requests": 0,
+            "unique_hosts": 0,
+            "sources": {},
+            "candidate_total_requests": 0,
+            "candidate_unique_hosts": 0,
+            "candidate_sources": {},
+        }
+
+
+class _FakeAppExplorerFail(_FakeAppExplorer):
+    def run_full_exploration(self, emulator_config, apk_info, persist_screenshots="minio", local_screenshot_dir=None):
+        shot = self.screenshot_manager.screenshots[0]
+        if local_screenshot_dir:
+            self.screenshot_manager.save_to_local(shot, local_screenshot_dir, 0)
+        return ExplorationResult(
+            total_steps=2,
+            screenshots=self.screenshot_manager.get_all_for_report(),
+            network_requests=[],
+            activities_visited=["com.demo/.LoginActivity"],
+            success=False,
+            phases_completed=["setup"],
+        )
+
+
 def test_run_dynamic_analysis_minimal_writes_local_markdown(monkeypatch, tmp_path):
     apk_path = tmp_path / "sample.apk"
     apk_path.write_bytes(b"apk")
@@ -134,3 +179,49 @@ def test_run_dynamic_analysis_minimal_writes_local_markdown(monkeypatch, tmp_pat
     assert "api.demo.com" in text
     assert "edge.demo.com" in text
     assert result["status"] == "success"
+    assert result["status_reason"] == "ok"
+    assert result["combined_requests"] == 2
+
+
+def test_run_dynamic_analysis_minimal_degraded_when_no_network(monkeypatch, tmp_path):
+    apk_path = tmp_path / "sample.apk"
+    apk_path.write_bytes(b"apk")
+
+    monkeypatch.setattr(dynamic_analyzer, "AndroidRunner", _FakeAndroidRunner)
+    monkeypatch.setattr(dynamic_analyzer, "TrafficMonitor", _FakeTrafficMonitorNoNetwork)
+    monkeypatch.setattr(dynamic_analyzer, "AppExplorer", _FakeAppExplorer)
+    monkeypatch.setattr(dynamic_analyzer, "MasterDomainAnalyzer", _FakeDomainAnalyzer)
+    monkeypatch.setattr(dynamic_analyzer, "AIDriver", lambda **kwargs: SimpleNamespace())
+    monkeypatch.setattr(dynamic_analyzer, "_detect_package_name", lambda path: "com.demo.app")
+
+    result = dynamic_analyzer.run_dynamic_analysis_minimal(
+        apk_path=str(apk_path),
+        output_dir=str(tmp_path / "out_degraded"),
+        max_steps=3,
+    )
+
+    assert result["status"] == "degraded_no_network"
+    assert result["status_reason"] == "no_network_requests_captured"
+    assert result["combined_requests"] == 0
+
+
+def test_run_dynamic_analysis_minimal_failed_when_exploration_fails(monkeypatch, tmp_path):
+    apk_path = tmp_path / "sample.apk"
+    apk_path.write_bytes(b"apk")
+
+    monkeypatch.setattr(dynamic_analyzer, "AndroidRunner", _FakeAndroidRunner)
+    monkeypatch.setattr(dynamic_analyzer, "TrafficMonitor", _FakeTrafficMonitor)
+    monkeypatch.setattr(dynamic_analyzer, "AppExplorer", _FakeAppExplorerFail)
+    monkeypatch.setattr(dynamic_analyzer, "MasterDomainAnalyzer", _FakeDomainAnalyzer)
+    monkeypatch.setattr(dynamic_analyzer, "AIDriver", lambda **kwargs: SimpleNamespace())
+    monkeypatch.setattr(dynamic_analyzer, "_detect_package_name", lambda path: "com.demo.app")
+
+    result = dynamic_analyzer.run_dynamic_analysis_minimal(
+        apk_path=str(apk_path),
+        output_dir=str(tmp_path / "out_failed"),
+        max_steps=3,
+    )
+
+    assert result["status"] == "failed_exploration"
+    assert result["status_reason"] == "exploration_failed"
+    assert result["exploration_success"] is False
