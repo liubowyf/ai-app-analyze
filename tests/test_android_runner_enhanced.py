@@ -30,3 +30,63 @@ def test_execute_adb_remote_command():
         assert hasattr(runner, 'get_current_activity')
         assert hasattr(runner, 'press_back')
         assert hasattr(runner, 'press_home')
+
+
+def test_execute_adb_remote_shell_uses_sh_c_for_pipe_commands():
+    """Shell commands should keep pipe/grep semantics via sh -c."""
+    runner = AndroidRunner()
+
+    completed = Mock()
+    completed.stdout = "ok"
+    completed.stderr = ""
+
+    with patch("subprocess.run", return_value=completed) as mocked_run:
+        output = runner.execute_adb_remote("10.0.0.1", 5558, "shell dumpsys activity | grep mResumedActivity")
+
+    assert output == "ok"
+    called_args = mocked_run.call_args.args[0]
+    assert called_args[:4] == ["adb", "-s", "10.0.0.1:5558", "shell"]
+    assert called_args[4] == "sh"
+    assert called_args[5] == "-c"
+    assert "grep mResumedActivity" in called_args[6]
+
+
+def test_get_current_activity_parses_activity_token_from_dumpsys():
+    """Foreground activity parser should extract package/activity token."""
+    runner = AndroidRunner()
+    runner.execute_adb_remote = Mock(return_value="mResumedActivity: ActivityRecord{123 u0 com.demo/.MainActivity t44}")
+
+    activity = runner.get_current_activity("10.0.0.1", 5558)
+    package = runner.get_current_package("10.0.0.1", 5558)
+
+    assert activity == "com.demo/.MainActivity"
+    assert package == "com.demo"
+
+
+def test_extract_activity_token_prefers_resumed_activity_marker():
+    """Parser should prefer mResumedActivity over earlier non-resumed ACTIVITY lines."""
+    sample = """
+    ACTIVITY com.google.android.apps.nexuslauncher/.NexusLauncherActivity 7160c7f pid=1013
+      mResumed=false mStopped=true
+    mResumedActivity: ActivityRecord{3b3684a u0 com.demo/.MainActivity t9}
+    """
+
+    activity = AndroidRunner._extract_activity_token(sample)
+
+    assert activity == "com.demo/.MainActivity"
+
+
+def test_take_screenshot_remote_prefers_exec_out(monkeypatch):
+    """Screenshot capture should prefer adb exec-out to avoid pull hangs."""
+    runner = AndroidRunner()
+
+    completed = Mock()
+    completed.stdout = b"\x89PNG\r\n\x1a\nDATA"
+    completed.stderr = b""
+
+    with patch("subprocess.run", return_value=completed) as mocked_run:
+        data = runner.take_screenshot_remote("10.0.0.1", 5558)
+
+    assert data.startswith(b"\x89PNG")
+    cmd = mocked_run.call_args.args[0]
+    assert cmd[:4] == ["adb", "-s", "10.0.0.1:5558", "exec-out"]

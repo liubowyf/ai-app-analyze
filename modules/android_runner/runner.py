@@ -1,5 +1,7 @@
 """Android Runner module for remote Android emulator control."""
 import logging
+import re
+import shlex
 import subprocess
 from typing import Optional, Dict, Any, List
 
@@ -320,15 +322,27 @@ class AndroidRunner:
             Command output
         """
         try:
-            import subprocess
             device = f"{host}:{port}"
+
+            adb_cmd = ["adb", "-s", device]
+            if command.startswith("shell "):
+                # Use sh -c to preserve shell operators like pipes/redirects.
+                shell_cmd = command[len("shell "):].strip()
+                adb_cmd.extend(["shell", "sh", "-c", shlex.quote(shell_cmd)])
+            else:
+                adb_cmd.extend(shlex.split(command))
+
             result = subprocess.run(
-                ["adb", "-s", device] + command.split(),
+                adb_cmd,
                 capture_output=True,
                 text=True,
                 timeout=30
             )
-            return result.stdout
+            if result.stdout:
+                return result.stdout
+            if result.stderr:
+                return result.stderr
+            return ""
         except Exception as e:
             logger.error(f"Failed to execute ADB command: {e}")
             return ""
@@ -372,15 +386,33 @@ class AndroidRunner:
             import subprocess
             import tempfile
             import os
+            import math
 
             device = f"{host}:{port}"
+            timeout_raw = os.getenv("ADB_SCREENSHOT_TIMEOUT_SECONDS", "8")
+            try:
+                timeout = float(timeout_raw)
+            except ValueError:
+                timeout = 8.0
+            timeout = max(2.0, min(timeout, 30.0))
+
+            # Prefer exec-out to avoid slow temporary-file pull path.
+            result = subprocess.run(
+                ["adb", "-s", device, "exec-out", "screencap", "-p"],
+                capture_output=True,
+                timeout=timeout,
+            )
+            image_data = result.stdout or b""
+            if image_data.startswith(b"\x89PNG"):
+                # Android sometimes returns CRLF, normalize line endings for PNG parser compatibility.
+                return image_data.replace(b"\r\n", b"\n")
 
             # Take screenshot on device
             subprocess.run(
                 ["adb", "-s", device, "shell", "screencap", "-p", "/sdcard/screen.png"],
                 check=True,
                 capture_output=True,
-                timeout=10
+                timeout=math.ceil(timeout)
             )
 
             # Pull to temp file
@@ -391,7 +423,7 @@ class AndroidRunner:
                 ["adb", "-s", device, "pull", "/sdcard/screen.png", tmp_path],
                 check=True,
                 capture_output=True,
-                timeout=10
+                timeout=math.ceil(timeout)
             )
 
             # Read and return
@@ -521,22 +553,135 @@ class AndroidRunner:
             Activity name
         """
         try:
-            output = self.execute_adb_remote(
-                host, port,
-                "shell dumpsys activity activities | grep mResumedActivity"
-            )
-            # Parse activity name from output
-            for line in output.split('\n'):
-                if '/' in line:
-                    # Extract activity: package/activity
-                    parts = line.split()
-                    for part in parts:
-                        if '/' in part:
-                            return part.strip()
+            commands = [
+                "shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity'",
+                "shell dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp'",
+                "shell dumpsys activity top",
+            ]
+            for cmd in commands:
+                output = self.execute_adb_remote(host, port, cmd)
+                activity = self._extract_activity_token(output)
+                if activity:
+                    return activity
             return ""
         except Exception as e:
             logger.error(f"Failed to get current activity: {e}")
             return ""
+
+    @staticmethod
+    def _extract_activity_token(output: str) -> str:
+        """Extract package/activity token from dumpsys output."""
+        if not output:
+            return ""
+
+        prioritized_patterns = [
+            r"mResumedActivity:\s+.*?([A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+)",
+            r"topResumedActivity(?:=|:\s+).*?([A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+)",
+            r"mCurrentFocus(?:=|:\s+).*?([A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+)",
+            r"mFocusedApp(?:=|:\s+).*?([A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+)",
+        ]
+        for pattern in prioritized_patterns:
+            match = re.search(pattern, output, re.MULTILINE)
+            if match:
+                return match.group(1)
+
+        # Fallback for compact outputs that only contain activity tokens.
+        match = re.search(r"([A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+)", output)
+        return match.group(1) if match else ""
+
+    def get_current_package(self, host: str, port: int) -> str:
+        """
+        Get current foreground package name.
+
+        Args:
+            host: Emulator host IP
+            port: ADB port
+
+        Returns:
+            Package name or empty string when unavailable
+        """
+        activity = self.get_current_activity(host, port)
+        if not activity or "/" not in activity:
+            return ""
+        return activity.split("/", 1)[0].strip()
+
+    def get_current_window(self, host: str, port: int) -> str:
+        """
+        Get current foreground window token.
+
+        Args:
+            host: Emulator host IP
+            port: ADB port
+
+        Returns:
+            Window token string
+        """
+        try:
+            output = self.execute_adb_remote(
+                host,
+                port,
+                "shell dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp'",
+            )
+            activity = self._extract_activity_token(output)
+            if activity:
+                return activity
+            return (output or "").strip()
+        except Exception as e:
+            logger.error(f"Failed to get current window: {e}")
+            return ""
+
+    def dump_ui_hierarchy(self, host: str, port: int) -> str:
+        """
+        Dump current UI hierarchy xml.
+
+        Args:
+            host: Emulator host IP
+            port: ADB port
+
+        Returns:
+            XML text
+        """
+        self.execute_adb_remote(host, port, "shell uiautomator dump /sdcard/window_dump.xml")
+        return self.execute_adb_remote(host, port, "shell cat /sdcard/window_dump.xml")
+
+    def force_stop_app(self, host: str, port: int, package: str) -> None:
+        """
+        Force stop an app process.
+
+        Args:
+            host: Emulator host IP
+            port: ADB port
+            package: Package name
+        """
+        try:
+            self.execute_adb_remote(host, port, f"shell am force-stop {package}")
+            logger.info("Force-stopped app %s", package)
+        except Exception as e:
+            logger.error(f"Failed to force stop app: {e}")
+
+    def clear_app_data(self, host: str, port: int, package: str) -> bool:
+        """
+        Clear app data.
+
+        Args:
+            host: Emulator host IP
+            port: ADB port
+            package: Package name
+
+        Returns:
+            True if successful
+        """
+        try:
+            output = self.execute_adb_remote(host, port, f"shell pm clear {package}")
+            success = "success" in (output or "").lower()
+            if success:
+                logger.info("Cleared app data for %s", package)
+            else:
+                logger.warning("Failed to clear app data for %s: %s", package, output)
+            return success
+        except Exception as e:
+            logger.error(f"Failed to clear app data: {e}")
+            return False
 
     def press_back(self, host: str, port: int) -> None:
         """
