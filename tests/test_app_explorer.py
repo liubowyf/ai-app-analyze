@@ -229,3 +229,63 @@ def test_run_full_exploration_respects_env_max_steps(monkeypatch):
 
     assert result.success is True
     explorer.phase3_autonomous_explore.assert_called_once_with("127.0.0.1", 5555, max_steps=20)
+
+
+def test_phase3_performs_form_input_and_submit_before_ai_wait():
+    """When input fields are detected, explorer should fill and submit before passive AI actions."""
+    ai_driver = Mock()
+    ai_driver.analyze_and_decide.return_value = Operation(
+        type=OperationType.WAIT,
+        params={"duration": 1},
+        description="wait",
+    )
+    android_runner = Mock()
+    screenshot_manager = Mock()
+
+    android_runner.take_screenshot_remote.return_value = b"fake_image"
+    android_runner.get_current_activity.return_value = "com.example/.LoginActivity"
+    android_runner.execute_adb_remote.side_effect = [
+        "UI hierchary dumped to: /sdcard/window_dump.xml",
+        (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<hierarchy>'
+            '<node text="手机号" class="android.widget.EditText" clickable="true" focusable="true" '
+            'bounds="[100,260][980,380]"/>'
+            '<node text="登录" class="android.widget.Button" clickable="true" '
+            'bounds="[260,900][820,1020]"/>'
+            "</hierarchy>"
+        ),
+    ]
+    screenshot_manager.capture.return_value = Mock()
+
+    explorer = AppExplorer(ai_driver, android_runner, screenshot_manager)
+    explorer.target_package = "com.example"
+
+    with patch("modules.exploration_strategy.explorer.time.sleep", return_value=None):
+        explorer.phase3_autonomous_explore("127.0.0.1", 5555, max_steps=1)
+
+    android_runner.execute_input_text.assert_called_once_with("127.0.0.1", 5555, "13800138000")
+    android_runner.execute_tap.assert_any_call("127.0.0.1", 5555, 540, 320)
+    android_runner.execute_tap.assert_any_call("127.0.0.1", 5555, 540, 960)
+    ai_driver.analyze_and_decide.assert_not_called()
+
+
+def test_should_skip_screen_allows_login_page_with_input_candidates():
+    """Login-like screens should not be skipped when form interaction is enabled."""
+    ai_driver = Mock()
+    android_runner = Mock()
+    screenshot_manager = Mock()
+    explorer = AppExplorer(ai_driver, android_runner, screenshot_manager)
+
+    login_form_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        "<hierarchy>"
+        '<node text="登录" clickable="false" bounds="[10,10][100,100]"/>'
+        '<node text="手机号" class="android.widget.EditText" clickable="true" focusable="true" '
+        'bounds="[100,260][980,380]"/>'
+        '<node text="验证码" class="android.widget.EditText" clickable="true" focusable="true" '
+        'bounds="[100,420][980,540]"/>'
+        "</hierarchy>"
+    )
+
+    assert explorer._should_skip_screen("127.0.0.1", 5555, ui_xml=login_form_xml) is False

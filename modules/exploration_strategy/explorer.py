@@ -57,7 +57,9 @@ class AppExplorer:
         self.activities_visited: List[str] = []
         self.target_package: Optional[str] = None
         self.clicked_ui_signatures: Set[str] = set()
+        self.filled_input_signatures: Set[str] = set()
         self.screen_action_counts: Dict[str, int] = defaultdict(int)
+        self.screen_form_action_counts: Dict[str, int] = defaultdict(int)
         self._apk_path: Optional[str] = None
         self.dialog_handler = DialogHandler()
         self.ui_explorer = UIExplorer(
@@ -402,8 +404,43 @@ class AppExplorer:
                     })
                     continue
 
-                # Cap taps per page-state to avoid dead loops on a single screen.
                 screen_key = f"{state.activity}|{state.ui_hash}"
+
+                # Prefer form interactions before generic tapping to unlock deeper flows.
+                if (
+                    self.policy.enable_form_interaction
+                    and self.screen_form_action_counts[screen_key] < self.policy.max_form_interactions_per_screen
+                ):
+                    form_action = self._perform_form_interaction(
+                        host=host,
+                        port=port,
+                        ui_xml=ui_xml,
+                    )
+                    if form_action:
+                        self.screen_form_action_counts[screen_key] += 1
+                        consecutive_errors = 0
+                        passive_steps = 0
+                        stagnant_steps = 0
+                        time.sleep(1.2)
+                        screenshot = self._capture_app_screenshot(
+                            host=host,
+                            port=port,
+                            stage=f"auto_form_{step+1}",
+                            description=form_action,
+                            require_target=True,
+                        )
+                        if screenshot:
+                            screenshots.append(screenshot)
+                        self.exploration_history.append({
+                            "phase": "autonomous",
+                            "step": step + 1,
+                            "operation": "FormInteraction",
+                            "description": form_action,
+                            "params": {},
+                        })
+                        continue
+
+                # Cap taps per page-state to avoid dead loops on a single screen.
                 if self.screen_action_counts[screen_key] >= self.policy.max_clicks_per_screen:
                     recovery_action = self.recovery_manager.next_action(
                         stagnation_count=stagnant_steps + 1,
@@ -802,6 +839,12 @@ class AppExplorer:
 
         elif op_type == "Type":
             text = params.get("text", "")
+            if "x" in params and "y" in params:
+                try:
+                    self.android_runner.execute_tap(host, port, int(params["x"]), int(params["y"]))
+                    time.sleep(0.2)
+                except Exception:
+                    pass
             self.android_runner.execute_input_text(host, port, text)
 
         elif op_type == "Back":
@@ -833,6 +876,10 @@ class AppExplorer:
         if not isinstance(ui_xml, str) or not ui_xml or "<hierarchy" not in ui_xml:
             return False
 
+        # When form interaction is enabled, don't skip login/register pages preemptively.
+        if self.policy.enable_form_interaction and self._find_input_candidates(ui_xml):
+            return False
+
         keywords = self.policy.skip_keywords
         try:
             root = ET.fromstring(ui_xml)
@@ -849,6 +896,127 @@ class AppExplorer:
                 if hit_count >= 2:
                     return True
         return False
+
+    def _find_input_candidates(self, ui_xml: str) -> List[Dict[str, Any]]:
+        """Find input widgets (EditText-like) from UI XML."""
+        if not isinstance(ui_xml, str) or "<hierarchy" not in ui_xml:
+            return []
+        try:
+            root = ET.fromstring(ui_xml)
+        except ET.ParseError:
+            return []
+
+        candidates: List[Dict[str, Any]] = []
+        for node in root.iter("node"):
+            class_name = (node.attrib.get("class") or "").strip()
+            clickable = node.attrib.get("clickable", "false").lower() == "true"
+            focusable = node.attrib.get("focusable", "false").lower() == "true"
+            editable = (
+                "EditText" in class_name
+                or node.attrib.get("password", "false").lower() == "true"
+                or node.attrib.get("inputType")
+            )
+            if not editable and not (clickable and focusable):
+                continue
+
+            text = (node.attrib.get("text") or "").strip()
+            hint = (node.attrib.get("hint") or "").strip()
+            desc = (node.attrib.get("content-desc") or "").strip()
+            rid = (node.attrib.get("resource-id") or "").strip()
+            label = " ".join(part for part in [text, hint, desc, rid] if part).strip()
+
+            bounds = node.attrib.get("bounds", "")
+            center = self._parse_bounds_center(bounds)
+            if not center:
+                continue
+
+            signature = f"{rid}|{bounds}|{class_name}"
+            candidates.append(
+                {
+                    "x": center[0],
+                    "y": center[1],
+                    "label": label,
+                    "signature": signature,
+                    "password": node.attrib.get("password", "false").lower() == "true",
+                }
+            )
+        return candidates
+
+    @staticmethod
+    def _build_form_input_text(label: str, is_password: bool = False) -> str:
+        """Build deterministic synthetic input text by field semantic."""
+        lower = (label or "").lower()
+        if is_password or "密码" in label or "pass" in lower:
+            return "Test@1234"
+        if "验证码" in label or "otp" in lower or "sms" in lower:
+            return "123456"
+        if "邮箱" in label or "email" in lower:
+            return "autotest@example.com"
+        if "身份证" in label or "idcard" in lower:
+            return "110101199001011234"
+        if "姓名" in label or "name" in lower:
+            return "TestUser"
+        if "手机" in label or "电话" in label or "phone" in lower or "mobile" in lower:
+            return "13800138000"
+        return "test123"
+
+    def _find_form_submit_action(self, ui_xml: str) -> Optional[Tuple[int, int, str]]:
+        """Find submit-like button for login/register forms."""
+        if not isinstance(ui_xml, str) or "<hierarchy" not in ui_xml:
+            return None
+        try:
+            root = ET.fromstring(ui_xml)
+        except ET.ParseError:
+            return None
+
+        best: Optional[Tuple[int, int, str, int]] = None
+        for node in root.iter("node"):
+            text = (node.attrib.get("text") or "").strip()
+            desc = (node.attrib.get("content-desc") or "").strip()
+            rid = (node.attrib.get("resource-id") or "").strip()
+            label = f"{text} {desc} {rid}".strip()
+            if not label:
+                continue
+            if not any(token in label for token in self.policy.form_submit_keywords):
+                continue
+            center = self._parse_bounds_center(node.attrib.get("bounds", ""))
+            if not center:
+                continue
+            score = 100
+            if node.attrib.get("clickable", "false").lower() == "true":
+                score += 20
+            if "Button" in (node.attrib.get("class") or ""):
+                score += 10
+            if not best or score > best[3]:
+                best = (center[0], center[1], label, score)
+        if not best:
+            return None
+        return best[0], best[1], best[2]
+
+    def _perform_form_interaction(self, host: str, port: int, ui_xml: str) -> Optional[str]:
+        """Fill one input field and optionally tap submit action."""
+        candidates = self._find_input_candidates(ui_xml)
+        if not candidates:
+            return None
+
+        for item in candidates:
+            signature = item["signature"]
+            if signature in self.filled_input_signatures:
+                continue
+
+            self.android_runner.execute_tap(host, port, item["x"], item["y"])
+            time.sleep(0.25)
+            text = self._build_form_input_text(item["label"], is_password=item["password"])
+            self.android_runner.execute_input_text(host, port, text)
+            self.filled_input_signatures.add(signature)
+
+            submit = self._find_form_submit_action(ui_xml)
+            if submit:
+                sx, sy, submit_label = submit
+                self.android_runner.execute_tap(host, port, sx, sy)
+                return f"表单输入并提交: {item['label'] or '输入框'} -> {submit_label}"
+            return f"表单输入: {item['label'] or '输入框'}"
+        return None
 
     def _test_search_scenario(self, host: str, port: int) -> List[Screenshot]:
         """Test search functionality."""

@@ -46,6 +46,11 @@ class ExplorationPolicy:
     skip_keywords: List[str] = field(default_factory=lambda: [
         "登录", "注册", "验证码", "密码", "支付", "实名认证", "人脸", "指纹", "银行卡",
     ])
+    enable_form_interaction: bool = True
+    max_form_interactions_per_screen: int = 2
+    form_submit_keywords: List[str] = field(default_factory=lambda: [
+        "登录", "注册", "下一步", "提交", "确认", "确定", "继续", "完成", "发送", "获取验证码",
+    ])
     enable_clear_data_recovery: bool = False
     enable_reinstall_recovery: bool = False
 
@@ -61,6 +66,16 @@ class ExplorationPolicy:
             widget_whitelist=_parse_list("APP_EXPLORATION_WIDGET_WHITELIST"),
             skip_keywords=_parse_list("APP_EXPLORATION_SKIP_KEYWORDS", [
                 "登录", "注册", "验证码", "密码", "支付", "实名认证", "人脸", "指纹", "银行卡",
+            ]),
+            enable_form_interaction=_parse_bool("APP_EXPLORATION_ENABLE_FORM_INTERACTION", True),
+            max_form_interactions_per_screen=_parse_int(
+                "APP_EXPLORATION_MAX_FORM_INTERACTIONS_PER_SCREEN",
+                2,
+                1,
+                10,
+            ),
+            form_submit_keywords=_parse_list("APP_EXPLORATION_FORM_SUBMIT_KEYWORDS", [
+                "登录", "注册", "下一步", "提交", "确认", "确定", "继续", "完成", "发送", "获取验证码",
             ]),
             enable_clear_data_recovery=_parse_bool("APP_EXPLORATION_ENABLE_CLEAR_DATA_RECOVERY", False),
             enable_reinstall_recovery=_parse_bool("APP_EXPLORATION_ENABLE_REINSTALL_RECOVERY", False),
