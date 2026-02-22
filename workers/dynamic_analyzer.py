@@ -17,8 +17,15 @@ from sqlalchemy.exc import OperationalError
 from core.config import settings
 from core.database import SessionLocal
 from core.storage import storage_client
+from models.analysis_tables import (
+    DynamicAnalysisTable,
+    MasterDomainTable,
+    NetworkRequestTable,
+    ScreenshotTable,
+)
 from models.task import Task, TaskStatus
 from modules.android_runner import AndroidRunner
+from modules.emulator_pool import EmulatorLeaseManager
 from modules.traffic_monitor import TrafficMonitor
 from modules.ai_driver import AIDriver
 from modules.screenshot_manager.manager import ScreenshotManager
@@ -68,49 +75,66 @@ def _mark_task_failed(task_id: str, error_message: str) -> None:
     finally:
         fail_db.close()
 
+
 def _build_emulator_pool() -> list[dict]:
-    """Build emulator pool from .env, prioritizing emulator_4 when configured."""
-    preferred = [
-        settings.ANDROID_EMULATOR_4,
-        settings.ANDROID_EMULATOR_1,
-        settings.ANDROID_EMULATOR_2,
-        settings.ANDROID_EMULATOR_3,
-    ]
-    seen = set()
-    pool = []
-    for item in preferred:
-        if not item or item in seen or ":" not in item:
+    """Build in-process fallback emulator pool when distributed lease is unavailable."""
+    candidates = []
+    for item in settings.android_emulators:
+        if not item or ":" not in item:
             continue
-        seen.add(item)
         host, port_raw = item.rsplit(":", 1)
         try:
             port = int(port_raw)
         except ValueError:
             logger.warning("Skip invalid emulator config: %s", item)
             continue
-        pool.append({"host": host, "port": port, "in_use": False})
+        candidates.append({"host": host.strip(), "port": port, "in_use": False})
+    if not candidates:
+        candidates = [{"host": "10.16.148.66", "port": 5558, "in_use": False}]
+    return candidates
 
-    if not pool:
-        pool = [{"host": "10.16.148.66", "port": 5558, "in_use": False}]
-    return pool
 
-
-# Remote emulator pool configuration
+# Remote emulator pool configuration (fallback)
 EMULATOR_POOL = _build_emulator_pool()
+EMULATOR_LEASE_MANAGER = EmulatorLeaseManager(
+    lease_ttl_seconds=int(os.getenv("EMULATOR_LEASE_TTL_SECONDS", "3900"))
+)
 
 
-def get_available_emulator() -> Optional[Dict]:
+def _try_allocate_from_local_pool() -> Optional[Dict]:
+    """Fallback allocator when distributed lock backend is unavailable."""
+    for emulator in EMULATOR_POOL:
+        if not emulator["in_use"]:
+            emulator["in_use"] = True
+            logger.info(
+                "Allocated emulator via local pool %s:%s",
+                emulator["host"],
+                emulator["port"],
+            )
+            return emulator
+    return None
+
+
+def get_available_emulator(task_id: Optional[str] = None) -> Optional[Dict]:
     """
-    Get an available emulator from the pool (simple load balancing).
+    Get an available emulator using distributed lease first, then local fallback.
 
     Returns:
         Emulator config dict or None if all are busy
     """
-    for emulator in EMULATOR_POOL:
-        if not emulator["in_use"]:
-            emulator["in_use"] = True
-            logger.info(f"Allocated emulator {emulator['host']}:{emulator['port']}")
-            return emulator
+    if task_id:
+        leased = EMULATOR_LEASE_MANAGER.acquire(task_id=task_id)
+        if leased:
+            logger.info(
+                "Allocated emulator via distributed lease %s:%s task=%s",
+                leased["host"],
+                leased["port"],
+                task_id,
+            )
+            return leased
+    emulator = _try_allocate_from_local_pool()
+    if emulator:
+        return emulator
     logger.warning("No available emulators in pool")
     return None
 
@@ -122,8 +146,25 @@ def release_emulator(emulator: Dict) -> None:
     Args:
         emulator: Emulator config dict
     """
+    if not emulator:
+        return
+
+    if emulator.get("lease_key"):
+        released = EMULATOR_LEASE_MANAGER.release(emulator)
+        if released:
+            logger.info(
+                "Released emulator lease %s:%s",
+                emulator.get("host"),
+                emulator.get("port"),
+            )
+            return
+
     emulator["in_use"] = False
-    logger.info(f"Released emulator {emulator['host']}:{emulator['port']}")
+    logger.info(
+        "Released emulator local slot %s:%s",
+        emulator.get("host"),
+        emulator.get("port"),
+    )
 
 
 def _compact_screenshots(screenshots: list, max_items: int) -> list:
@@ -160,6 +201,142 @@ def _build_dynamic_result(exploration_result, traffic_monitor, domain_report, ma
         "candidate_aggregated": traffic_monitor.get_candidate_aggregated_requests()[:200],
         "master_domains": domain_report,
     }
+
+
+def _safe_parse_datetime(value: Any) -> Optional[datetime]:
+    """Parse datetime from heterogeneous payload values."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(value)
+        except Exception:
+            return None
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except Exception:
+            return None
+    return None
+
+
+def _persist_dynamic_normalized_tables(
+    db: Session,
+    task_id: str,
+    package_name: Optional[str],
+    exploration_result: Any,
+    traffic_monitor: TrafficMonitor,
+    domain_report: Dict[str, Any],
+) -> None:
+    """
+    Persist dynamic outputs into normalized tables for downstream API queries.
+
+    Any persistence issue is downgraded to warning and should not fail the task.
+    """
+    try:
+        # Lightweight guard for deployments that have not run migrations yet.
+        from core.database import Base, engine
+
+        Base.metadata.create_all(
+            bind=engine,
+            tables=[
+                DynamicAnalysisTable.__table__,
+                NetworkRequestTable.__table__,
+                MasterDomainTable.__table__,
+                ScreenshotTable.__table__,
+            ],
+        )
+
+        primary_requests = traffic_monitor.get_requests_as_dict()
+        candidate_requests = traffic_monitor.get_candidate_requests_as_dict()
+        all_requests = primary_requests + candidate_requests
+
+        # Ensure idempotency for retries.
+        db.query(NetworkRequestTable).filter(NetworkRequestTable.task_id == task_id).delete(synchronize_session=False)
+        db.query(MasterDomainTable).filter(MasterDomainTable.task_id == task_id).delete(synchronize_session=False)
+        db.query(ScreenshotTable).filter(ScreenshotTable.task_id == task_id).delete(synchronize_session=False)
+        db.query(DynamicAnalysisTable).filter(DynamicAnalysisTable.task_id == task_id).delete(synchronize_session=False)
+
+        unique_domains = {
+            (item.get("host") or "").strip().lower()
+            for item in all_requests
+            if item.get("host")
+        }
+        dynamic_row = DynamicAnalysisTable(
+            task_id=task_id,
+            total_steps=int(getattr(exploration_result, "total_steps", 0) or 0),
+            phases_completed=",".join(getattr(exploration_result, "phases_completed", []) or []),
+            unique_activities=len(set(getattr(exploration_result, "activities_visited", []) or [])),
+            activities_list=json.dumps(getattr(exploration_result, "activities_visited", []) or [], ensure_ascii=False),
+            total_screenshots=len(getattr(exploration_result, "screenshots", []) or []),
+            total_requests=len(all_requests),
+            unique_domains=len(unique_domains),
+            master_domains=len((domain_report or {}).get("master_domains", []) or []),
+            success=1 if getattr(exploration_result, "success", False) else 0,
+            error_message=getattr(exploration_result, "error_message", None),
+            detected_package=package_name,
+            started_at=None,
+            completed_at=datetime.utcnow(),
+            duration_seconds=0,
+        )
+        db.add(dynamic_row)
+
+        for item in primary_requests[:3000]:
+            db.add(
+                NetworkRequestTable(
+                    task_id=task_id,
+                    url=item.get("url"),
+                    method=item.get("method"),
+                    host=item.get("host"),
+                    path=item.get("path"),
+                    ip=item.get("ip"),
+                    port=int(item.get("port") or 80),
+                    scheme=item.get("scheme"),
+                    response_code=item.get("response_code"),
+                    content_type=item.get("content_type"),
+                    request_size=0,
+                    response_size=0,
+                    request_time=_safe_parse_datetime(item.get("request_time")),
+                    has_sensitive_data=0,
+                    sensitive_types=None,
+                )
+            )
+
+        for row in (domain_report or {}).get("master_domains", []) or []:
+            evidence = row.get("evidence")
+            evidence_text = json.dumps(evidence, ensure_ascii=False) if evidence is not None else None
+            db.add(
+                MasterDomainTable(
+                    task_id=task_id,
+                    domain=row.get("domain"),
+                    ip=row.get("ip"),
+                    confidence_score=int(row.get("score", 0) or 0),
+                    confidence_level=row.get("confidence"),
+                    evidence=evidence_text,
+                    request_count=int(row.get("request_count", 0) or 0),
+                    post_count=int(row.get("post_count", 0) or 0),
+                )
+            )
+
+        for shot in (getattr(exploration_result, "screenshots", []) or [])[:300]:
+            storage_path = shot.get("storage_path")
+            stage = shot.get("stage")
+            description = shot.get("description")
+            captured_at = _safe_parse_datetime(shot.get("timestamp")) or datetime.utcnow()
+            db.add(
+                ScreenshotTable(
+                    task_id=task_id,
+                    storage_path=storage_path,
+                    file_size=0,
+                    stage=stage,
+                    description=description,
+                    captured_at=captured_at,
+                )
+            )
+    except Exception as exc:
+        logger.warning("Persist normalized dynamic tables failed task=%s: %s", task_id, exc)
 
 
 def _parse_emulator_address(value: str) -> Optional[Dict[str, Any]]:
@@ -618,7 +795,7 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
         whitelist_domains = [rule.domain for rule in whitelist_rules]
 
         # 2. Select available emulator
-        emulator = get_available_emulator()
+        emulator = get_available_emulator(task_id=task_id)
         if not emulator:
             raise RuntimeError("No available emulators in pool")
 
@@ -778,6 +955,14 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
             logger.info("Reduced dynamic result payload size: %s bytes", payload_size)
 
         task.dynamic_analysis_result = dynamic_result
+        _persist_dynamic_normalized_tables(
+            db=db,
+            task_id=task_id,
+            package_name=package_name,
+            exploration_result=exploration_result,
+            traffic_monitor=traffic_monitor,
+            domain_report=domain_report,
+        )
         _commit_with_retry(db, context="save_dynamic_result")
 
         logger.info(f"Dynamic analysis completed for task {task_id}")

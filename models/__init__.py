@@ -11,6 +11,13 @@ from models.analysis_result import (
     SensitiveApiCall,
     StaticAnalysisResult,
 )
+from models.analysis_tables import (
+    DynamicAnalysisTable,
+    MasterDomainTable,
+    NetworkRequestTable,
+    ScreenshotTable,
+    StaticAnalysisTable,
+)
 from models.task import Task, TaskPriority, TaskStatus
 from models.whitelist import WhitelistCategory, WhitelistRule
 
@@ -28,6 +35,11 @@ __all__ = [
     "Task",
     "TaskPriority",
     "TaskStatus",
+    "StaticAnalysisTable",
+    "DynamicAnalysisTable",
+    "NetworkRequestTable",
+    "MasterDomainTable",
+    "ScreenshotTable",
     "WhitelistCategory",
     "WhitelistRule",
 ]

@@ -75,3 +75,13 @@ Core service code is split by layer:
   - MinIO/PDF pipeline enhancements beyond current minimum,
   - broader API/task orchestration refinements not required by core loop validation.
 - New development should first preserve and improve the baseline metrics above before expanding deferred modules.
+
+## Platform Expansion Baseline (2026-02-22)
+- Start incremental productionization on top of the validated core loop:
+  - keep core loop behavior and acceptance metrics unchanged,
+  - add normalized persistence for dynamic outputs (network/domains/screenshots summary),
+  - add distributed emulator lease for multi-worker concurrency safety,
+  - unify task workflow orchestration for API-triggered runs,
+  - expose task metrics + dynamic evidence query APIs for integration callers.
+- Priority rule:
+  - do not degrade current minimal dynamic run quality (`requests/screenshots/domains`) while expanding persistence and API abilities.

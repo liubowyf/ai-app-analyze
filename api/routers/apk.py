@@ -10,6 +10,7 @@ from api.schemas.apk import APKUploadResponse
 from core.database import SessionLocal
 from core.storage import storage_client
 from models.task import Task, TaskPriority, TaskStatus
+from modules.task_orchestration import enqueue_analysis_workflow
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -123,22 +124,15 @@ async def upload_apk(
     db.commit()
     db.refresh(task)
 
-    # Trigger Celery task chain for analysis
-    # 临时跳过静态分析,直接测试动态分析
-    from workers.dynamic_analyzer import run_dynamic_analysis
-    from workers.report_generator import generate_report
-    from celery import chain
-
-    # Create task chain: dynamic analysis -> report generation (skip static analysis)
-    workflow = chain(
-        run_dynamic_analysis.s(str(task.id)),  # 直接从动态分析开始
-        generate_report.s()
+    # Trigger Celery task chain for analysis.
+    # Current baseline keeps static analysis optional; upload path uses dynamic+report by default.
+    enqueue_ok = enqueue_analysis_workflow(
+        task_id=str(task.id),
+        include_static=False,
+        priority=task.priority,
     )
-    try:
-        workflow.apply_async()
-    except Exception as exc:
-        # Keep upload endpoint resilient when broker is temporarily unavailable.
-        logger.warning("Failed to enqueue analysis workflow for task %s: %s", task.id, exc)
+    if not enqueue_ok:
+        logger.warning("Failed to enqueue analysis workflow for task %s", task.id)
 
     # Return response
     return APKUploadResponse(

@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import settings
 from core.database import Base, engine
+import models.analysis_tables  # noqa: F401
 
 
 @asynccontextmanager

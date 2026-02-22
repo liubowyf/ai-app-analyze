@@ -185,3 +185,96 @@ class TestTasksRouter:
             response = client.post("/api/v1/tasks/non-existent-id/retry")
 
             assert response.status_code == 404
+
+    def test_get_task_queue_metrics(self, client: TestClient):
+        """Test queue metrics endpoint."""
+        with patch("api.routers.tasks.SessionLocal") as mock_session_local:
+            mock_db = MagicMock(spec=Session)
+            mock_session_local.return_value = mock_db
+            mock_db.query.return_value.group_by.return_value.all.return_value = [
+                ("queued", 3),
+                ("dynamic_analyzing", 2),
+                ("completed", 5),
+            ]
+
+            response = client.get("/api/v1/tasks/metrics/queue")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["total_tasks"] == 10
+            assert data["in_progress"] == 5
+            assert data["by_status"]["queued"] == 3
+            assert data["by_status"]["dynamic_analyzing"] == 2
+
+    def test_get_task_network_requests(self, client: TestClient):
+        """Test network requests query endpoint."""
+        mock_task = create_mock_task(status=TaskStatus.COMPLETED)
+        mock_request = MagicMock()
+        mock_request.id = "req-1"
+        mock_request.url = "https://api.demo.com/v1/home"
+        mock_request.method = "GET"
+        mock_request.host = "api.demo.com"
+        mock_request.path = "/v1/home"
+        mock_request.ip = "1.1.1.1"
+        mock_request.port = 443
+        mock_request.scheme = "https"
+        mock_request.response_code = 200
+        mock_request.content_type = "application/json"
+        mock_request.request_time = datetime.utcnow()
+
+        with patch("api.routers.tasks.SessionLocal") as mock_session_local:
+            mock_db = MagicMock(spec=Session)
+            mock_session_local.return_value = mock_db
+
+            task_query = MagicMock()
+            network_query = MagicMock()
+            network_sorted = MagicMock()
+            network_paginated = MagicMock()
+
+            mock_db.query.side_effect = [task_query, network_query]
+            task_query.filter.return_value.first.return_value = mock_task
+
+            network_query.filter.return_value = network_query
+            network_query.count.return_value = 1
+            network_query.order_by.return_value = network_sorted
+            network_sorted.offset.return_value = network_paginated
+            network_paginated.limit.return_value.all.return_value = [mock_request]
+
+            response = client.get("/api/v1/tasks/test-task-id/network-requests")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["task_id"] == "test-task-id"
+            assert data["total"] == 1
+            assert len(data["items"]) == 1
+            assert data["items"][0]["host"] == "api.demo.com"
+
+    def test_get_task_domains_fallback_to_json(self, client: TestClient):
+        """Test domains endpoint falls back to JSON payload when table empty."""
+        mock_task = create_mock_task(status=TaskStatus.COMPLETED)
+        mock_task.dynamic_analysis_result = {
+            "master_domains": {
+                "master_domains": [
+                    {"domain": "api.demo.com", "score": 66, "confidence": "high"}
+                ]
+            }
+        }
+
+        with patch("api.routers.tasks.SessionLocal") as mock_session_local:
+            mock_db = MagicMock(spec=Session)
+            mock_session_local.return_value = mock_db
+
+            task_query = MagicMock()
+            domain_query = MagicMock()
+
+            mock_db.query.side_effect = [task_query, domain_query]
+            task_query.filter.return_value.first.return_value = mock_task
+            domain_query.filter.return_value.order_by.return_value.all.return_value = []
+
+            response = client.get("/api/v1/tasks/test-task-id/domains")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["task_id"] == "test-task-id"
+            assert data["count"] == 1
+            assert data["domains"][0]["domain"] == "api.demo.com"
