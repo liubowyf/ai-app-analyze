@@ -1,5 +1,6 @@
 """Tests for AppExplorer module."""
 import pytest
+import time
 from unittest.mock import Mock, patch
 from modules.exploration_strategy.explorer import AppExplorer, ExplorationResult
 from modules.ai_driver import Operation, OperationType
@@ -289,3 +290,41 @@ def test_should_skip_screen_allows_login_page_with_input_candidates():
     )
 
     assert explorer._should_skip_screen("127.0.0.1", 5555, ui_xml=login_form_xml) is False
+
+
+def test_execute_swipe_operation_uses_explicit_coordinates():
+    """Swipe operation should use explicit start/end coordinates when provided."""
+    ai_driver = Mock()
+    android_runner = Mock()
+    android_runner.execute_adb_remote.return_value = "Physical size: 1080x1920"
+    screenshot_manager = Mock()
+    explorer = AppExplorer(ai_driver, android_runner, screenshot_manager)
+
+    op = Operation(
+        type=OperationType.SWIPE,
+        params={"start_x": 100, "start_y": 900, "end_x": 100, "end_y": 200},
+        description="swipe up",
+    )
+    explorer._execute_operation("127.0.0.1", 5555, op)
+
+    android_runner.execute_swipe.assert_called_once_with("127.0.0.1", 5555, 100, 900, 100, 200)
+
+
+def test_decide_operation_with_timeout_returns_wait_fallback():
+    """Slow AI decision should fallback to wait when timeout is exceeded."""
+    ai_driver = Mock()
+
+    def slow_decide(*args, **kwargs):
+        time.sleep(1.5)
+        return Operation(type=OperationType.TAP, params={"x": 1, "y": 1}, description="slow")
+
+    ai_driver.analyze_and_decide.side_effect = slow_decide
+    android_runner = Mock()
+    screenshot_manager = Mock()
+    explorer = AppExplorer(ai_driver, android_runner, screenshot_manager)
+    explorer.policy.ai_step_timeout_seconds = 1
+
+    op = explorer._decide_operation_with_timeout(b"img", goal="explore")
+
+    assert op.type == OperationType.WAIT
+    assert "timeout" in op.description.lower()

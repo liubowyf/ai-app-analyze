@@ -4,6 +4,7 @@ import os
 import re
 import time
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from collections import defaultdict
 from typing import List, Dict, Optional, Tuple, Any, Set
 from dataclasses import dataclass, field
@@ -461,10 +462,9 @@ class AppExplorer:
                     continue
 
                 # AI analyzes and decides next action
-                operation = self.ai_driver.analyze_and_decide(
-                    screenshot_data,
-                    self.exploration_history,
-                    goal="深度探索应用功能，触发更多网络请求"
+                operation = self._decide_operation_with_timeout(
+                    screenshot_data=screenshot_data,
+                    goal="深度探索应用功能，触发更多网络请求",
                 )
 
                 if operation.type in (OperationType.WAIT, OperationType.LAUNCH, OperationType.HOME):
@@ -627,6 +627,37 @@ class AppExplorer:
             params={"x": best.x, "y": best.y},
             description=f"UI-guided tap ({best.reason})",
         )
+
+    def _decide_operation_with_timeout(
+        self,
+        screenshot_data: bytes,
+        goal: str,
+    ) -> Operation:
+        """Run AI decision with a hard timeout to avoid per-step hangs."""
+        timeout_seconds = max(1, int(self.policy.ai_step_timeout_seconds))
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                self.ai_driver.analyze_and_decide,
+                screenshot_data,
+                self.exploration_history,
+                goal,
+            )
+            try:
+                return future.result(timeout=timeout_seconds)
+            except FuturesTimeoutError:
+                logger.warning("AI decision timeout after %ss, fallback to Wait", timeout_seconds)
+                return Operation(
+                    type=OperationType.WAIT,
+                    params={"duration": 1},
+                    description=f"AI timeout({timeout_seconds}s), fallback wait",
+                )
+            except Exception as exc:
+                logger.warning("AI decision error: %s", exc)
+                return Operation(
+                    type=OperationType.WAIT,
+                    params={"duration": 1},
+                    description="AI error fallback wait",
+                )
 
     def _get_display_size(self, host: str, port: int) -> Tuple[int, int]:
         """Get display size from emulator; fallback to 1080x1920."""
@@ -826,16 +857,27 @@ class AppExplorer:
             self.android_runner.execute_tap(host, port, x, y)
 
         elif op_type == "Swipe":
-            direction = params.get("direction", "up")
-            # Swipe from center
-            if direction == "up":
-                self.android_runner.execute_swipe(host, port, 540, 1500, 540, 500)
-            elif direction == "down":
-                self.android_runner.execute_swipe(host, port, 540, 500, 540, 1500)
-            elif direction == "left":
-                self.android_runner.execute_swipe(host, port, 1000, 960, 100, 960)
-            elif direction == "right":
-                self.android_runner.execute_swipe(host, port, 100, 960, 1000, 960)
+            # Prefer explicit coordinates from Open-AutoGLM action conversion.
+            if all(k in params for k in ("start_x", "start_y", "end_x", "end_y")):
+                self.android_runner.execute_swipe(
+                    host,
+                    port,
+                    int(params.get("start_x")),
+                    int(params.get("start_y")),
+                    int(params.get("end_x")),
+                    int(params.get("end_y")),
+                )
+            else:
+                direction = params.get("direction", "up")
+                # Swipe from center
+                if direction == "up":
+                    self.android_runner.execute_swipe(host, port, 540, 1500, 540, 500)
+                elif direction == "down":
+                    self.android_runner.execute_swipe(host, port, 540, 500, 540, 1500)
+                elif direction == "left":
+                    self.android_runner.execute_swipe(host, port, 1000, 960, 100, 960)
+                elif direction == "right":
+                    self.android_runner.execute_swipe(host, port, 100, 960, 1000, 960)
 
         elif op_type == "Type":
             text = params.get("text", "")

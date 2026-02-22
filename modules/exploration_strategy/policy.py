@@ -51,6 +51,7 @@ class ExplorationPolicy:
     form_submit_keywords: List[str] = field(default_factory=lambda: [
         "登录", "注册", "下一步", "提交", "确认", "确定", "继续", "完成", "发送", "获取验证码",
     ])
+    ai_step_timeout_seconds: int = 20
     enable_clear_data_recovery: bool = False
     enable_reinstall_recovery: bool = False
 
@@ -77,6 +78,12 @@ class ExplorationPolicy:
             form_submit_keywords=_parse_list("APP_EXPLORATION_FORM_SUBMIT_KEYWORDS", [
                 "登录", "注册", "下一步", "提交", "确认", "确定", "继续", "完成", "发送", "获取验证码",
             ]),
+            ai_step_timeout_seconds=_parse_int(
+                "APP_EXPLORATION_AI_STEP_TIMEOUT_SECONDS",
+                20,
+                5,
+                180,
+            ),
             enable_clear_data_recovery=_parse_bool("APP_EXPLORATION_ENABLE_CLEAR_DATA_RECOVERY", False),
             enable_reinstall_recovery=_parse_bool("APP_EXPLORATION_ENABLE_REINSTALL_RECOVERY", False),
         )
