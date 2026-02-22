@@ -80,8 +80,11 @@ Core service code is split by layer:
 - Start incremental productionization on top of the validated core loop:
   - keep core loop behavior and acceptance metrics unchanged,
   - add normalized persistence for dynamic outputs (network/domains/screenshots summary),
+  - add per-stage run persistence (`analysis_runs`: stage/attempt/status/duration/error/emulator),
   - add distributed emulator lease for multi-worker concurrency safety,
   - unify task workflow orchestration for API-triggered runs,
   - expose task metrics + dynamic evidence query APIs for integration callers.
+- Add baseline load-testing entrypoint for concurrency tuning:
+  - `scripts/load_test_tasks.py` (supports dispatch + poll + recommendation artifact output).
 - Priority rule:
   - do not degrade current minimal dynamic run quality (`requests/screenshots/domains`) while expanding persistence and API abilities.

@@ -9,6 +9,7 @@ from core.database import SessionLocal
 from core.storage import storage_client
 from models.task import Task, TaskStatus
 from modules.apk_analyzer.analyzer import ApkAnalyzer
+from modules.task_orchestration.run_tracker import finish_stage_run, start_stage_run
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ def run_static_analysis(self, task_id: str) -> dict:
 
         # Update task status
         task.status = TaskStatus.STATIC_ANALYZING
+        start_stage_run(db, task_id=task_id, stage="static")
         db.commit()
 
         logger.info(f"Starting static analysis for task {task_id}")
@@ -48,6 +50,13 @@ def run_static_analysis(self, task_id: str) -> dict:
                 "is_packed": True,
                 "message": "APK is packed/encrypted. Static analysis skipped, proceeding to dynamic analysis."
             }
+            finish_stage_run(
+                db,
+                task_id=task_id,
+                stage="static",
+                success=True,
+                details={"status": "skipped_packed"},
+            )
             db.commit()
 
             logger.info(f"Skipping static analysis for packed APK {task_id}")
@@ -83,6 +92,13 @@ def run_static_analysis(self, task_id: str) -> dict:
         result_dict = convert_datetime(result_dict)
 
         task.static_analysis_result = result_dict
+        finish_stage_run(
+            db,
+            task_id=task_id,
+            stage="static",
+            success=True,
+            details={"status": "success", "package_name": result.basic_info.package_name},
+        )
         db.commit()
 
         logger.info(f"Static analysis completed for task {task_id}")
@@ -102,6 +118,14 @@ def run_static_analysis(self, task_id: str) -> dict:
                 "message": f"Static analysis failed: {str(e)}. Proceeding to dynamic analysis.",
                 "is_packed": "AndroidManifest.xml" in str(e) or "encrypted" in str(e).lower()
             }
+            finish_stage_run(
+                db,
+                task_id=task_id,
+                stage="static",
+                success=False,
+                error_message=str(e),
+                details={"status": "failed"},
+            )
             db.commit()
             logger.info(f"Static analysis failed but proceeding to dynamic analysis for task {task_id}")
 

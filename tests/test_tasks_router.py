@@ -278,3 +278,39 @@ class TestTasksRouter:
             assert data["task_id"] == "test-task-id"
             assert data["count"] == 1
             assert data["domains"][0]["domain"] == "api.demo.com"
+
+    def test_get_task_runs(self, client: TestClient):
+        """Test stage run timeline endpoint."""
+        mock_task = create_mock_task(status=TaskStatus.COMPLETED)
+        mock_run = MagicMock()
+        mock_run.id = "run-1"
+        mock_run.stage = "dynamic"
+        mock_run.attempt = 1
+        mock_run.status = "success"
+        mock_run.worker_name = "worker-a"
+        mock_run.emulator = "10.0.0.1:5555"
+        mock_run.started_at = datetime.utcnow()
+        mock_run.completed_at = datetime.utcnow()
+        mock_run.duration_seconds = 123
+        mock_run.error_message = None
+        mock_run.details = {"steps": 10}
+
+        with patch("api.routers.tasks.SessionLocal") as mock_session_local:
+            mock_db = MagicMock(spec=Session)
+            mock_session_local.return_value = mock_db
+
+            task_query = MagicMock()
+            runs_query = MagicMock()
+            mock_db.query.side_effect = [task_query, runs_query]
+            task_query.filter.return_value.first.return_value = mock_task
+            runs_query.filter.return_value.order_by.return_value.all.return_value = [mock_run]
+
+            response = client.get("/api/v1/tasks/test-task-id/runs")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["task_id"] == "test-task-id"
+            assert data["count"] == 1
+            assert data["summary"]["dynamic"]["runs"] == 1
+            assert data["summary"]["dynamic"]["success_runs"] == 1
+            assert data["items"][0]["duration_seconds"] == 123

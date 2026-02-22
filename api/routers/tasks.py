@@ -12,9 +12,9 @@ from sqlalchemy.orm import Session
 
 from api.schemas.task import TaskCreateRequest, TaskListResponse, TaskResponse
 from core.database import SessionLocal
-from models.analysis_tables import MasterDomainTable, NetworkRequestTable
+from models.analysis_tables import AnalysisRunTable, MasterDomainTable, NetworkRequestTable
 from models.task import Task, TaskStatus
-from modules.task_orchestration import enqueue_analysis_workflow
+from modules.task_orchestration.orchestrator import enqueue_analysis_workflow
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -155,6 +155,53 @@ def get_task_network_requests(
         "limit": limit,
         "items": items,
     }
+
+
+@router.get("/tasks/{task_id}/runs")
+def get_task_runs(task_id: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Get per-stage execution timeline with durations and failure reasons."""
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    rows = (
+        db.query(AnalysisRunTable)
+        .filter(AnalysisRunTable.task_id == task_id)
+        .order_by(AnalysisRunTable.started_at.asc(), AnalysisRunTable.attempt.asc())
+        .all()
+    )
+    items: List[Dict[str, Any]] = []
+    for row in rows:
+        items.append(
+            {
+                "id": row.id,
+                "stage": row.stage,
+                "attempt": row.attempt,
+                "status": row.status,
+                "worker_name": row.worker_name,
+                "emulator": row.emulator,
+                "started_at": row.started_at.isoformat() if row.started_at else None,
+                "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+                "duration_seconds": row.duration_seconds,
+                "error_message": row.error_message,
+                "details": row.details,
+            }
+        )
+    summary: Dict[str, Dict[str, Any]] = {}
+    for item in items:
+        stage = item["stage"]
+        stage_summary = summary.setdefault(
+            stage,
+            {"runs": 0, "success_runs": 0, "failed_runs": 0, "total_duration_seconds": 0},
+        )
+        stage_summary["runs"] += 1
+        stage_summary["total_duration_seconds"] += int(item.get("duration_seconds") or 0)
+        if item.get("status") == "success":
+            stage_summary["success_runs"] += 1
+        elif item.get("status") == "failed":
+            stage_summary["failed_runs"] += 1
+
+    return {"task_id": task_id, "count": len(items), "summary": summary, "items": items}
 
 
 @router.get("/tasks/{task_id}/domains")

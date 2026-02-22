@@ -10,6 +10,7 @@ from core.database import SessionLocal
 from core.storage import storage_client
 from models.task import Task, TaskStatus
 from modules.report_generator import ReportGenerator, generate_analysis_report
+from modules.task_orchestration.run_tracker import finish_stage_run, start_stage_run
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ def generate_report(self, task_id: Any) -> dict:
 
         # Update task status
         task.status = TaskStatus.REPORT_GENERATING
+        start_stage_run(db, task_id=task_id, stage="report")
         db.commit()
 
         logger.info(f"Starting report generation for task {task_id}")
@@ -116,6 +118,13 @@ def generate_report(self, task_id: Any) -> dict:
         task.status = TaskStatus.COMPLETED
         task.error_message = None
         task.completed_at = func.now()
+        finish_stage_run(
+            db,
+            task_id=task_id,
+            stage="report",
+            success=True,
+            details={"report_path": report_path},
+        )
         db.commit()
 
         logger.info(f"Report generated successfully for task {task_id}")
@@ -131,6 +140,13 @@ def generate_report(self, task_id: Any) -> dict:
         if task:
             task.status = TaskStatus.FAILED
             task.error_message = str(e)
+            finish_stage_run(
+                db,
+                task_id=task_id,
+                stage="report",
+                success=False,
+                error_message=str(e),
+            )
             db.commit()
         raise
 

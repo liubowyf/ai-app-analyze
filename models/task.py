@@ -107,6 +107,7 @@ class Task(Base):
     network_requests = relationship("NetworkRequestTable", back_populates="task")
     master_domains_table = relationship("MasterDomainTable", back_populates="task")
     screenshots_table = relationship("ScreenshotTable", back_populates="task")
+    analysis_runs = relationship("AnalysisRunTable", back_populates="task")
 
     # Add explicit indexes
     __table_args__ = (

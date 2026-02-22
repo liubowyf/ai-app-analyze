@@ -32,6 +32,11 @@ from modules.screenshot_manager.manager import ScreenshotManager
 from modules.exploration_strategy.explorer import AppExplorer
 from modules.exploration_strategy.policy import ExplorationPolicy
 from modules.domain_analyzer.analyzer import MasterDomainAnalyzer
+from modules.task_orchestration.run_tracker import (
+    finish_stage_run,
+    start_stage_run,
+    update_stage_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +74,13 @@ def _mark_task_failed(task_id: str, error_message: str) -> None:
             return
         failed_task.status = TaskStatus.FAILED
         failed_task.error_message = error_message
+        finish_stage_run(
+            fail_db,
+            task_id=task_id,
+            stage="dynamic",
+            success=False,
+            error_message=error_message,
+        )
         _commit_with_retry(fail_db, context="mark_task_failed")
     except Exception as exc:
         logger.error("Failed to persist task failure status for %s: %s", task_id, exc)
@@ -783,6 +795,7 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
 
         # Update task status
         task.status = TaskStatus.DYNAMIC_ANALYZING
+        start_stage_run(db, task_id=task_id, stage="dynamic")
         _commit_with_retry(db, context="set_dynamic_analyzing")
 
         logger.info(f"Starting dynamic analysis for task {task_id}")
@@ -801,6 +814,12 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
 
         host = emulator["host"]
         port = emulator["port"]
+        update_stage_context(
+            db,
+            task_id=task_id,
+            stage="dynamic",
+            emulator=f"{host}:{port}",
+        )
 
         # 3. Connect to emulator
         android_runner = AndroidRunner()
@@ -962,6 +981,17 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
             exploration_result=exploration_result,
             traffic_monitor=traffic_monitor,
             domain_report=domain_report,
+        )
+        finish_stage_run(
+            db,
+            task_id=task_id,
+            stage="dynamic",
+            success=True,
+            details={
+                "steps": exploration_result.total_steps,
+                "primary_requests": len(network_requests),
+                "master_domains": len(master_domains),
+            },
         )
         _commit_with_retry(db, context="save_dynamic_result")
 

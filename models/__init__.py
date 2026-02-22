@@ -12,6 +12,7 @@ from models.analysis_result import (
     StaticAnalysisResult,
 )
 from models.analysis_tables import (
+    AnalysisRunTable,
     DynamicAnalysisTable,
     MasterDomainTable,
     NetworkRequestTable,
@@ -40,6 +41,7 @@ __all__ = [
     "NetworkRequestTable",
     "MasterDomainTable",
     "ScreenshotTable",
+    "AnalysisRunTable",
     "WhitelistCategory",
     "WhitelistRule",
 ]

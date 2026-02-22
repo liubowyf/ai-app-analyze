@@ -10,7 +10,7 @@ from api.schemas.apk import APKUploadResponse
 from core.database import SessionLocal
 from core.storage import storage_client
 from models.task import Task, TaskPriority, TaskStatus
-from modules.task_orchestration import enqueue_analysis_workflow
+from modules.task_orchestration.orchestrator import enqueue_analysis_workflow
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

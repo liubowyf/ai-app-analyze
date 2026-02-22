@@ -204,3 +204,34 @@ class ScreenshotTable(Base):
 
     # Relationship
     task = relationship("Task", back_populates="screenshots_table")
+
+
+class AnalysisRunTable(Base):
+    """
+    Per-stage execution run records for one task.
+
+    Tracks stage-level lifecycle, duration and failures:
+    - static
+    - dynamic
+    - report
+    """
+
+    __tablename__ = "analysis_runs"
+
+    id: Mapped[str] = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    task_id: Mapped[str] = Column(String(36), ForeignKey("tasks.id"), nullable=False, index=True)
+
+    stage: Mapped[str] = Column(String(32), nullable=False, index=True)
+    attempt: Mapped[int] = Column(Integer, default=1, nullable=False)
+    status: Mapped[str] = Column(String(20), default="running", nullable=False, index=True)
+
+    worker_name: Mapped[Optional[str]] = Column(String(120), nullable=True)
+    emulator: Mapped[Optional[str]] = Column(String(120), nullable=True)
+    details: Mapped[Optional[dict]] = Column(JSON, nullable=True)
+
+    started_at: Mapped[datetime] = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    completed_at: Mapped[Optional[datetime]] = Column(DateTime, nullable=True)
+    duration_seconds: Mapped[int] = Column(Integer, default=0, nullable=False)
+    error_message: Mapped[Optional[str]] = Column(Text, nullable=True)
+
+    task = relationship("Task", back_populates="analysis_runs")
