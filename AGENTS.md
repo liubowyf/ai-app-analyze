@@ -43,7 +43,7 @@ Core service code is split by layer:
 
 ## Security & Configuration Tips
 - Copy `.env.example` to `.env`; never commit secrets.
-- Validate key integrations (MySQL/Redis/MinIO/AI endpoint) before running workers.
+- Validate key integrations (MySQL/RabbitMQ/MinIO/AI endpoint) before running workers.
 - Use test doubles/mocks for external systems in CI and local test runs.
 
 ## Current Core Baseline (2026-02-22)

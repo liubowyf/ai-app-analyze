@@ -1,19 +1,27 @@
-"""Redis-backed emulator lease manager for cross-worker concurrency safety."""
+"""MySQL-backed emulator lease manager for cross-worker concurrency safety."""
 
 from __future__ import annotations
 
-import json
 import logging
 import os
+import socket
+import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
-import redis
+from sqlalchemy import or_, text
+from sqlalchemy.orm import Session
 
 from core.config import settings
+from core.database import SessionLocal, engine
+from models.emulator_lease import EmulatorLeaseTable
 
 logger = logging.getLogger(__name__)
+
+
+def _utc_now_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def build_emulator_candidates() -> List[Dict[str, int | str]]:
@@ -41,39 +49,63 @@ def build_emulator_candidates() -> List[Dict[str, int | str]]:
 
 
 class EmulatorLeaseManager:
-    """Manage emulator leases via Redis to support multi-process workers."""
+    """Manage emulator leases via MySQL for distributed workers."""
 
     def __init__(
         self,
-        redis_url: Optional[str] = None,
         lease_ttl_seconds: int = 3600,
-        key_prefix: str = "apk:emulator:lease:",
+        worker_name: Optional[str] = None,
     ):
-        self.redis_url = redis_url or settings.CELERY_BROKER_URL
         self.lease_ttl_seconds = max(60, min(int(lease_ttl_seconds), 12 * 3600))
-        self.key_prefix = key_prefix
-        self._client: Optional[redis.Redis] = None
+        self.worker_name = worker_name or os.getenv("HOSTNAME") or socket.gethostname()
+        self._schema_ready = False
+        self._schema_lock = threading.Lock()
+
+    def _ensure_schema(self) -> None:
+        if self._schema_ready:
+            return
+        with self._schema_lock:
+            if self._schema_ready:
+                return
+            try:
+                EmulatorLeaseTable.__table__.create(bind=engine, checkfirst=True)
+                self._schema_ready = True
+            except Exception as exc:
+                logger.warning("Failed to ensure emulator lease table: %s", exc)
 
     @staticmethod
-    def _is_redis_url(url: str) -> bool:
-        return isinstance(url, str) and url.startswith("redis://")
+    def _normalize_candidates(
+        candidates: Optional[List[Dict[str, int | str]]],
+    ) -> List[Dict[str, int | str]]:
+        if not candidates:
+            return build_emulator_candidates()
+        normalized: List[Dict[str, int | str]] = []
+        for row in candidates:
+            if "host" not in row or "port" not in row:
+                continue
+            normalized.append({"host": str(row["host"]), "port": int(row["port"])})
+        return normalized
 
-    def _get_client(self) -> Optional[redis.Redis]:
-        if self._client is not None:
-            return self._client
-        if not self._is_redis_url(self.redis_url):
-            return None
-        try:
-            self._client = redis.from_url(self.redis_url, decode_responses=True)
-            self._client.ping()
-            return self._client
-        except Exception as exc:
-            logger.warning("Redis lease manager unavailable: %s", exc)
-            self._client = None
-            return None
-
-    def _lease_key(self, host: str, port: int) -> str:
-        return f"{self.key_prefix}{host}:{port}"
+    def _seed_candidates(self, db: Session, candidates: List[Dict[str, int | str]]) -> None:
+        now = _utc_now_naive()
+        sql = text(
+            """
+            INSERT INTO emulator_leases (id, host, port, created_at, updated_at)
+            VALUES (:id, :host, :port, :created_at, :updated_at)
+            ON DUPLICATE KEY UPDATE updated_at = updated_at
+            """
+        )
+        for item in candidates:
+            db.execute(
+                sql,
+                {
+                    "id": str(uuid.uuid4()),
+                    "host": str(item["host"]),
+                    "port": int(item["port"]),
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            )
 
     def acquire(
         self,
@@ -81,67 +113,132 @@ class EmulatorLeaseManager:
         candidates: Optional[List[Dict[str, int | str]]] = None,
     ) -> Optional[Dict[str, str | int]]:
         """Acquire one emulator lease. Returns None if no slot available."""
-        client = self._get_client()
-        if client is None:
-            return None
-
-        pool = candidates or build_emulator_candidates()
+        pool = self._normalize_candidates(candidates)
         if not pool:
             return None
 
-        for item in pool:
-            host = str(item["host"])
-            port = int(item["port"])
-            key = self._lease_key(host, port)
-            lease_token = uuid.uuid4().hex
-            payload = {
-                "task_id": task_id,
-                "lease_token": lease_token,
-                "leased_at": datetime.now(timezone.utc).isoformat(),
-                "pid": os.getpid(),
-            }
-            try:
-                ok = client.set(key, json.dumps(payload, ensure_ascii=False), nx=True, ex=self.lease_ttl_seconds)
-            except Exception as exc:
-                logger.warning("Failed to acquire emulator lease key=%s: %s", key, exc)
-                continue
-            if ok:
-                return {
-                    "host": host,
-                    "port": port,
-                    "lease_key": key,
-                    "lease_token": lease_token,
-                }
-        return None
+        self._ensure_schema()
+
+        db: Session = SessionLocal()
+        now = _utc_now_naive()
+        expires_at = now + timedelta(seconds=self.lease_ttl_seconds)
+        try:
+            self._seed_candidates(db, pool)
+            db.commit()
+
+            for item in pool:
+                host = str(item["host"])
+                port = int(item["port"])
+                lease_token = uuid.uuid4().hex
+
+                updated = (
+                    db.query(EmulatorLeaseTable)
+                    .filter(
+                        EmulatorLeaseTable.host == host,
+                        EmulatorLeaseTable.port == port,
+                    )
+                    .filter(
+                        or_(
+                            EmulatorLeaseTable.lease_token.is_(None),
+                            EmulatorLeaseTable.expires_at.is_(None),
+                            EmulatorLeaseTable.expires_at <= now,
+                        )
+                    )
+                    .update(
+                        {
+                            EmulatorLeaseTable.lease_token: lease_token,
+                            EmulatorLeaseTable.task_id: task_id,
+                            EmulatorLeaseTable.worker_name: self.worker_name,
+                            EmulatorLeaseTable.holder_pid: os.getpid(),
+                            EmulatorLeaseTable.leased_at: now,
+                            EmulatorLeaseTable.expires_at: expires_at,
+                            EmulatorLeaseTable.released_at: None,
+                            EmulatorLeaseTable.updated_at: now,
+                        },
+                        synchronize_session=False,
+                    )
+                )
+                if updated:
+                    db.commit()
+                    return {
+                        "host": host,
+                        "port": port,
+                        "lease_token": lease_token,
+                        "lease_backend": "mysql",
+                    }
+            db.rollback()
+            return None
+        except Exception as exc:
+            db.rollback()
+            logger.warning("Failed to acquire emulator lease for task=%s: %s", task_id, exc)
+            return None
+        finally:
+            db.close()
 
     def release(self, lease_info: Dict[str, str | int]) -> bool:
-        """Release lease if token matches."""
-        client = self._get_client()
-        if client is None:
+        """Release lease if token/task matches."""
+        host = lease_info.get("host")
+        port = lease_info.get("port")
+        if host is None or port is None:
             return False
 
-        key = str(lease_info.get("lease_key") or "")
-        token = str(lease_info.get("lease_token") or "")
-        if not key:
-            host = lease_info.get("host")
-            port = lease_info.get("port")
-            if host is None or port is None:
-                return False
-            key = self._lease_key(str(host), int(port))
+        host_str = str(host)
+        port_int = int(port)
+        token = str(lease_info.get("lease_token") or "").strip()
+        task_id = str(lease_info.get("task_id") or "").strip()
 
+        self._ensure_schema()
+
+        db: Session = SessionLocal()
+        now = _utc_now_naive()
         try:
-            raw = client.get(key)
-            if not raw:
-                return True
+            query = db.query(EmulatorLeaseTable).filter(
+                EmulatorLeaseTable.host == host_str,
+                EmulatorLeaseTable.port == port_int,
+            )
             if token:
-                try:
-                    parsed = json.loads(raw)
-                except Exception:
-                    parsed = {}
-                if parsed.get("lease_token") and parsed.get("lease_token") != token:
-                    return False
-            client.delete(key)
-            return True
-        except Exception as exc:
-            logger.warning("Failed to release emulator lease key=%s: %s", key, exc)
+                query = query.filter(EmulatorLeaseTable.lease_token == token)
+            elif task_id:
+                query = query.filter(EmulatorLeaseTable.task_id == task_id)
+
+            updated = query.update(
+                {
+                    EmulatorLeaseTable.lease_token: None,
+                    EmulatorLeaseTable.task_id: None,
+                    EmulatorLeaseTable.worker_name: None,
+                    EmulatorLeaseTable.holder_pid: None,
+                    EmulatorLeaseTable.leased_at: None,
+                    EmulatorLeaseTable.expires_at: None,
+                    EmulatorLeaseTable.released_at: now,
+                    EmulatorLeaseTable.updated_at: now,
+                },
+                synchronize_session=False,
+            )
+            if updated:
+                db.commit()
+                return True
+
+            db.rollback()
+            existing = (
+                db.query(EmulatorLeaseTable)
+                .filter(
+                    EmulatorLeaseTable.host == host_str,
+                    EmulatorLeaseTable.port == port_int,
+                )
+                .first()
+            )
+            if not existing or not existing.lease_token:
+                return True
             return False
+        except Exception as exc:
+            db.rollback()
+            logger.warning(
+                "Failed to release emulator lease %s:%s token=%s: %s",
+                host_str,
+                port_int,
+                token[:8] if token else "-",
+                exc,
+            )
+            return False
+        finally:
+            db.close()

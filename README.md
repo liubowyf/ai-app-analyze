@@ -19,7 +19,7 @@
        │                   │                   │
        ▼                   ▼                   ▼
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   MySQL     │     │   Redis     │     │   MinIO     │
+│   MySQL     │     │  RabbitMQ   │     │   MinIO     │
 │  (元数据)   │     │  (队列)     │     │ (文件存储)  │
 └─────────────┘     └─────────────┘     └─────────────┘
 ```
@@ -43,7 +43,7 @@
 
 - Python 3.11+
 - MySQL 8.0+
-- Redis 7.0+
+- RabbitMQ 3.x+
 - MinIO
 
 ### 安装
@@ -73,9 +73,16 @@ MYSQL_USER=root
 MYSQL_PASSWORD=your_password
 MYSQL_DATABASE=apk_analysis
 
-# Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
+# RabbitMQ
+RABBITMQ_HOST=localhost
+RABBITMQ_PORT=5672
+RABBITMQ_USER=guest
+RABBITMQ_PASSWORD=guest
+RABBITMQ_VHOST=/
+
+# Celery
+CELERY_BROKER_URL=amqp://guest:guest@localhost:5672//
+CELERY_RESULT_BACKEND=rpc://
 
 # MinIO
 MINIO_ENDPOINT=localhost:9000
@@ -195,7 +202,7 @@ curl "http://localhost:8000/api/v1/tasks/your-task-id/report" -o report.pdf
 | 类别 | 技术 |
 |------|------|
 | Web 框架 | FastAPI |
-| 任务队列 | Celery + Redis |
+| 任务队列 | Celery + RabbitMQ |
 | 数据库 | MySQL + SQLAlchemy |
 | 对象存储 | MinIO |
 | 静态分析 | androguard |

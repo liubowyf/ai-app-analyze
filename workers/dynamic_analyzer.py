@@ -13,6 +13,7 @@ import time
 import uuid
 
 from celery import shared_task
+from celery.exceptions import Retry
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 
@@ -90,72 +91,36 @@ def _mark_task_failed(task_id: str, error_message: str) -> None:
         fail_db.close()
 
 
-def _build_emulator_pool() -> list[dict]:
-    """Build in-process fallback emulator pool when distributed lease is unavailable."""
-    candidates = []
-    for item in settings.android_emulators:
-        if not item or ":" not in item:
-            continue
-        host, port_raw = item.rsplit(":", 1)
-        try:
-            port = int(port_raw)
-        except ValueError:
-            logger.warning("Skip invalid emulator config: %s", item)
-            continue
-        candidates.append({"host": host.strip(), "port": port, "in_use": False})
-    if not candidates:
-        candidates = [{"host": "10.16.148.66", "port": 5558, "in_use": False}]
-    return candidates
-
-
-# Remote emulator pool configuration (fallback)
-EMULATOR_POOL = _build_emulator_pool()
 EMULATOR_LEASE_MANAGER = EmulatorLeaseManager(
-    lease_ttl_seconds=int(os.getenv("EMULATOR_LEASE_TTL_SECONDS", "3900"))
+    lease_ttl_seconds=settings.emulator_lease_ttl_seconds,
 )
+EMULATOR_WAIT_RETRY_SECONDS = max(5, int(os.getenv("EMULATOR_WAIT_RETRY_SECONDS", "20")))
+EMULATOR_WAIT_MAX_RETRIES = max(1, int(os.getenv("EMULATOR_WAIT_MAX_RETRIES", "45")))
 
-
-def _try_allocate_from_local_pool() -> Optional[Dict]:
-    """Fallback allocator when distributed lock backend is unavailable."""
-    for emulator in EMULATOR_POOL:
-        if not emulator["in_use"]:
-            emulator["in_use"] = True
-            logger.info(
-                "Allocated emulator via local pool %s:%s",
-                emulator["host"],
-                emulator["port"],
-            )
-            return emulator
-    return None
-
-
-def get_available_emulator(task_id: Optional[str] = None) -> Optional[Dict]:
+def get_available_emulator(task_id: str) -> Optional[Dict]:
     """
-    Get an available emulator using distributed lease first, then local fallback.
+    Get an available emulator via distributed lease.
 
     Returns:
         Emulator config dict or None if all are busy
     """
-    if task_id:
-        leased = EMULATOR_LEASE_MANAGER.acquire(task_id=task_id)
-        if leased:
-            logger.info(
-                "Allocated emulator via distributed lease %s:%s task=%s",
-                leased["host"],
-                leased["port"],
-                task_id,
-            )
-            return leased
-    emulator = _try_allocate_from_local_pool()
-    if emulator:
-        return emulator
-    logger.warning("No available emulators in pool")
+    leased = EMULATOR_LEASE_MANAGER.acquire(task_id=task_id)
+    if leased:
+        logger.info(
+            "Allocated emulator via lease %s:%s task=%s backend=%s",
+            leased["host"],
+            leased["port"],
+            task_id,
+            leased.get("lease_backend", "mysql"),
+        )
+        return leased
+    logger.warning("No available emulator lease for task=%s", task_id)
     return None
 
 
 def release_emulator(emulator: Dict) -> None:
     """
-    Release an emulator back to the pool.
+    Release an emulator distributed lease.
 
     Args:
         emulator: Emulator config dict
@@ -163,7 +128,7 @@ def release_emulator(emulator: Dict) -> None:
     if not emulator:
         return
 
-    if emulator.get("lease_key"):
+    if emulator.get("host") is not None and emulator.get("port") is not None:
         released = EMULATOR_LEASE_MANAGER.release(emulator)
         if released:
             logger.info(
@@ -173,11 +138,11 @@ def release_emulator(emulator: Dict) -> None:
             )
             return
 
-    emulator["in_use"] = False
-    logger.info(
-        "Released emulator local slot %s:%s",
+    logger.warning(
+        "Failed to release emulator lease cleanly %s:%s token=%s",
         emulator.get("host"),
         emulator.get("port"),
+        str(emulator.get("lease_token") or "")[:8] or "-",
     )
 
 
@@ -898,7 +863,18 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
         # 2. Select available emulator
         emulator = get_available_emulator(task_id=task_id)
         if not emulator:
-            raise RuntimeError("No available emulators in pool")
+            logger.info(
+                "No emulator slot for task=%s, retry in %ss (attempt %s/%s)",
+                task_id,
+                EMULATOR_WAIT_RETRY_SECONDS,
+                self.request.retries + 1,
+                EMULATOR_WAIT_MAX_RETRIES,
+            )
+            raise self.retry(
+                countdown=EMULATOR_WAIT_RETRY_SECONDS,
+                max_retries=EMULATOR_WAIT_MAX_RETRIES,
+                exc=RuntimeError("No available emulators in distributed lease pool"),
+            )
 
         host = emulator["host"]
         port = emulator["port"]
@@ -1088,6 +1064,8 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
             "master_domains": len(master_domains),
         }
 
+    except Retry:
+        raise
     except Exception as e:
         logger.error(f"Dynamic analysis failed for task {task_id}: {e}", exc_info=True)
         try:

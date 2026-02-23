@@ -6,8 +6,8 @@ from core.config import settings
 # 使用RabbitMQ作为broker和result backend
 celery_app: Celery = Celery(
     "workers",
-    broker=settings.CELERY_BROKER_URL,
-    backend=settings.CELERY_RESULT_BACKEND,
+    broker=settings.celery_broker_url,
+    backend=settings.celery_result_backend,
 )
 
 # Celery configuration

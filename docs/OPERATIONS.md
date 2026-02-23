@@ -21,7 +21,7 @@
 
 - Python 3.11+
 - MySQL 8.0+
-- RabbitMQ 3.x (或 Redis 7.0+)
+- RabbitMQ 3.x+
 - MinIO
 - Docker (用于 Android 模拟器)
 

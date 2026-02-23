@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     MYSQL_PASSWORD: str = ""
     MYSQL_DATABASE: str = "apk_analysis"
 
-    # RabbitMQ Configuration (替代Redis)
+    # RabbitMQ Configuration
     RABBITMQ_HOST: str = "localhost"
     RABBITMQ_PORT: int = 5672
     RABBITMQ_USER: str = "guest"
@@ -48,8 +48,9 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
 
     # Celery Configuration
-    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
-    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
+    CELERY_BROKER_URL: str = "amqp://guest:guest@localhost:5672//"
+    CELERY_RESULT_BACKEND: str = "rpc://"
+    EMULATOR_LEASE_TTL_SECONDS: int = 3900
 
     @property
     def mysql_url(self) -> str:
@@ -66,6 +67,20 @@ class Settings(BaseSettings):
         return f"amqp://{self.RABBITMQ_USER}:{encoded_password}@{self.RABBITMQ_HOST}:{self.RABBITMQ_PORT}/{self.RABBITMQ_VHOST}"
 
     @property
+    def celery_broker_url(self) -> str:
+        """Broker URL with RabbitMQ-first fallback."""
+        if self.CELERY_BROKER_URL:
+            return self.CELERY_BROKER_URL
+        return self.rabbitmq_url
+
+    @property
+    def celery_result_backend(self) -> str:
+        """Result backend URL with RPC fallback."""
+        if self.CELERY_RESULT_BACKEND:
+            return self.CELERY_RESULT_BACKEND
+        return "rpc://"
+
+    @property
     def android_emulators(self) -> List[str]:
         """Get all Android emulator addresses."""
         return [
@@ -74,6 +89,11 @@ class Settings(BaseSettings):
             self.ANDROID_EMULATOR_3,
             self.ANDROID_EMULATOR_4,
         ]
+
+    @property
+    def emulator_lease_ttl_seconds(self) -> int:
+        """Safe emulator lease TTL in seconds."""
+        return max(60, min(int(self.EMULATOR_LEASE_TTL_SECONDS), 12 * 3600))
 
     model_config = SettingsConfigDict(
         env_file=".env",
