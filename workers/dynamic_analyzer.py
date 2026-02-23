@@ -30,6 +30,7 @@ from models.task import Task, TaskStatus
 from modules.android_runner import AndroidRunner
 from modules.emulator_pool import EmulatorLeaseManager
 from modules.traffic_monitor import TrafficMonitor
+from modules.traffic_monitor.proxy_port_lease import ProxyPortLeaseManager
 from modules.ai_driver import AIDriver
 from modules.screenshot_manager.manager import ScreenshotManager
 from modules.exploration_strategy.explorer import AppExplorer
@@ -94,8 +95,15 @@ def _mark_task_failed(task_id: str, error_message: str) -> None:
 EMULATOR_LEASE_MANAGER = EmulatorLeaseManager(
     lease_ttl_seconds=settings.emulator_lease_ttl_seconds,
 )
+PROXY_PORT_LEASE_MANAGER = ProxyPortLeaseManager(
+    port_start=settings.TRAFFIC_PROXY_PORT_START,
+    port_end=settings.TRAFFIC_PROXY_PORT_END,
+    lease_ttl_seconds=settings.traffic_proxy_lease_ttl_seconds,
+)
 EMULATOR_WAIT_RETRY_SECONDS = max(5, int(os.getenv("EMULATOR_WAIT_RETRY_SECONDS", "20")))
 EMULATOR_WAIT_MAX_RETRIES = max(1, int(os.getenv("EMULATOR_WAIT_MAX_RETRIES", "45")))
+PROXY_PORT_WAIT_RETRY_SECONDS = max(5, int(os.getenv("PROXY_PORT_WAIT_RETRY_SECONDS", "12")))
+PROXY_PORT_WAIT_MAX_RETRIES = max(1, int(os.getenv("PROXY_PORT_WAIT_MAX_RETRIES", "90")))
 
 def get_available_emulator(task_id: str) -> Optional[Dict]:
     """
@@ -143,6 +151,47 @@ def release_emulator(emulator: Dict) -> None:
         emulator.get("host"),
         emulator.get("port"),
         str(emulator.get("lease_token") or "")[:8] or "-",
+    )
+
+
+def get_available_proxy_port(task_id: str) -> Optional[Dict]:
+    """
+    Get an available proxy port via distributed lease.
+
+    Returns:
+        Proxy lease dict or None if all ports are busy
+    """
+    leased = PROXY_PORT_LEASE_MANAGER.acquire(task_id=task_id)
+    if leased:
+        logger.info(
+            "Allocated proxy port via lease node=%s port=%s task=%s backend=%s",
+            leased.get("node_name"),
+            leased.get("port"),
+            task_id,
+            leased.get("lease_backend", "mysql"),
+        )
+        return leased
+    logger.warning("No available proxy port lease for task=%s", task_id)
+    return None
+
+
+def release_proxy_port(proxy_lease: Optional[Dict]) -> None:
+    """Release a leased proxy port."""
+    if not proxy_lease:
+        return
+    released = PROXY_PORT_LEASE_MANAGER.release(proxy_lease)
+    if released:
+        logger.info(
+            "Released proxy port lease node=%s port=%s",
+            proxy_lease.get("node_name"),
+            proxy_lease.get("port"),
+        )
+        return
+    logger.warning(
+        "Failed to release proxy port lease node=%s port=%s token=%s",
+        proxy_lease.get("node_name"),
+        proxy_lease.get("port"),
+        str(proxy_lease.get("lease_token") or "")[:8] or "-",
     )
 
 
@@ -705,8 +754,12 @@ def run_dynamic_analysis_minimal(
     else:
         logger.warning("Package name detection failed in minimal mode; installer fallback will be used")
 
+    proxy_lease = get_available_proxy_port(task_id=run_id)
+    if not proxy_lease:
+        raise RuntimeError("No available proxy ports for minimal analysis")
+
     screenshot_manager = ScreenshotManager(task_id=run_id)
-    traffic_monitor = TrafficMonitor()
+    traffic_monitor = TrafficMonitor(proxy_port=int(proxy_lease["port"]))
     traffic_monitor.set_whitelist([])
     traffic_monitor.set_filter_policy(
         {
@@ -745,6 +798,7 @@ def run_dynamic_analysis_minimal(
             emulator_port=selected["port"],
             target_package=package_name,
             android_runner=android_runner,
+            port_fallback_attempts=1,
         )
 
         exploration_result = explorer.run_full_exploration(
@@ -755,6 +809,7 @@ def run_dynamic_analysis_minimal(
         )
     finally:
         traffic_monitor.stop()
+        release_proxy_port(proxy_lease)
         if max_steps is not None:
             if old_env_steps is None:
                 os.environ.pop("APP_EXPLORATION_MAX_STEPS", None)
@@ -805,6 +860,7 @@ def run_dynamic_analysis_minimal(
         "apk_path": str(apk),
         "package_name": package_name,
         "emulator": f"{selected['host']}:{selected['port']}",
+        "proxy_port": int(proxy_lease["port"]),
         "output_dir": str(base_dir),
         "screenshots_dir": str(screenshot_dir),
         "report_path": str(report_path),
@@ -838,6 +894,8 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
     db: Session = SessionLocal()
     task: Optional[Task] = None
     emulator: Optional[Dict] = None
+    proxy_lease: Optional[Dict] = None
+    traffic_monitor: Optional[TrafficMonitor] = None
     apk_temp_path: Optional[str] = None
 
     try:
@@ -875,6 +933,22 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
                 max_retries=EMULATOR_WAIT_MAX_RETRIES,
                 exc=RuntimeError("No available emulators in distributed lease pool"),
             )
+
+        proxy_lease = get_available_proxy_port(task_id=task_id)
+        if not proxy_lease:
+            logger.info(
+                "No proxy port slot for task=%s, retry in %ss (attempt %s/%s)",
+                task_id,
+                PROXY_PORT_WAIT_RETRY_SECONDS,
+                self.request.retries + 1,
+                PROXY_PORT_WAIT_MAX_RETRIES,
+            )
+            raise self.retry(
+                countdown=PROXY_PORT_WAIT_RETRY_SECONDS,
+                max_retries=PROXY_PORT_WAIT_MAX_RETRIES,
+                exc=RuntimeError("No available proxy ports in distributed lease pool"),
+            )
+        proxy_port = int(proxy_lease["port"])
 
         host = emulator["host"]
         port = emulator["port"]
@@ -926,7 +1000,7 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
         screenshot_manager = ScreenshotManager(task_id=task_id)
 
         # Initialize components
-        traffic_monitor = TrafficMonitor()
+        traffic_monitor = TrafficMonitor(proxy_port=proxy_port)
         traffic_monitor.set_whitelist(whitelist_domains)
         traffic_monitor.set_filter_policy(
             {
@@ -975,6 +1049,7 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
             emulator_port=port,
             target_package=package_name,
             android_runner=android_runner,
+            port_fallback_attempts=1,
         )
 
         # 6. Execute full exploration
@@ -1076,6 +1151,15 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
         raise
 
     finally:
+        if traffic_monitor and traffic_monitor.is_running:
+            try:
+                traffic_monitor.stop()
+            except Exception as e:
+                logger.error("Failed to stop traffic monitor in cleanup: %s", e)
+
+        if proxy_lease:
+            release_proxy_port(proxy_lease)
+
         # 9. Release emulator and cleanup
         if emulator:
             release_emulator(emulator)

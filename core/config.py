@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "amqp://guest:guest@localhost:5672//"
     CELERY_RESULT_BACKEND: str = "rpc://"
     EMULATOR_LEASE_TTL_SECONDS: int = 3900
+    TRAFFIC_PROXY_PORT_START: int = 18080
+    TRAFFIC_PROXY_PORT_END: int = 18129
+    TRAFFIC_PROXY_LEASE_TTL_SECONDS: int = 3900
 
     @property
     def mysql_url(self) -> str:
@@ -94,6 +97,11 @@ class Settings(BaseSettings):
     def emulator_lease_ttl_seconds(self) -> int:
         """Safe emulator lease TTL in seconds."""
         return max(60, min(int(self.EMULATOR_LEASE_TTL_SECONDS), 12 * 3600))
+
+    @property
+    def traffic_proxy_lease_ttl_seconds(self) -> int:
+        """Safe proxy-port lease TTL in seconds."""
+        return max(60, min(int(self.TRAFFIC_PROXY_LEASE_TTL_SECONDS), 12 * 3600))
 
     model_config = SettingsConfigDict(
         env_file=".env",

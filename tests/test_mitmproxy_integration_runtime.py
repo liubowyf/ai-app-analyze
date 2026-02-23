@@ -189,6 +189,28 @@ def test_configure_android_proxy_prefers_localhost_when_reverse_works(monkeypatc
     assert any("settings put global http_proxy 127.0.0.1:8080" in cmd for _, _, cmd in commands)
 
 
+def test_reset_android_proxy_clears_global_proxy_and_reverse(monkeypatch):
+    commands = []
+
+    class FakeRunner:
+        def execute_adb_remote(self, host, port, cmd):
+            commands.append((host, port, cmd))
+            if "settings get global http_proxy" in cmd:
+                return "null"
+            return "ok"
+
+    monkeypatch.setattr(
+        "modules.android_runner.AndroidRunner",
+        FakeRunner,
+    )
+
+    ok = integration.reset_android_proxy("10.16.148.66", 5555, proxy_port=18080)
+
+    assert ok is True
+    assert any("reverse --remove tcp:18080" in cmd for _, _, cmd in commands)
+    assert any("settings put global http_proxy :0" in cmd for _, _, cmd in commands)
+
+
 def test_detach_mitmproxy_handlers_removes_mitm_handlers():
     """Cleanup helper should remove mitmproxy handlers from all loggers."""
     class FakeMitmHandler(logging.Handler):

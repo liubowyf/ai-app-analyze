@@ -401,6 +401,54 @@ def configure_android_proxy(emulator_host: str, emulator_port: int, proxy_port: 
         return False
 
 
+def reset_android_proxy(emulator_host: str, emulator_port: int, proxy_port: Optional[int] = None) -> bool:
+    """
+    Reset Android global HTTP proxy and remove adb reverse mapping.
+
+    Args:
+        emulator_host: Emulator host IP
+        emulator_port: Emulator ADB port
+        proxy_port: Optional proxy port for reverse removal
+
+    Returns:
+        True when global proxy is cleared (best effort).
+    """
+    try:
+        from modules.android_runner import AndroidRunner
+
+        runner = AndroidRunner()
+
+        if proxy_port is not None:
+            try:
+                runner.execute_adb_remote(
+                    emulator_host,
+                    emulator_port,
+                    f"reverse --remove tcp:{int(proxy_port)}",
+                )
+            except Exception:
+                pass
+
+        runner.execute_adb_remote(
+            emulator_host,
+            emulator_port,
+            "shell settings put global http_proxy :0",
+        )
+        proxy = runner.execute_adb_remote(
+            emulator_host,
+            emulator_port,
+            "shell settings get global http_proxy",
+        ).strip()
+        success = proxy in {"", ":0", "null"} or proxy.endswith(":0")
+        if success:
+            logger.info("Reset proxy for %s:%s", emulator_host, emulator_port)
+        else:
+            logger.warning("Proxy reset verification unexpected value for %s:%s -> %s", emulator_host, emulator_port, proxy)
+        return success
+    except Exception as e:
+        logger.warning("Failed to reset Android proxy: %s", e)
+        return False
+
+
 def install_mitmproxy_cert(emulator_host: str, emulator_port: int) -> bool:
     """
     Install mitmproxy certificate on Android emulator for HTTPS interception.

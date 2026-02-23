@@ -471,6 +471,7 @@ class TrafficMonitor:
         emulator_port: Optional[int] = None,
         target_package: Optional[str] = None,
         android_runner: Optional[Any] = None,
+        port_fallback_attempts: int = 5,
     ) -> None:
         """Start the traffic monitor."""
         try:
@@ -492,20 +493,26 @@ class TrafficMonitor:
             started = False
             last_error: Optional[Exception] = None
             base_port = self.proxy_port
-            for offset in range(5):
+            attempts = max(1, min(int(port_fallback_attempts), 20))
+            for offset in range(attempts):
                 candidate_port = base_port + offset
                 try:
                     self._mitmproxy_manager.start_proxy(
                         port=candidate_port,
                         request_callback=self._on_request_captured,
                     )
+                    # Mitmproxy starts in a background thread. Give it a short
+                    # readiness window so bind/startup errors are surfaced here.
+                    time.sleep(0.35)
+                    if not getattr(self._mitmproxy_manager, "is_running", True):
+                        raise RuntimeError("proxy bootstrap failed")
                     self.proxy_port = candidate_port
                     started = True
                     break
                 except Exception as exc:
                     last_error = exc
                     message = str(exc).lower()
-                    if "address already in use" in message and offset < 4:
+                    if "address already in use" in message and offset < attempts - 1:
                         logger.warning(
                             "Proxy port %s is busy, retrying with port %s",
                             candidate_port,
@@ -551,6 +558,17 @@ class TrafficMonitor:
                 self._mitmproxy_manager.stop_proxy()
             except Exception as e:
                 logger.error("Error stopping mitmproxy: %s", e)
+        if self._emulator_host and self._emulator_port:
+            try:
+                from .mitmproxy_integration import reset_android_proxy
+
+                reset_android_proxy(
+                    emulator_host=self._emulator_host,
+                    emulator_port=self._emulator_port,
+                    proxy_port=self.proxy_port,
+                )
+            except Exception as e:
+                logger.warning("Failed to reset emulator proxy on stop: %s", e)
 
         self._running = False
         logger.info(

@@ -16,8 +16,9 @@ class _FakeAndroidRunner:
 
 
 class _FakeTrafficMonitor:
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         self.started = False
+        self.proxy_port = kwargs.get("proxy_port")
 
     def set_whitelist(self, domains):
         return None
@@ -206,6 +207,12 @@ def test_run_dynamic_analysis_minimal_writes_local_markdown(monkeypatch, tmp_pat
     monkeypatch.setattr(dynamic_analyzer, "MasterDomainAnalyzer", _FakeDomainAnalyzer)
     monkeypatch.setattr(dynamic_analyzer, "AIDriver", lambda **kwargs: SimpleNamespace())
     monkeypatch.setattr(dynamic_analyzer, "_detect_package_name", lambda path: "com.demo.app")
+    monkeypatch.setattr(
+        dynamic_analyzer,
+        "get_available_proxy_port",
+        lambda task_id: {"node_name": "node-a", "port": 18080, "lease_token": "t1"},
+    )
+    monkeypatch.setattr(dynamic_analyzer, "release_proxy_port", lambda lease: None)
 
     result = dynamic_analyzer.run_dynamic_analysis_minimal(
         apk_path=str(apk_path),
@@ -239,6 +246,12 @@ def test_run_dynamic_analysis_minimal_degraded_when_no_network(monkeypatch, tmp_
     monkeypatch.setattr(dynamic_analyzer, "MasterDomainAnalyzer", _FakeDomainAnalyzer)
     monkeypatch.setattr(dynamic_analyzer, "AIDriver", lambda **kwargs: SimpleNamespace())
     monkeypatch.setattr(dynamic_analyzer, "_detect_package_name", lambda path: "com.demo.app")
+    monkeypatch.setattr(
+        dynamic_analyzer,
+        "get_available_proxy_port",
+        lambda task_id: {"node_name": "node-a", "port": 18080, "lease_token": "t1"},
+    )
+    monkeypatch.setattr(dynamic_analyzer, "release_proxy_port", lambda lease: None)
 
     result = dynamic_analyzer.run_dynamic_analysis_minimal(
         apk_path=str(apk_path),
@@ -261,6 +274,12 @@ def test_run_dynamic_analysis_minimal_failed_when_exploration_fails(monkeypatch,
     monkeypatch.setattr(dynamic_analyzer, "MasterDomainAnalyzer", _FakeDomainAnalyzer)
     monkeypatch.setattr(dynamic_analyzer, "AIDriver", lambda **kwargs: SimpleNamespace())
     monkeypatch.setattr(dynamic_analyzer, "_detect_package_name", lambda path: "com.demo.app")
+    monkeypatch.setattr(
+        dynamic_analyzer,
+        "get_available_proxy_port",
+        lambda task_id: {"node_name": "node-a", "port": 18080, "lease_token": "t1"},
+    )
+    monkeypatch.setattr(dynamic_analyzer, "release_proxy_port", lambda lease: None)
 
     result = dynamic_analyzer.run_dynamic_analysis_minimal(
         apk_path=str(apk_path),
