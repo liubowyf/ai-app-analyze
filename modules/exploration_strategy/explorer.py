@@ -1132,6 +1132,19 @@ class AppExplorer:
             hint = (node.attrib.get("hint") or "").strip()
             desc = (node.attrib.get("content-desc") or "").strip()
             rid = (node.attrib.get("resource-id") or "").strip()
+            input_type = (node.attrib.get("inputType") or "").strip()
+            max_length_raw = (
+                node.attrib.get("maxTextLength")
+                or node.attrib.get("maxLength")
+                or node.attrib.get("maxlength")
+                or ""
+            )
+            try:
+                max_length = int(str(max_length_raw).strip())
+            except Exception:
+                max_length = 0
+            if max_length <= 0:
+                max_length = None
             label = " ".join(part for part in [text, hint, desc, rid] if part).strip()
 
             bounds = node.attrib.get("bounds", "")
@@ -1147,27 +1160,82 @@ class AppExplorer:
                     "label": label,
                     "signature": signature,
                     "password": node.attrib.get("password", "false").lower() == "true",
+                    "resource_id": rid,
+                    "hint": hint,
+                    "input_type": input_type,
+                    "max_length": max_length,
                 }
             )
         return candidates
 
     @staticmethod
-    def _build_form_input_text(label: str, is_password: bool = False) -> str:
-        """Build deterministic synthetic input text by field semantic."""
+    def _build_form_input_text(
+        label: str,
+        is_password: bool = False,
+        field: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Build deterministic synthetic input text guided by widget constraints."""
+        field = field or {}
         lower = (label or "").lower()
-        if is_password or "密码" in label or "pass" in lower:
-            return "Test@1234"
-        if "验证码" in label or "otp" in lower or "sms" in lower:
-            return "123456"
-        if "邮箱" in label or "email" in lower:
-            return "autotest@example.com"
-        if "身份证" in label or "idcard" in lower:
-            return "110101199001011234"
-        if "姓名" in label or "name" in lower:
-            return "TestUser"
-        if "手机" in label or "电话" in label or "phone" in lower or "mobile" in lower:
-            return "13800138000"
-        return "test123"
+        rid = str(field.get("resource_id") or "").lower()
+        hint = str(field.get("hint") or "").lower()
+        input_type = str(field.get("input_type") or "").lower()
+        max_length = field.get("max_length")
+
+        merged = f"{lower} {rid} {hint} {input_type}"
+
+        def _clip(value: str) -> str:
+            if isinstance(max_length, int) and max_length > 0:
+                if len(value) > max_length:
+                    return value[:max_length]
+            return value
+
+        def _numeric(value: str) -> str:
+            digits = "".join(ch for ch in value if ch.isdigit())
+            if isinstance(max_length, int) and max_length > 0:
+                digits = digits[:max_length]
+            if not digits:
+                fallback_len = max(4, min(int(max_length or 6), 18))
+                digits = "1" * fallback_len
+            return digits
+
+        if is_password or "密码" in merged or "pass" in merged:
+            value = "Aa123456"
+            return _clip(value)
+
+        if any(token in merged for token in ("验证码", "otp", "sms", "code")):
+            return _numeric("123456")
+
+        if any(token in merged for token in ("邮箱", "email")):
+            value = "autotest@example.com"
+            if isinstance(max_length, int) and max_length > 0 and len(value) > max_length:
+                short_email = "a@b.cn"
+                return short_email if len(short_email) <= max_length else "ab.cn"[:max_length]
+            return value
+
+        if any(token in merged for token in ("身份证", "idcard", "certno")):
+            return _clip("110101199001011239")
+
+        if any(token in merged for token in ("银行卡", "cardno", "bankcard")):
+            return _numeric("6222021200000007")
+
+        if any(token in merged for token in ("金额", "amount", "money")):
+            value = "100.00"
+            if isinstance(max_length, int) and max_length > 0 and len(value) > max_length:
+                return _numeric("10000")
+            return _clip(value)
+
+        if any(token in merged for token in ("姓名", "name", "realname", "username", "账户", "账号")):
+            value = "testuser"
+            return _clip(value)
+
+        numeric_hint = any(
+            token in merged for token in ("手机", "电话", "phone", "mobile", "tel", "number")
+        )
+        if numeric_hint or input_type.isdigit():
+            return _numeric("13800138000")
+
+        return _clip("test123")
 
     def _find_form_submit_action(self, ui_xml: str) -> Optional[Tuple[int, int, str]]:
         """Find submit-like button for login/register forms."""
@@ -1221,7 +1289,11 @@ class AppExplorer:
 
             self.android_runner.execute_tap(host, port, item["x"], item["y"])
             time.sleep(0.25)
-            text = self._build_form_input_text(item["label"], is_password=item["password"])
+            text = self._build_form_input_text(
+                item["label"],
+                is_password=item["password"],
+                field=item,
+            )
             self.android_runner.execute_input_text(host, port, text)
             self.filled_input_signatures.add(signature)
 

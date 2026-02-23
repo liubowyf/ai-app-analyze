@@ -444,6 +444,54 @@ def test_should_skip_screen_allows_login_page_with_input_candidates():
     assert explorer._should_skip_screen("127.0.0.1", 5555, ui_xml=login_form_xml) is False
 
 
+def test_find_input_candidates_extracts_constraints():
+    """Input candidates should preserve inputType/maxLength metadata for value generation."""
+    ai_driver = Mock()
+    android_runner = Mock()
+    screenshot_manager = Mock()
+    explorer = AppExplorer(ai_driver, android_runner, screenshot_manager)
+
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        "<hierarchy>"
+        '<node text="" hint="手机号" resource-id="com.demo:id/phone" class="android.widget.EditText" '
+        'clickable="true" focusable="true" inputType="number" maxLength="11" '
+        'bounds="[100,260][980,380]"/>'
+        "</hierarchy>"
+    )
+
+    candidates = explorer._find_input_candidates(xml)
+    assert len(candidates) == 1
+    assert candidates[0]["input_type"] == "number"
+    assert candidates[0]["max_length"] == 11
+    assert candidates[0]["resource_id"] == "com.demo:id/phone"
+
+
+def test_build_form_input_text_respects_input_constraints():
+    """Generated value should match numeric/email constraints instead of random text."""
+    ai_driver = Mock()
+    android_runner = Mock()
+    screenshot_manager = Mock()
+    explorer = AppExplorer(ai_driver, android_runner, screenshot_manager)
+
+    phone = explorer._build_form_input_text(
+        "手机号",
+        field={"input_type": "number", "max_length": 11, "resource_id": "phone"},
+    )
+    code = explorer._build_form_input_text(
+        "验证码",
+        field={"input_type": "number", "max_length": 4, "resource_id": "sms_code"},
+    )
+    email = explorer._build_form_input_text(
+        "邮箱",
+        field={"input_type": "textEmailAddress", "max_length": 8},
+    )
+
+    assert phone == "13800138000"
+    assert code == "1234"
+    assert len(email) <= 8
+
+
 def test_execute_swipe_operation_uses_explicit_coordinates():
     """Swipe operation should use explicit start/end coordinates when provided."""
     ai_driver = Mock()
