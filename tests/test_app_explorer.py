@@ -187,6 +187,46 @@ def test_phase3_handles_priority_dialog_before_ai_operation():
     ai_driver.analyze_and_decide.assert_not_called()
 
 
+def test_phase3_repeated_consent_with_form_triggers_input_after_first_tap():
+    """When consent CTA repeats on login screen, explorer should fallback to form input."""
+    ai_driver = Mock()
+    ai_driver.analyze_and_decide.return_value = Mock(
+        type=Mock(value="Wait"),
+        params={"duration": 1},
+        description="wait",
+    )
+    android_runner = Mock()
+    screenshot_manager = Mock()
+
+    android_runner.take_screenshot_remote.return_value = b"fake_image"
+    android_runner.get_current_package.return_value = "com.example"
+    android_runner.get_current_activity.return_value = "com.example/.LoginActivity"
+    screenshot_manager.capture.return_value = Mock()
+
+    login_with_consent_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<hierarchy>'
+        '<node text="手机号" class="android.widget.EditText" clickable="true" focusable="true" '
+        'bounds="[100,260][980,380]"/>'
+        '<node text="登录" class="android.widget.Button" clickable="true" '
+        'bounds="[260,900][820,1020]"/>'
+        '<node text="我已阅读并同意" class="android.widget.CheckBox" clickable="true" '
+        'bounds="[120,1090][820,1180]"/>'
+        "</hierarchy>"
+    )
+    android_runner.dump_ui_hierarchy.return_value = login_with_consent_xml
+
+    explorer = AppExplorer(ai_driver, android_runner, screenshot_manager)
+    explorer.target_package = "com.example"
+
+    with patch("modules.exploration_strategy.explorer.time.sleep", return_value=None):
+        explorer.phase3_autonomous_explore("127.0.0.1", 5555, max_steps=2)
+
+    assert android_runner.execute_input_text.called
+    android_runner.execute_tap.assert_any_call("127.0.0.1", 5555, 470, 1135)
+    ai_driver.analyze_and_decide.assert_not_called()
+
+
 def test_phase3_relaunches_target_app_when_activity_drifted():
     """When explorer leaves target package, it should relaunch target app first."""
     ai_driver = Mock()

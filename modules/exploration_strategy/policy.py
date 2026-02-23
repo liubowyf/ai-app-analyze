@@ -55,6 +55,8 @@ class ExplorationPolicy:
     time_budget_seconds: int = 540
     scenario_action_budget: int = 24
     relaunch_cycles: int = 4
+    dialog_repeat_limit: int = 3
+    dialog_repeat_limit_with_form: int = 1
     skip_permission_grant: bool = True
     enable_clear_data_recovery: bool = False
     enable_reinstall_recovery: bool = False
@@ -105,6 +107,18 @@ class ExplorationPolicy:
                 4,
                 1,
                 20,
+            ),
+            dialog_repeat_limit=_parse_int(
+                "APP_EXPLORATION_DIALOG_REPEAT_LIMIT",
+                3,
+                1,
+                20,
+            ),
+            dialog_repeat_limit_with_form=_parse_int(
+                "APP_EXPLORATION_DIALOG_REPEAT_LIMIT_WITH_FORM",
+                1,
+                1,
+                10,
             ),
             skip_permission_grant=_parse_bool("APP_EXPLORATION_SKIP_PERMISSION_GRANT", True),
             enable_clear_data_recovery=_parse_bool("APP_EXPLORATION_ENABLE_CLEAR_DATA_RECOVERY", False),

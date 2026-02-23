@@ -455,6 +455,7 @@ class AppExplorer:
         stagnant_steps = 0
         passive_steps = 0
         recovery_count = 0
+        dialog_action_counts: Dict[str, int] = defaultdict(int)
 
         for step in range(max_steps):
             if not self._within_deadline(deadline_ts):
@@ -497,40 +498,71 @@ class AppExplorer:
                 else:
                     stagnant_steps = 0
 
-                dialog_action = self._tap_priority_dialog_action(host, port, ui_xml=ui_xml)
-                if dialog_action:
-                    logger.info("Handled priority dialog action: %s", dialog_action)
-                    time.sleep(1.5)
-                    consecutive_errors = 0
-                    screenshot = self._capture_app_screenshot(
-                        host=host,
-                        port=port,
-                        stage=f"auto_priority_{step+1}",
-                        description=f"优先处理弹窗: {dialog_action}",
-                        require_target=True,
-                    )
-                    if screenshot:
-                        screenshots.append(screenshot)
-                    self.exploration_history.append({
-                        "phase": "autonomous",
-                        "step": step + 1,
-                        "operation": "Tap",
-                        "description": f"Priority dialog action: {dialog_action}",
-                        "params": {},
-                    })
-                    continue
-
                 screen_key = f"{state.activity}|{state.ui_hash}"
+                input_candidates = (
+                    self._find_input_candidates(ui_xml)
+                    if self.policy.enable_form_interaction
+                    else []
+                )
+                has_form_candidates = bool(input_candidates)
+
+                dialog_candidate = self._find_priority_dialog_action(ui_xml)
+                if dialog_candidate:
+                    dialog_key = f"{screen_key}|{dialog_candidate['label']}"
+                    repeat_limit = (
+                        self.policy.dialog_repeat_limit_with_form
+                        if has_form_candidates
+                        else self.policy.dialog_repeat_limit
+                    )
+                    repeat_count = dialog_action_counts[dialog_key]
+                    if repeat_count >= repeat_limit:
+                        logger.info(
+                            "Skip repeated priority dialog action: %s (count=%s, limit=%s)",
+                            dialog_candidate["label"],
+                            repeat_count,
+                            repeat_limit,
+                        )
+                    else:
+                        self.android_runner.execute_tap(
+                            host,
+                            port,
+                            dialog_candidate["x"],
+                            dialog_candidate["y"],
+                        )
+                        dialog_action_counts[dialog_key] = repeat_count + 1
+                        dialog_action = dialog_candidate["label"]
+                        logger.info("Handled priority dialog action: %s", dialog_action)
+                        time.sleep(1.5)
+                        consecutive_errors = 0
+                        screenshot = self._capture_app_screenshot(
+                            host=host,
+                            port=port,
+                            stage=f"auto_priority_{step+1}",
+                            description=f"优先处理弹窗: {dialog_action}",
+                            require_target=True,
+                        )
+                        if screenshot:
+                            screenshots.append(screenshot)
+                        self.exploration_history.append({
+                            "phase": "autonomous",
+                            "step": step + 1,
+                            "operation": "Tap",
+                            "description": f"Priority dialog action: {dialog_action}",
+                            "params": {},
+                        })
+                        continue
 
                 # Prefer form interactions before generic tapping to unlock deeper flows.
                 if (
                     self.policy.enable_form_interaction
+                    and has_form_candidates
                     and self.screen_form_action_counts[screen_key] < self.policy.max_form_interactions_per_screen
                 ):
                     form_action = self._perform_form_interaction(
                         host=host,
                         port=port,
                         ui_xml=ui_xml,
+                        candidates=input_candidates,
                     )
                     if form_action:
                         self.screen_form_action_counts[screen_key] += 1
@@ -1170,9 +1202,15 @@ class AppExplorer:
             return None
         return best[0], best[1], best[2]
 
-    def _perform_form_interaction(self, host: str, port: int, ui_xml: str) -> Optional[str]:
+    def _perform_form_interaction(
+        self,
+        host: str,
+        port: int,
+        ui_xml: str,
+        candidates: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[str]:
         """Fill one input field and optionally tap submit action."""
-        candidates = self._find_input_candidates(ui_xml)
+        candidates = candidates if candidates is not None else self._find_input_candidates(ui_xml)
         if not candidates:
             return None
 
