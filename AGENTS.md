@@ -69,22 +69,22 @@ Core service code is split by layer:
   - dynamic domains `>= 3`,
   - runtime budget target `<= 10 minutes`.
 
-## Deferred For Now
-- Defer non-core persistence/productionization work until core loop is stable:
-  - DB schema expansion and long-term storage optimization,
-  - MinIO/PDF pipeline enhancements beyond current minimum,
-  - broader API/task orchestration refinements not required by core loop validation.
-- New development should first preserve and improve the baseline metrics above before expanding deferred modules.
+## Persistence & Concurrency Baseline (2026-02-23)
+- Core loop has entered productionization baseline (not prototype-only):
+  - normalized dynamic persistence is enabled (`dynamic_analysis`, `network_requests`, `master_domains`, `screenshots`),
+  - stage run persistence is enabled (`analysis_runs`),
+  - distributed emulator lease is enabled (`emulator_leases`, MySQL-backed),
+  - distributed proxy-port lease is enabled (`proxy_port_leases`, MySQL-backed),
+  - task queue is RabbitMQ-only (`CELERY_BROKER_URL=amqp://...`, `CELERY_RESULT_BACKEND=rpc://`),
+  - API evidence query endpoints are enabled (`/tasks/{id}/runs`, `/tasks/{id}/network-requests`, `/tasks/{id}/domains`).
+- Parallel execution baseline:
+  - with 3 emulator instances, dynamic tasks should run concurrently and bind distinct emulator slots,
+  - each dynamic task should bind an isolated mitmproxy port lease to avoid port collisions.
 
-## Platform Expansion Baseline (2026-02-22)
-- Start incremental productionization on top of the validated core loop:
-  - keep core loop behavior and acceptance metrics unchanged,
-  - add normalized persistence for dynamic outputs (network/domains/screenshots summary),
-  - add per-stage run persistence (`analysis_runs`: stage/attempt/status/duration/error/emulator),
-  - add distributed emulator lease for multi-worker concurrency safety,
-  - unify task workflow orchestration for API-triggered runs,
-  - expose task metrics + dynamic evidence query APIs for integration callers.
-- Add baseline load-testing entrypoint for concurrency tuning:
-  - `scripts/load_test_tasks.py` (supports dispatch + poll + recommendation artifact output).
+## Deferred For Now
+- Keep deferring only non-core expansion work:
+  - long-term retention/archiving strategy and cold-storage tiering,
+  - schema migration hardening and historical backfill tooling,
+  - report format expansion beyond current investigation baseline.
 - Priority rule:
-  - do not degrade current minimal dynamic run quality (`requests/screenshots/domains`) while expanding persistence and API abilities.
+  - do not degrade minimal dynamic run quality (`requests/screenshots/domains`) while evolving persistence and distributed execution.
