@@ -2,6 +2,8 @@
 import argparse
 import json
 import logging
+import re
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -386,6 +388,7 @@ def _minimal_emulator_candidates() -> list[Dict[str, Any]]:
 
 def _detect_package_name(apk_path: str) -> Optional[str]:
     """Best-effort package detection from APK."""
+    package: Optional[str] = None
     try:
         from androguard.misc import AnalyzeAPK
 
@@ -395,6 +398,38 @@ def _detect_package_name(apk_path: str) -> Optional[str]:
             return package.strip()
     except Exception as exc:
         logger.warning("Failed to detect package name from APK: %s", exc)
+
+    for cmd in (
+        ["aapt", "dump", "badging", apk_path],
+        ["apkanalyzer", "manifest", "application-id", apk_path],
+    ):
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            output = (result.stdout or "") + "\n" + (result.stderr or "")
+            match = re.search(r"package:\s+name='([^']+)'", output)
+            if not match and cmd[0] == "apkanalyzer":
+                plain = (result.stdout or "").strip()
+                if plain and "." in plain:
+                    package = plain
+                else:
+                    package = None
+            elif match:
+                package = match.group(1).strip()
+            else:
+                package = None
+
+            if package:
+                logger.info("Detected package name via %s: %s", cmd[0], package)
+                return package
+        except FileNotFoundError:
+            logger.debug("Package detection tool not available: %s", cmd[0])
+        except Exception as exc:
+            logger.debug("Package detection via %s failed: %s", cmd[0], exc)
     return None
 
 
@@ -413,6 +448,12 @@ def _write_minimal_markdown_report(
     aggregated_primary = traffic_monitor.get_aggregated_requests()
     aggregated_candidate = getattr(traffic_monitor, "get_candidate_aggregated_requests", lambda: [])()
     network_analysis = traffic_monitor.analyze_traffic()
+    capture_diagnostics = getattr(traffic_monitor, "get_capture_diagnostics", lambda: {})()
+    cert_diag = capture_diagnostics.get("cert", {}) if isinstance(capture_diagnostics, dict) else {}
+    tls_diag = capture_diagnostics.get("tls", {}) if isinstance(capture_diagnostics, dict) else {}
+    cert_status = cert_diag.get("verification_status", "unknown")
+    tls_fail_total = int(tls_diag.get("total_failures", 0) or 0)
+    tls_fail_by_host = tls_diag.get("by_host", {}) if isinstance(tls_diag.get("by_host", {}), dict) else {}
     screenshots = exploration_result.screenshots or []
     history = getattr(exploration_result, "history", []) or []
 
@@ -476,6 +517,8 @@ def _write_minimal_markdown_report(
         f"- 请求数达标: `{'PASS' if len(combined_requests) >= target_requests else 'FAIL'}`",
         f"- 截图数达标: `{'PASS' if len(screenshots) >= target_screenshots else 'FAIL'}`",
         f"- 域名数达标: `{'PASS' if len(combined_domains) >= target_domains else 'FAIL'}`",
+        f"- MITM 证书状态: `{cert_status}`",
+        f"- TLS 握手失败总数: `{tls_fail_total}`",
         "",
         "## 三、页面操作时间线（前 120 步）",
         "",
@@ -542,7 +585,31 @@ def _write_minimal_markdown_report(
     lines.extend(
         [
             "",
-            "## 六、DNS/IP 线索（运行时观测）",
+            "## 六、HTTPS 拦截诊断",
+            "",
+            f"- 证书验证状态: `{cert_status}`",
+            f"- 本地 CA 文件: `{cert_diag.get('local_cert_path', '-')}`",
+            f"- 本地 CA 存在: `{cert_diag.get('local_cert_exists', False)}`",
+            f"- 设备证书仓可访问: `{cert_diag.get('device_cert_store_accessible', 'unknown')}`",
+            f"- 设备证书已安装(哈希校验): `{cert_diag.get('device_cert_installed', 'unknown')}`",
+            f"- 设备证书检查路径: `{cert_diag.get('device_cert_checked_path', '-')}`",
+            f"- 设备下载目录存在证书文件: `{cert_diag.get('device_download_cert_present', 'unknown')}`",
+            f"- TLS 握手失败总数: `{tls_fail_total}`",
+            "",
+            "| Host | TLS 握手失败次数 |",
+            "| --- | ---: |",
+        ]
+    )
+    if tls_fail_by_host:
+        for host, count in sorted(tls_fail_by_host.items(), key=lambda item: item[1], reverse=True)[:50]:
+            lines.append(f"| {host} | {count} |")
+    else:
+        lines.append("| - | 0 |")
+
+    lines.extend(
+        [
+            "",
+            "## 七、DNS/IP 线索（运行时观测）",
             "",
             "| Domain | IP 列表 |",
             "| --- | --- |",
@@ -551,7 +618,7 @@ def _write_minimal_markdown_report(
     for row in ranked_domains[:50]:
         lines.append(f"| {row['host']} | {', '.join(sorted(row['ips'])) or '-'} |")
 
-    lines.extend(["", "## 七、主控域名识别", ""])
+    lines.extend(["", "## 八、主控域名识别", ""])
     masters = domain_report.get("master_domains", []) if isinstance(domain_report, dict) else []
     if masters:
         lines.append("| Domain | Score | Confidence |")
@@ -566,9 +633,9 @@ def _write_minimal_markdown_report(
     lines.extend(
         [
             "",
-            "## 八、请求样本（前 30 条主池 + 前 30 条候选池）",
+            "## 九、请求样本（前 30 条主池 + 前 30 条候选池）",
             "",
-            "### 8.1 主池请求样本",
+            "### 9.1 主池请求样本",
             "",
             "| Method | URL | Source | Package | Confidence |",
             "| --- | --- | --- | --- | ---: |",
@@ -582,7 +649,7 @@ def _write_minimal_markdown_report(
     lines.extend(
         [
             "",
-            "### 8.2 候选池请求样本",
+            "### 9.2 候选池请求样本",
             "",
             "| Method | URL | Source | Package | Confidence |",
             "| --- | --- | --- | --- | ---: |",
@@ -594,7 +661,7 @@ def _write_minimal_markdown_report(
             f"{item.get('package_name','')} | {item.get('attribution_confidence', 0)} |"
         )
 
-    lines.extend(["", "## 九、运行时截图索引", ""])
+    lines.extend(["", "## 十、运行时截图索引", ""])
     if screenshots:
         for shot in screenshots:
             path = shot.get("storage_path")
@@ -613,12 +680,13 @@ def _write_minimal_markdown_report(
     lines.extend(
         [
             "",
-            "## 十、补充统计",
+            "## 十一、补充统计",
             "",
             f"- 主池 unique hosts: `{network_analysis.get('unique_hosts', 0)}`",
             f"- 主池 source 分布: `{network_analysis.get('sources', {})}`",
             f"- 候选池 unique hosts: `{network_analysis.get('candidate_unique_hosts', 0)}`",
             f"- 候选池 source 分布: `{network_analysis.get('candidate_sources', {})}`",
+            f"- TLS 握手失败域名分布: `{network_analysis.get('tls_handshake_failures_by_host', {})}`",
         ]
     )
 
@@ -761,6 +829,9 @@ def run_dynamic_analysis_minimal(
     else:
         minimal_status = "success"
         status_reason = "ok"
+    capture_diagnostics = getattr(traffic_monitor, "get_capture_diagnostics", lambda: {})()
+    cert_diag = capture_diagnostics.get("cert", {}) if isinstance(capture_diagnostics, dict) else {}
+    tls_diag = capture_diagnostics.get("tls", {}) if isinstance(capture_diagnostics, dict) else {}
 
     return {
         "status": minimal_status,
@@ -782,6 +853,9 @@ def run_dynamic_analysis_minimal(
         "candidate_aggregated_requests": len(
             getattr(traffic_monitor, "get_candidate_aggregated_requests", lambda: [])()
         ),
+        "cert_verification_status": cert_diag.get("verification_status", "unknown"),
+        "tls_handshake_failures": int(tls_diag.get("total_failures", 0) or 0),
+        "tls_handshake_failures_by_host": tls_diag.get("by_host", {}),
     }
 
 
@@ -860,17 +934,11 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
         # If no package name from static analysis, try to extract it from APK
         if not package_name:
             logger.info("Extracting package name from APK (no static analysis result)")
-            from androguard.misc import AnalyzeAPK
-
-            try:
-                a, d, dx = AnalyzeAPK(apk_temp_path)
-                package_name = a.get_package()
+            package_name = _detect_package_name(apk_temp_path)
+            if package_name:
                 logger.info(f"Package name extracted: {package_name}")
-            except Exception as e:
-                logger.warning(f"Failed to extract package name (APK may be packed): {e}")
-                logger.info("Proceeding without package name - will use APK filename for installation")
-                # 尝试从APK文件名推断包名,或者设置为None让后续流程处理
-                package_name = None
+            else:
+                logger.warning("Failed to extract package name from APK")
 
         # package_name可以为None,后续install_apk_remote会处理
         if package_name:

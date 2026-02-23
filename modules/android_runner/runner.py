@@ -528,9 +528,17 @@ class AndroidRunner:
             package: Package name
         """
         try:
+            launch_timeout_raw = os.getenv("ADB_LAUNCH_TIMEOUT_SECONDS", "15")
+            try:
+                launch_timeout = float(launch_timeout_raw)
+            except ValueError:
+                launch_timeout = 15.0
+            launch_timeout = max(3.0, min(launch_timeout, 120.0))
+
             self.execute_adb_remote(
                 host, port,
-                f"shell monkey -p {package} -c android.intent.category.LAUNCHER 1"
+                f"shell monkey -p {package} -c android.intent.category.LAUNCHER 1",
+                timeout_seconds=launch_timeout,
             )
             logger.info(f"Launched app {package}")
         except Exception as e:

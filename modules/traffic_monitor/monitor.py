@@ -63,6 +63,7 @@ class TrafficMonitor:
         self.filter_policy = TrafficFilterPolicy()
         self._attribution_engine: Optional[AttributionEngine] = None
         self._candidate_limit = 5000
+        self._cert_diagnostics: Dict[str, Any] = {}
 
     def set_target_app_context(
         self,
@@ -390,6 +391,27 @@ class TrafficMonitor:
         self.candidate_requests.clear()
         logger.info("Cleared all captured requests")
 
+    def get_tls_handshake_failures(self) -> Dict[str, int]:
+        """Return TLS handshake failure counts keyed by host."""
+        if not self._mitmproxy_manager or not hasattr(self._mitmproxy_manager, "get_tls_handshake_failures"):
+            return {}
+        try:
+            return self._mitmproxy_manager.get_tls_handshake_failures()
+        except Exception:
+            return {}
+
+    def get_capture_diagnostics(self) -> Dict[str, Any]:
+        """Return capture diagnostics for observability/reporting."""
+        tls_by_host = self.get_tls_handshake_failures()
+        tls_total = sum(tls_by_host.values())
+        return {
+            "cert": dict(self._cert_diagnostics),
+            "tls": {
+                "total_failures": tls_total,
+                "by_host": tls_by_host,
+            },
+        }
+
     def export_to_json(self) -> str:
         return json.dumps(self.get_requests_as_dict(), indent=2, ensure_ascii=False)
 
@@ -419,6 +441,9 @@ class TrafficMonitor:
             candidate_sources[req.source or "unknown"] += 1
             candidate_packages[req.package_name or "unknown"] += 1
 
+        diagnostics = self.get_capture_diagnostics()
+        cert_diag = diagnostics.get("cert", {})
+        tls_diag = diagnostics.get("tls", {})
         return {
             "total_requests": total_requests,
             "unique_hosts": len(unique_hosts),
@@ -434,6 +459,10 @@ class TrafficMonitor:
             "candidate_sources": dict(candidate_sources),
             "candidate_packages": dict(candidate_packages),
             "candidate_aggregated": self.get_candidate_aggregated_requests()[:100],
+            "cert_verification_status": cert_diag.get("verification_status", "unknown"),
+            "cert_diagnostics": cert_diag,
+            "tls_handshake_failures": tls_diag.get("total_failures", 0),
+            "tls_handshake_failures_by_host": tls_diag.get("by_host", {}),
         }
 
     def start(
@@ -452,7 +481,11 @@ class TrafficMonitor:
                 android_runner=android_runner,
             )
 
-            from .mitmproxy_integration import MitmProxyManager, configure_android_proxy
+            from .mitmproxy_integration import (
+                MitmProxyManager,
+                collect_mitmproxy_cert_diagnostics,
+                configure_android_proxy,
+            )
 
             self._mitmproxy_manager = MitmProxyManager()
 
@@ -486,6 +519,15 @@ class TrafficMonitor:
 
             if emulator_host and emulator_port:
                 configure_android_proxy(emulator_host, emulator_port, self.proxy_port)
+                self._cert_diagnostics = collect_mitmproxy_cert_diagnostics(
+                    emulator_host=emulator_host,
+                    emulator_port=emulator_port,
+                )
+                cert_status = self._cert_diagnostics.get("verification_status", "unknown")
+                if cert_status != "installed":
+                    logger.warning("MITM certificate verification status: %s", cert_status)
+                else:
+                    logger.info("MITM certificate verified as installed in device trust store")
 
             self._running = True
             logger.info("Traffic monitor started on port %s", self.proxy_port)

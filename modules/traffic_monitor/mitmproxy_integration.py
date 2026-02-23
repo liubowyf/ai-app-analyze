@@ -2,14 +2,21 @@
 import asyncio
 import logging
 import os
+import re
 import socket
+import subprocess
 import threading
+from datetime import datetime
 from typing import Optional, Callable, Dict, Any
 from mitmproxy import options
 from mitmproxy.tools.dump import DumpMaster
 from mitmproxy.http import HTTPFlow
 
 logger = logging.getLogger(__name__)
+
+
+_TLS_HANDSHAKE_FAILED_PATTERN = re.compile(r"Client TLS handshake failed", re.IGNORECASE)
+_TLS_HOST_PATTERN = re.compile(r"for\s+([^\s(]+)")
 
 
 def _detach_mitmproxy_handlers() -> None:
@@ -114,6 +121,75 @@ class MitmProxyManager:
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._tls_failures_by_host: Dict[str, int] = {}
+        self._tls_failures_events: list[Dict[str, Any]] = []
+        self._tls_log_handler: Optional[logging.Handler] = None
+
+    def _attach_tls_failure_handler(self) -> None:
+        """Capture mitmproxy TLS handshake failures for diagnostics."""
+        if self._tls_log_handler:
+            return
+
+        manager = self
+
+        class _MitmTlsFailureHandler(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                try:
+                    message = record.getMessage()
+                except Exception:
+                    return
+                if not _TLS_HANDSHAKE_FAILED_PATTERN.search(message or ""):
+                    return
+                host = manager._extract_tls_failure_host(message)
+                manager._record_tls_handshake_failure(host=host, raw_message=message)
+
+        self._tls_log_handler = _MitmTlsFailureHandler(level=logging.INFO)
+        mitm_server_logger = logging.getLogger("mitmproxy.proxy.server")
+        mitm_server_logger.addHandler(self._tls_log_handler)
+
+    def _detach_tls_failure_handler(self) -> None:
+        if not self._tls_log_handler:
+            return
+        try:
+            mitm_server_logger = logging.getLogger("mitmproxy.proxy.server")
+            mitm_server_logger.removeHandler(self._tls_log_handler)
+        except Exception:
+            pass
+        finally:
+            self._tls_log_handler = None
+
+    @staticmethod
+    def _extract_tls_failure_host(message: str) -> str:
+        if not message:
+            return "unknown"
+        match = _TLS_HOST_PATTERN.search(message)
+        if not match:
+            return "unknown"
+        host = (match.group(1) or "").strip()
+        # keep host only when host:port is reported
+        if ":" in host and host.count(":") == 1:
+            host = host.split(":", 1)[0]
+        return host or "unknown"
+
+    def _record_tls_handshake_failure(self, host: str, raw_message: str) -> None:
+        host_key = host or "unknown"
+        self._tls_failures_by_host[host_key] = self._tls_failures_by_host.get(host_key, 0) + 1
+        self._tls_failures_events.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "host": host_key,
+                "message": raw_message,
+            }
+        )
+
+    def get_tls_handshake_failures(self) -> Dict[str, int]:
+        """Get TLS handshake failure counts by host."""
+        return dict(self._tls_failures_by_host)
+
+    def get_tls_handshake_failure_events(self, limit: int = 200) -> list[Dict[str, Any]]:
+        """Get detailed TLS handshake failure events."""
+        safe_limit = max(1, min(int(limit), 2000))
+        return list(self._tls_failures_events[-safe_limit:])
 
     def start_proxy(self, port: int = 8080, request_callback: Optional[Callable] = None) -> None:
         """
@@ -146,6 +222,7 @@ class MitmProxyManager:
                 with_dumper=False,
             )
             self.master.addons.add(self.collector)
+            self._attach_tls_failure_handler()
 
             self._running = True
             logger.info(f"Starting mitmproxy on port {port}")
@@ -213,6 +290,7 @@ class MitmProxyManager:
             self.collector = None
             self._loop = None
             self._thread = None
+            self._detach_tls_failure_handler()
             _detach_mitmproxy_handlers()
             logger.info("Mitmproxy stopped")
 
@@ -373,3 +451,97 @@ def install_mitmproxy_cert(emulator_host: str, emulator_port: int) -> bool:
     except Exception as e:
         logger.error(f"Failed to install certificate: {e}")
         return False
+
+
+def collect_mitmproxy_cert_diagnostics(emulator_host: str, emulator_port: int) -> Dict[str, Any]:
+    """
+    Collect certificate diagnostics to explain HTTPS interception quality.
+
+    Returns:
+        Dict containing local cert status and best-effort device trust-store checks.
+    """
+    result: Dict[str, Any] = {
+        "local_cert_path": os.path.expanduser("~/.mitmproxy/mitmproxy-ca-cert.cer"),
+        "local_cert_exists": False,
+        "local_subject_hash_old": None,
+        "device_cert_store_accessible": None,
+        "device_cert_installed": None,
+        "device_cert_checked_path": None,
+        "device_download_cert_present": None,
+        "verification_status": "unknown",
+    }
+
+    try:
+        from modules.android_runner import AndroidRunner
+
+        runner = AndroidRunner()
+        cert_path = result["local_cert_path"]
+        result["local_cert_exists"] = os.path.exists(cert_path)
+        if not result["local_cert_exists"]:
+            result["verification_status"] = "missing_local_cert"
+            return result
+
+        subject_hash_old = ""
+        for fmt in ("DER", "PEM"):
+            try:
+                proc = subprocess.run(
+                    [
+                        "openssl",
+                        "x509",
+                        "-inform",
+                        fmt,
+                        "-subject_hash_old",
+                        "-in",
+                        cert_path,
+                        "-noout",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=8,
+                )
+                output = (proc.stdout or "").strip()
+                if output:
+                    subject_hash_old = output.splitlines()[0].strip()
+                    break
+            except Exception:
+                continue
+        if subject_hash_old:
+            result["local_subject_hash_old"] = subject_hash_old
+
+        download_check = runner.execute_adb_remote(
+            emulator_host,
+            emulator_port,
+            "shell ls /sdcard/Download/mitmproxy-cert.cer",
+        )
+        if "No such file or directory" in (download_check or ""):
+            result["device_download_cert_present"] = False
+        elif (download_check or "").strip():
+            result["device_download_cert_present"] = True
+
+        if subject_hash_old:
+            cert_device_path = f"/data/misc/user/0/cacerts-added/{subject_hash_old}.0"
+            result["device_cert_checked_path"] = cert_device_path
+            installed_check = runner.execute_adb_remote(
+                emulator_host,
+                emulator_port,
+                f"shell ls {cert_device_path}",
+            )
+            installed_lower = (installed_check or "").lower()
+            if "permission denied" in installed_lower:
+                result["device_cert_store_accessible"] = False
+                result["device_cert_installed"] = None
+            else:
+                result["device_cert_store_accessible"] = True
+                result["device_cert_installed"] = "no such file or directory" not in installed_lower
+
+        if result["device_cert_installed"] is True:
+            result["verification_status"] = "installed"
+        elif result["device_cert_store_accessible"] is True and result["device_cert_installed"] is False:
+            result["verification_status"] = "not_installed"
+        else:
+            result["verification_status"] = "unknown"
+    except Exception as exc:
+        logger.warning("Failed to collect cert diagnostics: %s", exc)
+        result["verification_status"] = "error"
+
+    return result

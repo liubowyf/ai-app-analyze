@@ -106,6 +106,53 @@ def test_phase1_can_skip_upfront_permission_grant():
     android_runner.launch_app.assert_called_once_with("127.0.0.1", 5555, "com.example")
 
 
+def test_phase1_requires_target_app_foreground_after_launch():
+    """Setup should fail fast when target app is not foreground after launch retries."""
+    ai_driver = Mock()
+    android_runner = Mock()
+    screenshot_manager = Mock()
+    android_runner.connect_remote_emulator.return_value = True
+    android_runner.install_apk_remote.return_value = True
+    android_runner.get_current_package.return_value = "com.android.launcher"
+    screenshot_manager.capture.return_value = Mock()
+
+    explorer = AppExplorer(ai_driver, android_runner, screenshot_manager)
+
+    with patch("modules.exploration_strategy.explorer.time.sleep", return_value=None):
+        with pytest.raises(RuntimeError, match="foreground"):
+            explorer.phase1_basic_setup(
+                host="127.0.0.1",
+                port=5555,
+                apk_path="/tmp/app.apk",
+                package_name="com.example",
+            )
+
+
+def test_phase1_fails_when_package_cannot_be_determined():
+    """Setup should abort instead of exploring desktop when package name is unknown."""
+    ai_driver = Mock()
+    android_runner = Mock()
+    screenshot_manager = Mock()
+
+    android_runner.connect_remote_emulator.return_value = True
+    android_runner.install_apk_remote.return_value = True
+    android_runner.execute_adb_remote.side_effect = [
+        "package:com.android.settings\npackage:com.android.chrome\n",
+        "package:com.android.settings\npackage:com.android.chrome\n",
+    ]
+
+    explorer = AppExplorer(ai_driver, android_runner, screenshot_manager)
+
+    with patch("modules.exploration_strategy.explorer.time.sleep", return_value=None):
+        with pytest.raises(RuntimeError, match="package name"):
+            explorer.phase1_basic_setup(
+                host="127.0.0.1",
+                port=5555,
+                apk_path="/tmp/app.apk",
+                package_name=None,
+            )
+
+
 def test_phase3_handles_priority_dialog_before_ai_operation():
     """Autonomous explore should tap dialog CTA first instead of invoking AI step."""
     ai_driver = Mock()
@@ -262,6 +309,39 @@ def test_run_full_exploration_respects_env_max_steps(monkeypatch):
     _, kwargs = explorer.phase3_autonomous_explore.call_args
     assert kwargs["max_steps"] == 20
     assert "deadline_ts" in kwargs
+
+
+def test_run_full_exploration_uninstall_uses_detected_target_package():
+    """Cleanup should uninstall detected target package even when apk_info package is missing."""
+    ai_driver = Mock()
+    android_runner = Mock()
+    android_runner.execute_adb_remote.return_value = "Success"
+    screenshot_manager = Mock()
+    screenshot_manager.get_all_for_report.return_value = []
+    screenshot_manager.save_to_minio.return_value = None
+
+    explorer = AppExplorer(ai_driver, android_runner, screenshot_manager)
+
+    def _phase1(*args, **kwargs):
+        explorer.target_package = "com.example.detected"
+        return []
+
+    explorer.phase1_basic_setup = Mock(side_effect=_phase1)
+    explorer.phase2_navigation_explore = Mock(return_value=[])
+    explorer.phase3_autonomous_explore = Mock(return_value=[])
+    explorer.phase4_scenario_test = Mock(return_value=[])
+
+    result = explorer.run_full_exploration(
+        emulator_config={"host": "127.0.0.1", "port": 5555},
+        apk_info={"apk_path": "/tmp/app.apk", "package_name": None},
+    )
+
+    assert result.success is True
+    android_runner.execute_adb_remote.assert_called_with(
+        "127.0.0.1",
+        5555,
+        "uninstall com.example.detected",
+    )
 
 
 def test_phase3_performs_form_input_and_submit_before_ai_wait():

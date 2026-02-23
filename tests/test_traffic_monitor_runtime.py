@@ -33,6 +33,10 @@ def test_start_retries_next_port_when_default_port_is_busy(monkeypatch):
         "modules.traffic_monitor.mitmproxy_integration.configure_android_proxy",
         fake_configure_proxy,
     )
+    monkeypatch.setattr(
+        "modules.traffic_monitor.mitmproxy_integration.collect_mitmproxy_cert_diagnostics",
+        lambda *args, **kwargs: {"verification_status": "installed"},
+    )
 
     monitor = TrafficMonitor(proxy_port=8080)
     monitor.start(emulator_host="10.16.148.66", emulator_port=5555)
@@ -62,6 +66,10 @@ def test_start_raises_when_proxy_cannot_start(monkeypatch):
         "modules.traffic_monitor.mitmproxy_integration.configure_android_proxy",
         lambda *args, **kwargs: True,
     )
+    monkeypatch.setattr(
+        "modules.traffic_monitor.mitmproxy_integration.collect_mitmproxy_cert_diagnostics",
+        lambda *args, **kwargs: {"verification_status": "unknown"},
+    )
 
     monitor = TrafficMonitor(proxy_port=8080)
 
@@ -73,6 +81,23 @@ def test_start_raises_when_proxy_cannot_start(monkeypatch):
 
     assert monitor.is_running is False
     assert state["stop_called"] == 1
+
+
+def test_get_capture_diagnostics_exposes_tls_failures():
+    monitor = TrafficMonitor(proxy_port=8080)
+
+    class FakeManager:
+        def get_tls_handshake_failures(self):
+            return {"er.dcloud.net.cn": 3, "47.76.243.199": 2}
+
+    monitor._mitmproxy_manager = FakeManager()
+    monitor._cert_diagnostics = {"verification_status": "not_installed"}
+
+    diag = monitor.get_capture_diagnostics()
+
+    assert diag["cert"]["verification_status"] == "not_installed"
+    assert diag["tls"]["total_failures"] == 5
+    assert diag["tls"]["by_host"]["er.dcloud.net.cn"] == 3
 
 
 def test_on_request_captured_filters_non_target_foreground_traffic():

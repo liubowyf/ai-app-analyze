@@ -86,6 +86,52 @@ def test_stop_proxy_ignores_closed_event_loop():
     assert manager.is_running is False
 
 
+def test_tls_failure_handler_collects_host_statistics():
+    manager = integration.MitmProxyManager()
+    manager._attach_tls_failure_handler()
+    mitm_logger = logging.getLogger("mitmproxy.proxy.server")
+    try:
+        mitm_logger.warning(
+            "Client TLS handshake failed. The client does not trust the proxy's certificate for er.dcloud.net.cn (OpenSSL Error(...))"
+        )
+        mitm_logger.warning(
+            "Client TLS handshake failed. The client does not trust the proxy's certificate for 47.76.243.199:1581 (OpenSSL Error(...))"
+        )
+        mitm_logger.warning(
+            "Client TLS handshake failed. The client does not trust the proxy's certificate for 47.76.243.199:1581 (OpenSSL Error(...))"
+        )
+    finally:
+        manager._detach_tls_failure_handler()
+
+    stats = manager.get_tls_handshake_failures()
+    assert stats["er.dcloud.net.cn"] == 1
+    assert stats["47.76.243.199"] == 2
+
+
+def test_collect_cert_diagnostics_reports_not_installed(monkeypatch):
+    class FakeRunner:
+        def execute_adb_remote(self, host, port, cmd):
+            if "ls /sdcard/Download/mitmproxy-cert.cer" in cmd:
+                return "No such file or directory"
+            if "ls /data/misc/user/0/cacerts-added/abcd1234.0" in cmd:
+                return "No such file or directory"
+            return ""
+
+    class DummyProc:
+        stdout = "abcd1234\n"
+
+    monkeypatch.setattr("modules.android_runner.AndroidRunner", FakeRunner)
+    monkeypatch.setattr(integration.os.path, "exists", lambda _: True)
+    monkeypatch.setattr(integration.subprocess, "run", lambda *args, **kwargs: DummyProc())
+
+    diag = integration.collect_mitmproxy_cert_diagnostics("10.16.148.66", 5558)
+
+    assert diag["local_cert_exists"] is True
+    assert diag["local_subject_hash_old"] == "abcd1234"
+    assert diag["device_cert_installed"] is False
+    assert diag["verification_status"] == "not_installed"
+
+
 def test_resolve_proxy_host_prefers_env_override(monkeypatch):
     """Explicit env var should override auto-detected host."""
     monkeypatch.setenv("MITMPROXY_HOST", "10.9.8.7")

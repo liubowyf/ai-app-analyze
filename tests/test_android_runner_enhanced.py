@@ -162,3 +162,19 @@ def test_install_apk_remote_fails_after_retry_limit(monkeypatch):
     assert ok is False
     assert runner.execute_adb_remote.call_count == 2
     assert runner.connect_remote_emulator.call_count == 2
+
+
+def test_launch_app_uses_configured_timeout(monkeypatch):
+    """Launch command should use dedicated timeout to avoid hanging forever."""
+    runner = AndroidRunner()
+    monkeypatch.setenv("ADB_LAUNCH_TIMEOUT_SECONDS", "12")
+    runner.execute_adb_remote = Mock(return_value="Events injected: 1")
+
+    runner.launch_app("10.0.0.1", 5558, "com.example.demo")
+
+    runner.execute_adb_remote.assert_called_once_with(
+        "10.0.0.1",
+        5558,
+        "shell monkey -p com.example.demo -c android.intent.category.LAUNCHER 1",
+        timeout_seconds=12.0,
+    )

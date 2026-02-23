@@ -1,7 +1,9 @@
 """Tests for minimal dynamic analysis mode."""
 
+import sys
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 from modules.screenshot_manager.manager import Screenshot
 from modules.exploration_strategy.explorer import ExplorationResult
@@ -71,6 +73,26 @@ class _FakeTrafficMonitor:
             "candidate_total_requests": 1,
             "candidate_unique_hosts": 1,
             "candidate_sources": {"webview": 1},
+            "cert_verification_status": "not_installed",
+            "tls_handshake_failures": 2,
+            "tls_handshake_failures_by_host": {"api.demo.com": 2},
+        }
+
+    def get_capture_diagnostics(self):
+        return {
+            "cert": {
+                "verification_status": "not_installed",
+                "local_cert_exists": True,
+                "device_cert_installed": False,
+                "device_cert_store_accessible": True,
+                "device_cert_checked_path": "/data/misc/user/0/cacerts-added/abcd1234.0",
+                "device_download_cert_present": True,
+                "local_cert_path": "~/.mitmproxy/mitmproxy-ca-cert.cer",
+            },
+            "tls": {
+                "total_failures": 2,
+                "by_host": {"api.demo.com": 2},
+            },
         }
 
 
@@ -136,6 +158,26 @@ class _FakeTrafficMonitorNoNetwork(_FakeTrafficMonitor):
             "candidate_total_requests": 0,
             "candidate_unique_hosts": 0,
             "candidate_sources": {},
+            "cert_verification_status": "unknown",
+            "tls_handshake_failures": 0,
+            "tls_handshake_failures_by_host": {},
+        }
+
+    def get_capture_diagnostics(self):
+        return {
+            "cert": {
+                "verification_status": "unknown",
+                "local_cert_exists": False,
+                "device_cert_installed": None,
+                "device_cert_store_accessible": None,
+                "device_cert_checked_path": None,
+                "device_download_cert_present": False,
+                "local_cert_path": "~/.mitmproxy/mitmproxy-ca-cert.cer",
+            },
+            "tls": {
+                "total_failures": 0,
+                "by_host": {},
+            },
         }
 
 
@@ -181,6 +223,10 @@ def test_run_dynamic_analysis_minimal_writes_local_markdown(monkeypatch, tmp_pat
     assert result["status"] == "success"
     assert result["status_reason"] == "ok"
     assert result["combined_requests"] == 2
+    assert result["cert_verification_status"] == "not_installed"
+    assert result["tls_handshake_failures"] == 2
+    assert "## 六、HTTPS 拦截诊断" in text
+    assert "TLS 握手失败总数: `2`" in text
 
 
 def test_run_dynamic_analysis_minimal_degraded_when_no_network(monkeypatch, tmp_path):
@@ -225,3 +271,19 @@ def test_run_dynamic_analysis_minimal_failed_when_exploration_fails(monkeypatch,
     assert result["status"] == "failed_exploration"
     assert result["status_reason"] == "exploration_failed"
     assert result["exploration_success"] is False
+
+
+def test_detect_package_name_fallback_to_aapt(monkeypatch):
+    """Package detection should fallback to aapt when androguard parser fails."""
+    fake_misc = SimpleNamespace(
+        AnalyzeAPK=lambda _: (_ for _ in ()).throw(RuntimeError("encrypted manifest"))
+    )
+    monkeypatch.setitem(sys.modules, "androguard.misc", fake_misc)
+
+    completed = Mock()
+    completed.stdout = "package: name='com.fallback.demo' versionCode='1'"
+    completed.stderr = ""
+    monkeypatch.setattr(dynamic_analyzer.subprocess, "run", lambda *args, **kwargs: completed)
+
+    package = dynamic_analyzer._detect_package_name("/tmp/fake.apk")
+    assert package == "com.fallback.demo"

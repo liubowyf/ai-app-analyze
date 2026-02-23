@@ -80,6 +80,48 @@ class AppExplorer:
             )
         )
 
+    def _list_third_party_packages(self, host: str, port: int) -> Set[str]:
+        """List third-party packages to help detect newly installed target app."""
+        output = self.android_runner.execute_adb_remote(host, port, "shell pm list packages -3")
+        return {
+            line.replace("package:", "").strip()
+            for line in (output or "").split("\n")
+            if "package:" in line
+        }
+
+    def _launch_target_with_verification(
+        self,
+        host: str,
+        port: int,
+        package_name: str,
+        retries: int = 3,
+    ) -> None:
+        """Launch target app and require it to become foreground."""
+        attempts = max(1, retries)
+        last_foreground = ""
+        for attempt in range(1, attempts + 1):
+            self.android_runner.launch_app(host, port, package_name)
+            time.sleep(2)
+            current_pkg = self._get_foreground_package(host, port)
+            if current_pkg == package_name:
+                return
+            last_foreground = current_pkg or ""
+            logger.warning(
+                "Launch verification failed (%s/%s): target=%s current=%s",
+                attempt,
+                attempts,
+                package_name,
+                current_pkg or "unknown",
+            )
+            if attempt < attempts:
+                self.android_runner.press_home(host, port)
+                time.sleep(1)
+
+        raise RuntimeError(
+            f"Target app launch failed: {package_name} not foreground "
+            f"(current={last_foreground or 'unknown'})"
+        )
+
     def _get_foreground_package(self, host: str, port: int) -> str:
         """Get current foreground package with graceful fallback."""
         getter = getattr(self.android_runner, "get_current_package", None)
@@ -160,8 +202,7 @@ class AppExplorer:
         packages_before = set()
         if not package_name:
             try:
-                output = self.android_runner.execute_adb_remote(host, port, "shell pm list packages")
-                packages_before = set(line.replace("package:", "").strip() for line in output.split('\n') if "package:" in line)
+                packages_before = self._list_third_party_packages(host, port)
                 logger.info(f"Packages before install: {len(packages_before)}")
             except Exception as e:
                 logger.warning(f"Failed to list packages before install: {e}")
@@ -186,42 +227,35 @@ class AppExplorer:
         # Detect package name if not provided
         if not package_name:
             try:
-                output = self.android_runner.execute_adb_remote(host, port, "shell pm list packages")
-                packages_after = set(line.replace("package:", "").strip() for line in output.split('\n') if "package:" in line)
+                packages_after = self._list_third_party_packages(host, port)
                 new_packages = packages_after - packages_before
                 if new_packages:
-                    package_name = list(new_packages)[0]
+                    package_name = sorted(new_packages)[0]
                     logger.info(f"Detected installed package: {package_name}")
                 else:
-                    logger.warning("Could not detect installed package, proceeding without package name")
+                    logger.error("Could not detect installed package after APK install")
             except Exception as e:
                 logger.warning(f"Failed to detect package name: {e}")
 
-        # Grant all permissions (if package name available)
-        if package_name:
-            self.target_package = package_name
-            if self.policy.skip_permission_grant:
-                logger.info(
-                    "Skip upfront permission grant for %s (APP_EXPLORATION_SKIP_PERMISSION_GRANT=true)",
-                    package_name,
-                )
-            else:
-                logger.info(f"Granting permissions for {package_name}...")
-                self.android_runner.grant_all_permissions(host, port, package_name)
+        if not package_name:
+            raise RuntimeError(
+                "Unable to determine target package name after installation; "
+                "abort exploration to avoid operating on launcher/home screen"
+            )
 
-            # Launch app
-            logger.info(f"Launching app {package_name}...")
-            self.android_runner.launch_app(host, port, package_name)
-            time.sleep(3)  # Wait for app to start
+        # Grant all permissions and launch target app with foreground verification.
+        self.target_package = package_name
+        if self.policy.skip_permission_grant:
+            logger.info(
+                "Skip upfront permission grant for %s (APP_EXPLORATION_SKIP_PERMISSION_GRANT=true)",
+                package_name,
+            )
         else:
-            logger.warning("No package name available, skipping permission grant and app launch")
-            logger.info("Attempting to launch the most recently installed app...")
-            # Try to launch the last installed app
-            try:
-                self.android_runner.execute_adb_remote(host, port, "shell monkey -p com. -c android.intent.category.LAUNCHER 1")
-                time.sleep(3)
-            except Exception as e:
-                logger.warning(f"Failed to launch app: {e}")
+            logger.info(f"Granting permissions for {package_name}...")
+            self.android_runner.grant_all_permissions(host, port, package_name)
+
+        logger.info(f"Launching app {package_name}...")
+        self._launch_target_with_verification(host, port, package_name)
 
         # Screenshot: App launched
         screenshot = self._capture_app_screenshot(
@@ -1422,6 +1456,7 @@ class AppExplorer:
         deadline_ts = time.time() + time_budget
 
         self._apk_path = apk_path
+        self.target_package = package_name
         self.exploration_history.clear()
         self.activities_visited.clear()
         self.screen_action_counts.clear()
@@ -1481,14 +1516,15 @@ class AppExplorer:
                 )
 
         # Cleanup: Uninstall the app after analysis
-        if package_name:
+        cleanup_package = self.target_package or package_name
+        if cleanup_package:
             try:
-                logger.info(f"Uninstalling app {package_name}...")
-                output = self.android_runner.execute_adb_remote(host, port, f"uninstall {package_name}")
+                logger.info(f"Uninstalling app {cleanup_package}...")
+                output = self.android_runner.execute_adb_remote(host, port, f"uninstall {cleanup_package}")
                 if "Success" in output:
-                    logger.info(f"Successfully uninstalled {package_name}")
+                    logger.info(f"Successfully uninstalled {cleanup_package}")
                 else:
-                    logger.warning(f"Failed to uninstall {package_name}: {output}")
+                    logger.warning(f"Failed to uninstall {cleanup_package}: {output}")
             except Exception as e:
                 logger.warning(f"Error during app cleanup: {e}")
         else:
