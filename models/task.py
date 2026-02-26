@@ -100,6 +100,12 @@ class Task(Base):
     report_storage_path: Mapped[Optional[str]] = Column(
         String(500), nullable=True
     )
+    web_report_path: Mapped[Optional[str]] = Column(
+        String(500), nullable=True
+    )
+    static_report_path: Mapped[Optional[str]] = Column(
+        String(500), nullable=True
+    )
 
     # Relationships to normalized tables
     static_table = relationship("StaticAnalysisTable", back_populates="task", uselist=False)
@@ -159,5 +165,7 @@ class Task(Base):
             "static_analysis_result": self.static_analysis_result,
             "dynamic_analysis_result": self.dynamic_analysis_result,
             "report_storage_path": self.report_storage_path,
+            "web_report_path": self.web_report_path,
+            "static_report_path": self.static_report_path,
         }
         return result
