@@ -10,6 +10,7 @@ from core.database import SessionLocal
 from core.storage import storage_client
 from models.task import Task, TaskStatus
 from modules.report_generator import ReportGenerator, generate_analysis_report
+from modules.report_generator.html_generator import HTMLReportGenerator
 from modules.task_orchestration.run_tracker import finish_stage_run, start_stage_run
 
 logger = logging.getLogger(__name__)
@@ -113,8 +114,31 @@ def generate_report(self, task_id: Any) -> dict:
             content_type="application/pdf",
         )
 
-        # Update task
+        # Generate HTML reports
+        html_generator = HTMLReportGenerator()
+
+        # Generate web HTML report
+        web_html = html_generator.generate_web_report(report_data)
+        web_path = f"reports/{task_id}/report_web.html"
+        storage_client.upload_file(
+            data=web_html.encode('utf-8'),
+            object_name=web_path,
+            content_type="text/html"
+        )
+
+        # Generate static HTML report
+        static_html = html_generator.generate_static_report(report_data)
+        static_path = f"reports/{task_id}/report_static.html"
+        storage_client.upload_file(
+            data=static_html.encode('utf-8'),
+            object_name=static_path,
+            content_type="text/html"
+        )
+
+        # Update task with all report paths
         task.report_storage_path = report_path
+        task.web_report_path = web_path
+        task.static_report_path = static_path
         task.status = TaskStatus.COMPLETED
         task.error_message = None
         task.completed_at = func.now()
