@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ app_name or package_name }} - 涉诈APP分析报告</title>
+    <link rel="stylesheet" href="/static/css/report.css">
+</head>
+<body>
+    <div class="container">
+        <header class="report-header">
+            <h1>网络反诈中心</h1>
+            <h2>涉诈APP分析服务报告</h2>
+            <div class="app-info">
+                <h3>{{ app_name or package_name }}</h3>
+                <span class="risk-badge risk-{{ risk_level }}">{{ risk_level|upper }}</span>
+            </div>
+        </header>
+
+        <main class="report-content">
+            <!-- 基本信息 -->
+            <section class="info-section">
+                <h2>应用基本信息</h2>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <label>应用名称</label>
+                        <span>{{ app_name or 'N/A' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>包名</label>
+                        <span>{{ package_name or 'N/A' }}</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 威胁情报 -->
+            <section class="threat-section">
+                <h2>可调证线索信息</h2>
+                <p>威胁信息内容...</p>
+            </section>
+        </main>
+    </div>
+    <script src="/static/js/report.js"></script>
+</body>
+</html>
