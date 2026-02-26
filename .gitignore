@@ -56,3 +56,4 @@ reports/
 # Temporary test files
 test_output/
 tmp/
+.worktrees/
