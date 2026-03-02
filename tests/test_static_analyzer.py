@@ -2,13 +2,11 @@
 import pytest
 
 
-def test_static_analysis_task_registered():
-    """Test that static analysis task is registered."""
-    # Import the static_analyzer module to register tasks
-    import workers.static_analyzer
-    from workers.celery_app import celery_app
+def test_static_analysis_entrypoint_exists():
+    """Static analyzer should expose callable stage entrypoint."""
+    from workers.static_analyzer import run_static_analysis
 
-    assert "workers.static_analyzer.run_static_analysis" in celery_app.tasks
+    assert callable(run_static_analysis)
 
 
 def test_apk_analyzer_extract_package_name():

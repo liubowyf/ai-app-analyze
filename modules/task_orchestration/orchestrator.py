@@ -1,55 +1,34 @@
-"""Workflow orchestration utilities for analysis tasks."""
+"""Workflow orchestration helpers (Dramatiq-only)."""
 
 from __future__ import annotations
 
+import importlib
 import logging
 from typing import Optional
 
-from celery import chain
-from celery.canvas import Signature
-
 from models.task import TaskPriority
-from workers.dynamic_analyzer import run_dynamic_analysis
-from workers.report_generator import generate_report
-from workers.static_analyzer import run_static_analysis
 
 logger = logging.getLogger(__name__)
 
-
-_PRIORITY_MAP = {
-    TaskPriority.URGENT: 0,
-    TaskPriority.NORMAL: 5,
-    TaskPriority.BATCH: 9,
-}
+_STAGE_FLOW_WITH_STATIC = ("static", "dynamic", "report")
+_STAGE_FLOW_DYNAMIC_ONLY = ("dynamic", "report")
 
 
-def _resolve_priority(priority: Optional[object]) -> int:
+def _resolve_priority_label(priority: Optional[object]) -> str:
+    """Normalize priority object into stable label for logging."""
     if isinstance(priority, TaskPriority):
-        return _PRIORITY_MAP.get(priority, 5)
+        return priority.value
     if isinstance(priority, str):
-        for level in TaskPriority:
-            if level.value == priority:
-                return _PRIORITY_MAP[level]
-    return 5
+        normalized = priority.strip().lower()
+        if normalized in {level.value for level in TaskPriority}:
+            return normalized
+    return TaskPriority.NORMAL.value
 
 
-def build_analysis_workflow(task_id: str, include_static: bool = True) -> Signature:
-    """
-    Build Celery workflow for one task.
-
-    Use immutable signatures (`si`) where we must pin `task_id` and ignore
-    previous stage payloads, so the chain is stable regardless of return shapes.
-    """
-    if include_static:
-        return chain(
-            run_static_analysis.si(task_id),
-            run_dynamic_analysis.si(task_id),
-            generate_report.s(),
-        )
-    return chain(
-        run_dynamic_analysis.si(task_id),
-        generate_report.s(),
-    )
+def build_analysis_workflow(task_id: str, include_static: bool = True) -> tuple[str, tuple[str, ...]]:
+    """Build deterministic workflow descriptor for one task."""
+    stages = _STAGE_FLOW_WITH_STATIC if include_static else _STAGE_FLOW_DYNAMIC_ONLY
+    return task_id, stages
 
 
 def enqueue_analysis_workflow(
@@ -57,18 +36,36 @@ def enqueue_analysis_workflow(
     include_static: bool = True,
     priority: Optional[object] = None,
 ) -> bool:
-    """Enqueue analysis workflow and return whether enqueue succeeds."""
-    workflow = build_analysis_workflow(task_id=task_id, include_static=include_static)
-    celery_priority = _resolve_priority(priority)
+    """
+    Enqueue analysis workflow through Dramatiq actor.
+
+    `include_static` and `priority` are kept for compatibility with existing call sites.
+    The state machine decides actual next stage from persisted status.
+    """
+    _task_id, stages = build_analysis_workflow(task_id=task_id, include_static=include_static)
+    priority_label = _resolve_priority_label(priority)
     try:
-        workflow.apply_async(priority=celery_priority)
+        task_actor_module = importlib.import_module("workers.task_actor")
+        run_task = getattr(task_actor_module, "run_task", None)
+        if run_task is None or not hasattr(run_task, "send"):
+            logger.warning("Dramatiq actor unavailable, cannot enqueue task_id=%s", task_id)
+            return False
+        run_task.send(task_id)
+        logger.info(
+            "Enqueued Dramatiq workflow task_id=%s include_static=%s priority=%s stages=%s",
+            task_id,
+            include_static,
+            priority_label,
+            ",".join(stages),
+        )
         return True
     except Exception as exc:
         logger.warning(
-            "Failed to enqueue workflow task_id=%s include_static=%s priority=%s: %s",
+            "Failed to enqueue Dramatiq workflow task_id=%s include_static=%s priority=%s: %s",
             task_id,
             include_static,
-            celery_priority,
+            priority_label,
             exc,
         )
         return False
+

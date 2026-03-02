@@ -10,7 +10,7 @@ from api.schemas.apk import APKUploadResponse
 from core.database import SessionLocal
 from core.storage import storage_client
 from models.task import Task, TaskPriority, TaskStatus
-from modules.task_orchestration.orchestrator import enqueue_analysis_workflow
+from modules.task_orchestration.queue_backend import enqueue_task
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -124,13 +124,9 @@ async def upload_apk(
     db.commit()
     db.refresh(task)
 
-    # Trigger Celery task chain for analysis.
-    # Current baseline keeps static analysis optional; upload path uses dynamic+report by default.
-    enqueue_ok = enqueue_analysis_workflow(
-        task_id=str(task.id),
-        include_static=False,
-        priority=task.priority,
-    )
+    # Trigger Dramatiq actor-driven analysis workflow.
+    # Keep workflow consistent with /tasks and retry endpoints: static -> dynamic -> report.
+    enqueue_ok = enqueue_task(str(task.id), priority=task.priority)
     if not enqueue_ok:
         logger.warning("Failed to enqueue analysis workflow for task %s", task.id)
 

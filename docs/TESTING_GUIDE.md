@@ -1,542 +1,249 @@
-# 测试用例执行指南
+# 测试执行指南（当前生效）
 
-**文档版本**: v1.0
-**创建日期**: 2026-02-21
-**适用范围**: APK 智能动态分析平台项目任务测试
+**版本**: v2.3  
+**更新时间**: 2026-03-02
 
----
+## 0. 当前迭代强制前提（调度验证优先）
+- 本阶段所有开发/测试任务默认采用“只验证调度链路”模式：仅验证入队、分发、重试、状态迁移与回滚能力。
+- 默认不执行真实远程 APK 分析（不依赖真实模拟器交互、mitm 抓包、AI 远程推理）作为每轮改动验收条件。
+- 每轮改动的最小验收以以下证据为准：`pytest` 目标测试通过 + `verify_collect_stability.py` 通过 + `pytest --collect-only -q` 通过。
+- 真实远程 APK 全链路验证仅在“专项 E2E 验证”中执行，不作为日常迭代门禁。
 
-## 📋 文档说明
+## 1. 范围说明
+- 当前仓库以 `tests/test_*.py` 为主测试集。
+- `tests/task_tests/` 已在 2026-02-27 下线，不再作为可执行测试入口。
 
-本文档提供所有任务测试用例的执行指南，包括环境准备、执行方法、结果验证等内容。
-
----
-
-## 🎯 测试用例总览
-
-### 完成情况统计
-
-| 模块 | 任务数 | 测试类 | 测试方法 | 状态 |
-|------|--------|--------|---------|------|
-| 模块一：基础设施层 | 3 | 3 | 20 | ✅ 已完成 |
-| 模块二：核心分析引擎 | 4 | 4 | 26 | ✅ 已完成 |
-| 模块三：智能分析模块 | 3 | 3 | 15 | ⏸️ 待创建 |
-| 模块四：报告与可视化 | 3 | 3 | 15 | ⏸️ 待创建 |
-| 模块五：API 层增强 | 3 | 3 | 15 | ⏸️ 待创建 |
-| 模块六：模拟器管理 | 2 | 2 | 10 | ⏸️ 待创建 |
-| 模块七：安全与合规 | 3 | 3 | 15 | ⏸️ 待创建 |
-| 模块八：测试与质量保证 | 3 | 3 | 15 | ⏸️ 待创建 |
-| 模块九：DevOps 与部署 | 3 | 3 | 15 | ⏸️ 待创建 |
-| 模块十：文档与知识库 | 2 | 2 | 10 | ⏸️ 待创建 |
-| **总计** | **29** | **29** | **156** | **29.5%** |
-
----
-
-## 🔧 环境准备
-
-### 1. 安装测试依赖
-
+## 2. 环境准备
 ```bash
-# 激活虚拟环境
+python -m venv venv
 source venv/bin/activate
-
-# 安装测试依赖
-pip install pytest pytest-cov pytest-asyncio pytest-xdist pytest-html pytest-mock
-
-# 验证安装
-pytest --version
+pip install -r requirements.txt
 ```
 
-### 2. 准备测试数据
-
+## 3. 常用命令
 ```bash
-# 创建测试数据目录
-mkdir -p tests/fixtures
-mkdir -p tests/test_data
+# 收集稳定性门禁（30s 超时，CI/本地都建议先跑）
+PYTHONPATH=. ./venv/bin/python scripts/verify_collect_stability.py
 
-# 准备测试 APK 文件（可使用小型测试 APK）
-# 建议使用小于 5MB 的测试 APK
+# 收集测试（推荐先执行）
+PYTHONPATH=. ./venv/bin/pytest --collect-only -q
+
+# 全量测试
+PYTHONPATH=. ./venv/bin/pytest -v
+
+# 覆盖率
+PYTHONPATH=. ./venv/bin/pytest --cov=. --cov-report=html
+
+# 单文件测试示例
+PYTHONPATH=. ./venv/bin/pytest -q tests/test_reports_api_simple.py
+PYTHONPATH=. ./venv/bin/pytest -q tests/test_emulator_lease.py tests/test_proxy_port_lease.py
 ```
 
-### 3. 配置测试环境
-
-创建 `tests/conftest.py`：
-
-```python
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-@pytest.fixture
-def client():
-    """创建测试客户端"""
-    from api.main import app
-    with TestClient(app) as client:
-        yield client
-
-@pytest.fixture
-def db_session():
-    """创建测试数据库会话"""
-    engine = create_engine("sqlite:///:memory:")
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    yield session
-    session.close()
-```
-
----
-
-## 🚀 测试执行方法
-
-### 一、运行所有测试
-
+## 3.1 Phase 2 收口命令
 ```bash
-# 运行所有测试用例
-pytest tests/task_tests/ -v
+PYTHONPATH=. ./venv/bin/pytest -q \
+  tests/test_stage_services.py \
+  tests/test_state_machine.py \
+  tests/test_task_actor_state_machine_runtime.py \
+  tests/test_task_actor_retry_lock.py \
+  tests/test_apk_router.py \
+  tests/test_tasks_router.py \
+  tests/test_queue_backend.py \
+  tests/test_queue_backend_dramatiq_path.py
 
-# 运行并显示覆盖率
-pytest tests/task_tests/ -v --cov=. --cov-report=html
-
-# 并行运行（加速）
-pytest tests/task_tests/ -v -n auto
+PYTHONPATH=. ./venv/bin/python scripts/verify_collect_stability.py
+PYTHONPATH=. ./venv/bin/pytest --collect-only -q
 ```
 
-### 二、运行指定模块测试
-
+## 3.2 Phase 2.2 Canary Readiness 命令
 ```bash
-# 模块一：基础设施层
-pytest tests/task_tests/test_module_01_infrastructure.py -v
+PYTHONPATH=. ./venv/bin/pytest -q \
+  tests/test_queue_backend.py \
+  tests/test_queue_backend_dramatiq_path.py \
+  tests/test_queue_backend_runtime_status.py \
+  tests/test_tasks_router.py \
+  tests/test_task_actor_state_machine_runtime.py \
+  tests/test_task_actor_retry_lock.py \
+  tests/test_task_actor_observability.py
 
-# 模块二：核心分析引擎
-pytest tests/task_tests/test_module_02_core_analysis.py -v
+PYTHONPATH=. ./venv/bin/python scripts/canary_rollout_smoke.py
+PYTHONPATH=. ./venv/bin/python scripts/rollback_smoke.py
+PYTHONPATH=. ./venv/bin/python scripts/verify_collect_stability.py
+PYTHONPATH=. ./venv/bin/pytest --collect-only -q
 ```
 
-### 三、运行指定测试类
-
+## 3.3 Phase 2.3-R2 Canary/Rollback 收口命令
 ```bash
-# 数据库连接池监控测试
-pytest tests/task_tests/test_module_01_infrastructure.py::TestDatabasePoolMonitoring -v
+# 证据门禁（示例阈值：screenshots>0、network>0、domains>0）
+PYTHONPATH=. ./venv/bin/python scripts/canary_rollout_smoke.py \
+  --runs-count 3 \
+  --network-count 10 \
+  --domains-count 3 \
+  --report-img-count 1
 
-# 静态分析集成测试
-pytest tests/task_tests/test_module_02_core_analysis.py::TestStaticAnalyzerIntegration -v
-
-# 场景测试
-pytest tests/task_tests/test_module_02_core_analysis.py::TestScenarioTesting -v
-
-# AI 决策增强测试
-pytest tests/task_tests/test_module_02_core_analysis.py::TestAIDecisionEnhanced -v
-
-# 流量协议解析测试
-pytest tests/task_tests/test_module_02_core_analysis.py::TestTrafficProtocolParsing -v
+# Dramatiq 运行就绪门禁
+PYTHONPATH=. ./venv/bin/python scripts/rollback_smoke.py
 ```
 
-### 四、运行指定测试方法
+Canary 验收阈值（最低要求）：
+- `report_img_count > 0`
+- `network_count > 0`
+- `domains_count > 0`
+- `runs_count > 0`
 
+## 3.4 Phase 3 Rollout Hardening 命令
 ```bash
-# 测试连接池状态接口
-pytest tests/task_tests/test_module_01_infrastructure.py::TestDatabasePoolMonitoring::test_pool_status_endpoint -v
+PYTHONPATH=. ./venv/bin/pytest -q \
+  tests/test_rollout_guard.py \
+  tests/test_queue_backend_runtime_status.py \
+  tests/test_task_actor_observability.py \
+  tests/test_canary_smoke_scripts.py
 
-# 测试静态分析性能
-pytest tests/task_tests/test_module_02_core_analysis.py::TestStaticAnalyzerIntegration::test_static_analysis_performance -v
+# 结构化汇总 + 门禁
+PYTHONPATH=. ./venv/bin/python scripts/canary_rollout_smoke.py \
+  --runs-count 1 \
+  --network-count 1 \
+  --domains-count 1 \
+  --report-img-count 1
+
+# 回滚触发判定（输入 rolling snapshot）
+PYTHONPATH=. ./venv/bin/python scripts/rollout_guard.py --snapshot-json /tmp/rollout_window.json
+
+# Dramatiq 运行就绪门禁
+PYTHONPATH=. ./venv/bin/python scripts/rollback_smoke.py
 ```
 
-### 五、生成测试报告
-
+## 3.5 Phase 4 Scheduling-First 命令（不依赖真实远程 APK）
 ```bash
-# 生成 HTML 报告
-pytest tests/task_tests/ --html=reports/test_report.html --self-contained-html
+PYTHONPATH=. ./venv/bin/pytest -q \
+  tests/test_canary_smoke_scheduling_mode.py \
+  tests/test_scheduling_window_snapshot.py \
+  tests/test_rollout_guard.py \
+  tests/test_tasks_router_scheduling_metrics.py
 
-# 生成 JUnit XML 报告
-pytest tests/task_tests/ --junit-xml=reports/junit.xml
+PYTHONPATH=. ./venv/bin/python scripts/verify_collect_stability.py
+PYTHONPATH=. ./venv/bin/pytest --collect-only -q
 
-# 生成覆盖率报告
-pytest tests/task_tests/ --cov=. --cov-report=html --cov-report=term
+# 生成 30 分钟调度窗口快照
+PYTHONPATH=. ./venv/bin/python scripts/scheduling_window_snapshot.py \
+  --minutes 30 \
+  --output /tmp/phase4_window.json
+
+# scheduling 门禁判定（默认模式）
+PYTHONPATH=. ./venv/bin/python scripts/canary_rollout_smoke.py \
+  --validation-mode scheduling \
+  --snapshot-json /tmp/phase4_window.json
+
+# rollout guard 判定
+PYTHONPATH=. ./venv/bin/python scripts/rollout_guard.py \
+  --snapshot-json /tmp/phase4_window.json \
+  --validation-mode scheduling
+
+# Dramatiq 运行就绪性
+PYTHONPATH=. ./venv/bin/python scripts/rollback_smoke.py
 ```
 
----
-
-## 📊 详细测试用例执行指南
-
-### 模块一：基础设施层 (test_module_01_infrastructure.py)
-
-#### 任务 1.1: 数据库连接池优化与监控
-
-**测试类**: `TestDatabasePoolMonitoring`
-
+## 3.6 Phase 4.1 调度卡死修复闭环（NO-GO -> 修复 -> 复测）
 ```bash
-# 运行所有数据库连接池测试
-pytest tests/task_tests/test_module_01_infrastructure.py::TestDatabasePoolMonitoring -v
+# 1) 基线快照（通常会看到 stuck_tasks>0 导致 NO-GO）
+PYTHONPATH=. ./venv/bin/python scripts/scheduling_window_snapshot.py \
+  --minutes 30 \
+  --output /tmp/phase41_before.json
 
-# 单独测试各项功能
-pytest tests/task_tests/test_module_01_infrastructure.py::TestDatabasePoolMonitoring::test_pool_status_endpoint -v
-pytest tests/task_tests/test_module_01_infrastructure.py::TestDatabasePoolMonitoring::test_connection_leak_detection -v
-pytest tests/task_tests/test_module_01_infrastructure.py::TestDatabasePoolMonitoring::test_slow_query_logging -v
-pytest tests/task_tests/test_module_01_infrastructure.py::TestDatabasePoolMonitoring::test_prometheus_metrics -v
-pytest tests/task_tests/test_module_01_infrastructure.py::TestDatabasePoolMonitoring::test_health_check_endpoint -v
+PYTHONPATH=. ./venv/bin/python scripts/rollout_guard.py \
+  --snapshot-json /tmp/phase41_before.json \
+  --validation-mode scheduling
+
+# 2) 卡死恢复（先预演再应用）
+PYTHONPATH=. ./venv/bin/python scripts/recover_stuck_tasks.py --dry-run
+PYTHONPATH=. ./venv/bin/python scripts/recover_stuck_tasks.py --apply
+
+# 3) 修复后复测
+PYTHONPATH=. ./venv/bin/python scripts/scheduling_window_snapshot.py \
+  --minutes 30 \
+  --output /tmp/phase41_after.json
+
+PYTHONPATH=. ./venv/bin/python scripts/rollout_guard.py \
+  --snapshot-json /tmp/phase41_after.json \
+  --validation-mode scheduling
 ```
 
-**验证标准**:
-- ✅ 连接池监控接口返回正确数据
-- ✅ 连接泄漏能被检测并告警
-- ✅ 慢查询（>1s）被记录
-- ✅ Prometheus 指标格式正确
-- ✅ 健康检查端点正常工作
+判定约束（scheduling）：
+- `stuck_tasks > 0` => `rollback_now`
+- `total_tasks < min_sample` => `hold`
+- 仅当 `total_tasks >= min_sample` 时才判 `success_rate`
+- `can_enqueue=false` 或 `rollback_ready=false` => `rollback_now`
 
-#### 任务 1.2: MinIO 存储优化与冗余备份
-
-**测试类**: `TestStorageEnhancements`
-
+## 3.7 Phase 4.2 样本积累（hold -> continue）
 ```bash
-# 运行所有存储增强测试
-pytest tests/task_tests/test_module_01_infrastructure.py::TestStorageEnhancements -v
+# 1) 生成调度样本（仅 probe 状态迁移，不触发真实远程分析）
+PYTHONPATH=. ./venv/bin/python scripts/generate_scheduling_samples.py \
+  --count 30 \
+  --priority-mix normal:0.8,urgent:0.1,batch:0.1 \
+  --timeout-seconds 180 \
+  --output /tmp/phase42_samples.json
 
-# 单独测试各项功能
-pytest tests/task_tests/test_module_01_infrastructure.py::TestStorageEnhancements::test_storage_capacity_monitoring -v
-pytest tests/task_tests/test_module_01_infrastructure.py::TestStorageEnhancements::test_multipart_upload -v
-pytest tests/task_tests/test_module_01_infrastructure.py::TestStorageEnhancements::test_file_versioning -v
+# 2) 生成窗口快照
+PYTHONPATH=. ./venv/bin/python scripts/scheduling_window_snapshot.py \
+  --minutes 30 \
+  --output /tmp/phase42_window.json
+
+# 3) guard 判定（默认 min_sample=30）
+PYTHONPATH=. ./venv/bin/python scripts/rollout_guard.py \
+  --snapshot-json /tmp/phase42_window.json \
+  --validation-mode scheduling
 ```
 
-**验证标准**:
-- ✅ 存储容量统计准确
-- ✅ 过期文件自动清理
-- ✅ 大文件分片上传成功
-- ✅ 文件版本管理正常
+hold -> continue 验收标准：
+- `total_tasks >= 30`
+- `stuck_tasks = 0`
+- guard `action=continue`
+- `rollback_ready=true`
 
-#### 任务 1.3: Redis 缓存策略优化
-
-**测试类**: `TestRedisCacheStrategy`
-
+## 3.8 Phase 4 一键门禁（发布前决策）
 ```bash
-# 运行所有缓存策略测试
-pytest tests/task_tests/test_module_01_infrastructure.py::TestRedisCacheStrategy -v
-
-# 单独测试各项功能
-pytest tests/task_tests/test_module_01_infrastructure.py::TestRedisCacheStrategy::test_task_result_caching -v
-pytest tests/task_tests/test_module_01_infrastructure.py::TestRedisCacheStrategy::test_cache_invalidation -v
-pytest tests/task_tests/test_module_01_infrastructure.py::TestRedisCacheStrategy::test_cache_monitoring -v
+bash scripts/phase4_gate_check.sh
 ```
 
-**验证标准**:
-- ✅ 任务结果缓存命中率 > 80%
-- ✅ 缓存失效机制正常
-- ✅ 缓存监控指标正确
+结果判定表：
+- `action=continue`：允许进入下一阶段（GO）。
+- `action=hold`：继续积累样本（执行 `generate_scheduling_samples.py` 后重跑 gate）。
+- `action=rollback_now`：立即停止推进并执行回滚路径排查。
 
----
-
-### 模块二：核心分析引擎 (test_module_02_core_analysis.py)
-
-#### 任务 2.1: 静态分析功能集成
-
-**测试类**: `TestStaticAnalyzerIntegration`
-
+## 3.9 Phase 5 连续稳定性门禁（发布前固化）
 ```bash
-# 运行所有静态分析测试
-pytest tests/task_tests/test_module_02_core_analysis.py::TestStaticAnalyzerIntegration -v
+# 本地/CI 统一入口（单次）
+bash scripts/ci_gate_entry.sh
 
-# 单独测试关键功能
-pytest tests/task_tests/test_module_02_core_analysis.py::TestStaticAnalyzerIntegration::test_static_analysis_in_pipeline -v
-pytest tests/task_tests/test_module_02_core_analysis.py::TestStaticAnalyzerIntegration::test_static_analysis_performance -v
-pytest tests/task_tests/test_module_02_core_analysis.py::TestStaticAnalyzerIntegration::test_risk_scoring -v
+# 连续门禁（默认 3 次，任一非 continue 即失败）
+PYTHONPATH=. ./venv/bin/python scripts/phase5_stability_check.py --runs 3
+
+# 每日巡检（失败会输出 alert payload JSON）
+PYTHONPATH=. ./venv/bin/python scripts/daily_gate_healthcheck.py
 ```
 
-**验证标准**:
-- ✅ 静态分析在流水线中正确执行
-- ✅ 静态分析耗时 < 30秒
-- ✅ 风险评分算法准确
-- ✅ APK 解析结果可缓存
-
-**前置条件**:
-- 准备测试 APK 文件：`tests/fixtures/test.apk`
-- APK 文件大小建议 < 5MB
-
-#### 任务 2.2: 动态分析增强 - 场景扩展
-
-**测试类**: `TestScenarioTesting`
-
-```bash
-# 运行所有场景测试
-pytest tests/task_tests/test_module_02_core_analysis.py::TestScenarioTesting -v
-
-# 单独测试场景检测
-pytest tests/task_tests/test_module_02_core_analysis.py::TestScenarioTesting::test_login_scenario_detection -v
-pytest tests/task_tests/test_module_02_core_analysis.py::TestScenarioTesting::test_payment_scenario_execution -v
-```
-
-**验证标准**:
-- ✅ 登录场景自动识别
-- ✅ 支付场景正确执行
-- ✅ 场景报告完整
-
-**注意事项**:
-- 需要 Mock Android 模拟器和 AI 驱动器
-- 测试数据需包含 UI 元素信息
-
-#### 任务 2.3: AI 驱动优化 - 决策智能增强
-
-**测试类**: `TestAIDecisionEnhanced`
-
-```bash
-# 运行所有 AI 决策测试
-pytest tests/task_tests/test_module_02_core_analysis.py::TestAIDecisionEnhanced -v
-
-# 单独测试关键功能
-pytest tests/task_tests/test_module_02_core_analysis.py::TestAIDecisionEnhanced::test_exploration_depth_limit -v
-pytest tests/task_tests/test_module_02_core_analysis.py::TestAIDecisionEnhanced::test_loop_detection -v
-pytest tests/task_tests/test_module_02_core_analysis.py::TestAIDecisionEnhanced::test_smart_backtrack -v
-```
-
-**验证标准**:
-- ✅ 探索深度不超过 50 步
-- ✅ 循环界面能被检测
-- ✅ 死胡同时能智能回退
-
-#### 任务 2.4: 流量监控增强 - 协议解析
-
-**测试类**: `TestTrafficProtocolParsing`
-
-```bash
-# 运行所有流量协议测试
-pytest tests/task_tests/test_module_02_core_analysis.py::TestTrafficProtocolParsing -v
-
-# 单独测试协议解析
-pytest tests/task_tests/test_module_02_core_analysis.py::TestTrafficProtocolParsing::test_websocket_capture -v
-pytest tests/task_tests/test_module_02_core_analysis.py::TestTrafficProtocolParsing::test_grpc_parsing -v
-pytest tests/task_tests/test_module_02_core_analysis.py::test_https_decryption_performance -v
-```
-
-**验证标准**:
-- ✅ WebSocket 消息被捕获
-- ✅ gRPC 请求被解析
-- ✅ HTTPS 解密延迟 < 100ms
-
----
-
-## 🎯 测试验收标准
-
-### 功能验收
-
-- ✅ 所有测试用例通过率 > 95%
-- ✅ 核心功能测试覆盖率 > 85%
-- ✅ 无阻塞性 Bug
-
-### 性能验收
-
-- ✅ API 响应时间 < 200ms (P95)
-- ✅ 静态分析耗时 < 30s
-- ✅ 动态分析耗时 < 10min
-
-### 质量验收
-
-- ✅ 单元测试覆盖率 > 85%
-- ✅ 集成测试覆盖率 > 70%
-- ✅ 无高危安全漏洞
-
----
-
-## 🔍 测试结果分析
-
-### 查看测试报告
-
-```bash
-# 查看 HTML 测试报告
-open reports/test_report.html
-
-# 查看覆盖率报告
-open htmlcov/index.html
-```
-
-### 分析测试失败
-
-```bash
-# 查看失败测试的详细信息
-pytest tests/task_tests/ -v --tb=long
-
-# 只运行失败的测试
-pytest tests/task_tests/ --lf -v
-
-# 停止于第一个失败
-pytest tests/task_tests/ -x -v
-```
-
-### 性能分析
-
-```bash
-# 测试执行时间分析
-pytest tests/task_tests/ --durations=10
-
-# 内存使用分析
-pytest tests/task_tests/ --memray
-```
-
----
-
-## 🚨 常见问题与解决方案
-
-### 问题 1: 测试数据库连接失败
-
-**现象**: `ConnectionError: Could not connect to database`
-
-**解决方案**:
-```python
-# 使用内存数据库进行测试
-@pytest.fixture
-def db_session():
-    engine = create_engine("sqlite:///:memory:")
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    yield session
-    session.close()
-```
-
-### 问题 2: Mock 对象不生效
-
-**现象**: Mock 对象未按预期工作
-
-**解决方案**:
-```python
-# 确保 Mock 在正确的位置
-with patch('modules.apk_analyzer.analyzer.APK') as mock_apk:
-    # 配置 Mock 行为
-    mock_apk.return_value.get_package.return_value = "com.example"
-    # 执行测试
-    result = analyzer.analyze("test.apk")
-```
-
-### 问题 3: 异步测试失败
-
-**现象**: `RuntimeError: Event loop is closed`
-
-**解决方案**:
-```python
-# 使用 pytest-asyncio
-@pytest.mark.asyncio
-async def test_async_function():
-    result = await async_function()
-    assert result is not None
-```
-
-### 问题 4: 测试超时
-
-**现象**: 测试长时间运行不结束
-
-**解决方案**:
-```bash
-# 设置测试超时时间
-pytest tests/task_tests/ --timeout=60
-```
-
----
-
-## 📝 测试最佳实践
-
-### 1. 测试隔离
-
-每个测试应该独立运行，不依赖其他测试的状态：
-
-```python
-# ❌ 错误：依赖全局状态
-global_var = None
-
-def test_1():
-    global global_var
-    global_var = "value"
-
-def test_2():
-    assert global_var == "value"  # 可能失败
-
-# ✅ 正确：使用 fixtures
-@pytest.fixture
-def test_data():
-    return "value"
-
-def test_isolated(test_data):
-    assert test_data == "value"
-```
-
-### 2. 清晰的断言
-
-```python
-# ❌ 错误：断言不清晰
-assert response
-
-# ✅ 正确：明确的断言
-assert response.status_code == 200
-assert "task_id" in response.json()
-assert response.json()["status"] == "completed"
-```
-
-### 3. 使用参数化
-
-```python
-@pytest.mark.parametrize("input,expected", [
-    ("valid_input", True),
-    ("invalid_input", False),
-    ("edge_case", True)
-])
-def test_validation(input, expected):
-    assert validate(input) == expected
-```
-
-### 4. Mock 外部依赖
-
-```python
-# Mock 外部 API 调用
-with patch('requests.get') as mock_get:
-    mock_get.return_value.json.return_value = {"data": "test"}
-    result = fetch_data()
-    assert result == {"data": "test"}
-```
-
----
-
-## 📅 测试执行计划
-
-### 第一阶段：基础设施测试（第 1 周）
-
-```bash
-# 第 1 天：数据库连接池测试
-pytest tests/task_tests/test_module_01_infrastructure.py::TestDatabasePoolMonitoring -v
-
-# 第 2 天：存储测试
-pytest tests/task_tests/test_module_01_infrastructure.py::TestStorageEnhancements -v
-
-# 第 3 天：缓存测试
-pytest tests/task_tests/test_module_01_infrastructure.py::TestRedisCacheStrategy -v
-```
-
-### 第二阶段：核心分析测试（第 2-3 周）
-
-```bash
-# 第 1 周：静态分析测试
-pytest tests/task_tests/test_module_02_core_analysis.py::TestStaticAnalyzerIntegration -v
-
-# 第 2 周：动态分析和场景测试
-pytest tests/task_tests/test_module_02_core_analysis.py::TestScenarioTesting -v
-pytest tests/task_tests/test_module_02_core_analysis.py::TestAIDecisionEnhanced -v
-
-# 第 3 周：流量监控测试
-pytest tests/task_tests/test_module_02_core_analysis.py::TestTrafficProtocolParsing -v
-```
-
-### 第三阶段：后续模块测试（第 4-6 周）
-
-```bash
-# 待创建后续模块测试文件后执行
-# 模块三至模块十的测试
-```
-
----
-
-## 📞 支持
-
-如有测试问题，请联系：
-
-- **测试负责人**: [待指定]
-- **技术支持**: [待指定]
-
----
-
-**文档位置**: `/docs/TESTING_GUIDE.md`
-**测试文件**: `/tests/task_tests/`
-**最后更新**: 2026-02-21
+CI 阻断规则：
+- `bash scripts/ci_gate_entry.sh` 返回非 `0` 必须阻断流水线。
+- 输出缺失 `final_action` 或 `final_reason` 视为门禁失败。
+
+标准处置动作：
+- `continue`：允许发布推进。
+- `hold`：暂停发布，先执行样本积累，再重复 `phase5_stability_check`。
+- `rollback_now`：立即按回滚手册执行回退，冻结扩流并开启故障排查。
+
+## 4. 分层建议
+- API 路由层: `tests/test_api_main.py`, `tests/test_apk_router.py`, `tests/test_tasks_router.py`, `tests/test_reports_api_simple.py`
+- 动态分析核心: `tests/test_dynamic_analyzer_minimal.py`, `tests/test_dynamic_analyzer_retry.py`, `tests/test_traffic_monitor_runtime.py`
+- 探索与 AI: `tests/test_exploration_*.py`, `tests/test_ai_driver_*.py`
+- 域名分析: `tests/test_domain_analyzer*.py`, `tests/test_feature_extractor.py`, `tests/test_ml_classifier.py`
+- 报告生成: `tests/test_report_generator_runtime.py`, `tests/test_html_generator.py`
+- 租约并发: `tests/test_emulator_lease.py`, `tests/test_proxy_port_lease.py`
+
+## 5. 当前基线
+- 最近一次收集结果：`349 tests collected`。
+- 若收集数量突降，优先检查：测试文件命名、导入路径、fixture 变更。
+
+## 6. 故障排查
+- `ModuleNotFoundError`：确认使用了 `PYTHONPATH=.`。
+- 与外部依赖相关失败：优先使用 mock fixture，而不是直接依赖真实 MySQL/Redis/MinIO/模拟器。
+- 长耗时测试：先按文件分组跑，再定位具体失败用例。

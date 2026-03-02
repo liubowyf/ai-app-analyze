@@ -11,6 +11,44 @@ logger = logging.getLogger(__name__)
 TEMPLATE_DIR = "templates"
 
 
+def _normalize_int(value: Any) -> int:
+    """Normalize unknown values to non-negative ints for report stats."""
+    try:
+        return max(0, int(value))
+    except Exception:
+        return 0
+
+
+def _extract_evidence_quality(
+    dynamic_result: Optional[Dict[str, Any]],
+    network_requests: Optional[list],
+    screenshots: Optional[list],
+) -> Dict[str, Any]:
+    """Extract dynamic evidence quality gate from dynamic result payload."""
+    quality_gate = {}
+    if isinstance(dynamic_result, dict):
+        gate_raw = dynamic_result.get("quality_gate")
+        if isinstance(gate_raw, dict):
+            quality_gate = gate_raw
+
+    network_count = _normalize_int(quality_gate.get("network_count", len(network_requests or [])))
+    domains_count = _normalize_int(quality_gate.get("domains_count", 0))
+    screenshots_count = _normalize_int(quality_gate.get("screenshots_count", len(screenshots or [])))
+    degraded = bool(
+        quality_gate.get("degraded", network_count == 0 and domains_count == 0 and screenshots_count == 0)
+    )
+    reason = quality_gate.get("reason")
+    if degraded and not reason:
+        reason = "empty_dynamic_evidence"
+    return {
+        "degraded": degraded,
+        "reason": reason,
+        "network_count": network_count,
+        "domains_count": domains_count,
+        "screenshots_count": screenshots_count,
+    }
+
+
 class ReportGenerator:
     """PDF report generator using Jinja2 and WeasyPrint."""
 
@@ -142,6 +180,9 @@ def generate_analysis_report(task_data: Dict[str, Any],
         if network_requests:
             risk_factors.append(f"Made {len(network_requests)} network requests")
             risk_score += len(network_requests) * 2
+    evidence_quality = _extract_evidence_quality(dynamic_result, network_requests, screenshots)
+    if evidence_quality["degraded"]:
+        risk_factors.append(f"Dynamic evidence degraded ({evidence_quality['reason']})")
 
     # Determine risk level
     if risk_score >= 50:
@@ -160,8 +201,10 @@ def generate_analysis_report(task_data: Dict[str, Any],
         "sha256": task_data.get("apk_sha256"),
         "static_analysis": static_result,
         "dynamic_analysis": dynamic_result,
+        "dynamic_analysis_result": dynamic_result,
         "network_requests": network_requests or [],
         "screenshots": screenshots or [],
+        "evidence_quality": evidence_quality,
         "risk_level": risk_level,
         "risk_score": risk_score,
         "risk_factors": risk_factors,

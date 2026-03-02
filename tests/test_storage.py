@@ -3,6 +3,7 @@ from datetime import timedelta
 from unittest.mock import Mock, MagicMock, patch
 import pytest
 
+from core.config import settings
 from core.storage import StorageManager, storage_client
 
 
@@ -11,43 +12,51 @@ class TestStorageManager:
 
     @patch('core.storage.Minio')
     def test_init_creates_client_with_settings(self, mock_minio_class):
-        """Test that StorageManager initializes MinIO client with correct settings."""
-        mock_client = MagicMock()
-        mock_minio_class.return_value = mock_client
-        mock_client.bucket_exists.return_value = False
-
-        manager = StorageManager()
-
-        mock_minio_class.assert_called_once_with(
-            endpoint="localhost:9000",
-            access_key="",
-            secret_key="",
-            secure=False
-        )
-        assert manager.client == mock_client
-
-    @patch('core.storage.Minio')
-    def test_init_creates_bucket_if_not_exists(self, mock_minio_class):
-        """Test that bucket is created if it doesn't exist."""
-        mock_client = MagicMock()
-        mock_minio_class.return_value = mock_client
-        mock_client.bucket_exists.return_value = False
-
-        manager = StorageManager()
-
-        mock_client.bucket_exists.assert_called_once_with("apk-analysis")
-        mock_client.make_bucket.assert_called_once_with("apk-analysis")
-
-    @patch('core.storage.Minio')
-    def test_init_skips_bucket_creation_if_exists(self, mock_minio_class):
-        """Test that bucket creation is skipped if it already exists."""
+        """Test client init happens lazily on first real storage operation."""
         mock_client = MagicMock()
         mock_minio_class.return_value = mock_client
         mock_client.bucket_exists.return_value = True
 
         manager = StorageManager()
 
-        mock_client.bucket_exists.assert_called_once_with("apk-analysis")
+        assert manager.client is None
+        mock_minio_class.assert_not_called()
+        assert manager.upload_file("test/file.txt", b"content", "text/plain") is True
+
+        mock_minio_class.assert_called_once_with(
+            endpoint=settings.MINIO_ENDPOINT,
+            access_key=settings.MINIO_ACCESS_KEY,
+            secret_key=settings.MINIO_SECRET_KEY,
+            secure=settings.MINIO_SECURE,
+        )
+        assert manager.client == mock_client
+
+    @patch('core.storage.Minio')
+    def test_init_creates_bucket_if_not_exists(self, mock_minio_class):
+        """Test bucket creation happens on first operation when bucket is absent."""
+        mock_client = MagicMock()
+        mock_minio_class.return_value = mock_client
+        mock_client.bucket_exists.return_value = False
+
+        manager = StorageManager()
+
+        mock_minio_class.assert_not_called()
+        assert manager.upload_file("test/file.txt", b"content", "text/plain") is True
+        mock_client.bucket_exists.assert_called_once_with(manager.bucket)
+        mock_client.make_bucket.assert_called_once_with(manager.bucket)
+
+    @patch('core.storage.Minio')
+    def test_init_skips_bucket_creation_if_exists(self, mock_minio_class):
+        """Test bucket creation is skipped when bucket already exists."""
+        mock_client = MagicMock()
+        mock_minio_class.return_value = mock_client
+        mock_client.bucket_exists.return_value = True
+
+        manager = StorageManager()
+
+        mock_minio_class.assert_not_called()
+        assert manager.upload_file("test/file.txt", b"content", "text/plain") is True
+        mock_client.bucket_exists.assert_called_once_with(manager.bucket)
         mock_client.make_bucket.assert_not_called()
 
     @patch('core.storage.Minio')
@@ -157,7 +166,7 @@ class TestStorageManager:
         result = manager.download_file("test/file.txt")
 
         assert result == b"downloaded content"
-        mock_client.get_object.assert_called_once_with("apk-analysis", "test/file.txt")
+        mock_client.get_object.assert_called_once_with(manager.bucket, "test/file.txt")
 
     @patch('core.storage.Minio')
     def test_download_file_failure(self, mock_minio_class):
@@ -190,14 +199,14 @@ class TestStorageManager:
         mock_client = MagicMock()
         mock_minio_class.return_value = mock_client
         mock_client.bucket_exists.return_value = True
-        mock_client.presigned_get_object.return_value = "http://localhost:9000/apk-analysis/test/file.txt?signature=abc"
-
         manager = StorageManager()
+        expected_url = f"http://localhost:9000/{manager.bucket}/test/file.txt?signature=abc"
+        mock_client.presigned_get_object.return_value = expected_url
 
         # Test with default expiration (3600 seconds = 1 hour)
         url = manager.get_presigned_url("test/file.txt")
 
-        assert url == "http://localhost:9000/apk-analysis/test/file.txt?signature=abc"
+        assert url == expected_url
         mock_client.presigned_get_object.assert_called_once()
         # Verify timedelta conversion
         call_args = mock_client.presigned_get_object.call_args
@@ -240,7 +249,7 @@ class TestStorageManager:
         result = manager.delete_file("test/file.txt")
 
         assert result is True
-        mock_client.remove_object.assert_called_once_with("apk-analysis", "test/file.txt")
+        mock_client.remove_object.assert_called_once_with(manager.bucket, "test/file.txt")
 
     @patch('core.storage.Minio')
     def test_delete_file_failure(self, mock_minio_class):

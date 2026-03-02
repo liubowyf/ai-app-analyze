@@ -14,7 +14,7 @@
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │  API 网关   │────→│ 任务调度    │────→│  执行层     │
-│  (FastAPI)  │     │  (Celery)   │     │  (分析模块) │
+│  (FastAPI)  │     │  (Dramatiq)   │     │  (分析模块) │
 └─────────────┘     └─────────────┘     └─────────────┘
        │                   │                   │
        ▼                   ▼                   ▼
@@ -80,7 +80,7 @@ RABBITMQ_USER=guest
 RABBITMQ_PASSWORD=guest
 RABBITMQ_VHOST=/
 
-# Celery
+# Dramatiq
 CELERY_BROKER_URL=amqp://guest:guest@localhost:5672//
 CELERY_RESULT_BACKEND=rpc://
 
@@ -104,8 +104,8 @@ python init_db.py
 # 2. 启动 API 服务
 uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 
-# 3. 启动 Celery Worker
-celery -A workers.celery_app worker -l info -Q default,static,dynamic,report
+# 3. 启动 Dramatiq Worker
+dramatiq -A workers.celery_app worker -l info -Q default,static,dynamic,report
 ```
 
 > 详细操作请参考 [运维指南](docs/OPERATIONS.md)
@@ -141,8 +141,8 @@ curl "http://localhost:8000/api/v1/tasks/your-task-id/report" -o report.pdf
 │   ├── config.py          # 配置管理
 │   ├── database.py        # 数据库连接
 │   └── storage.py         # MinIO 封装
-├── workers/                # Celery 任务
-│   ├── celery_app.py      # Celery 配置
+├── workers/                # Dramatiq 任务
+│   ├── celery_app.py      # Dramatiq 配置
 │   ├── static_analyzer.py # 静态分析任务
 │   ├── dynamic_analyzer.py# 动态分析任务
 │   └── report_generator.py# 报告生成任务
@@ -160,15 +160,18 @@ curl "http://localhost:8000/api/v1/tasks/your-task-id/report" -o report.pdf
 ├── tests/                  # 测试用例
 └── docs/                   # 文档
     ├── PRD.md             # 产品需求文档
-    └── ARCHITECTURE.md    # 系统架构文档
+    ├── OPERATIONS.md      # 运维手册
+    ├── PERSISTENCE.md     # 持久化说明
+    └── DOCUMENTATION_INDEX.md # 文档索引
 ```
 
 ## 文档
 
 - [产品需求文档 (PRD)](docs/PRD.md) - 完整的产品需求和功能说明
-- [系统架构文档 (ARCHITECTURE)](docs/ARCHITECTURE.md) - 技术架构和实现细节
+- [架构深度解析](docs/plans/2026-02-27-architecture-deep-dive.md) - 当前代码对齐的架构说明
 - [运维指南 (OPERATIONS)](docs/OPERATIONS.md) - 环境配置、服务启动、问题排查
-- [测试指南 (TESTING)](docs/TESTING.md) - 测试框架、测试结构、运行方法
+- [持久化说明 (PERSISTENCE)](docs/PERSISTENCE.md) - 数据写入与并发租约机制
+- [测试指南 (TESTING_GUIDE)](docs/TESTING_GUIDE.md) - 当前测试执行方法
 
 ## 分析流程
 
@@ -202,7 +205,7 @@ curl "http://localhost:8000/api/v1/tasks/your-task-id/report" -o report.pdf
 | 类别 | 技术 |
 |------|------|
 | Web 框架 | FastAPI |
-| 任务队列 | Celery + RabbitMQ |
+| 任务队列 | Dramatiq + RabbitMQ |
 | 数据库 | MySQL + SQLAlchemy |
 | 对象存储 | MinIO |
 | 静态分析 | androguard |

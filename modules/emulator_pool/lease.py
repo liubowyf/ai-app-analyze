@@ -7,7 +7,7 @@ import os
 import socket
 import threading
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Dict, List, Optional
 
 from sqlalchemy import or_, text
@@ -15,14 +15,10 @@ from sqlalchemy.orm import Session
 
 from core.config import settings
 from core.database import SessionLocal, engine
+from core.time_utils import utc_now_naive
 from models.emulator_lease import EmulatorLeaseTable
 
 logger = logging.getLogger(__name__)
-
-
-def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
 
 def build_emulator_candidates() -> List[Dict[str, int | str]]:
     """Build emulator list in preferred order from settings."""
@@ -87,7 +83,7 @@ class EmulatorLeaseManager:
         return normalized
 
     def _seed_candidates(self, db: Session, candidates: List[Dict[str, int | str]]) -> None:
-        now = _utc_now_naive()
+        now = utc_now_naive()
         sql = text(
             """
             INSERT INTO emulator_leases (id, host, port, created_at, updated_at)
@@ -120,7 +116,7 @@ class EmulatorLeaseManager:
         self._ensure_schema()
 
         db: Session = SessionLocal()
-        now = _utc_now_naive()
+        now = utc_now_naive()
         expires_at = now + timedelta(seconds=self.lease_ttl_seconds)
         try:
             self._seed_candidates(db, pool)
@@ -190,7 +186,7 @@ class EmulatorLeaseManager:
         self._ensure_schema()
 
         db: Session = SessionLocal()
-        now = _utc_now_naive()
+        now = utc_now_naive()
         try:
             query = db.query(EmulatorLeaseTable).filter(
                 EmulatorLeaseTable.host == host_str,

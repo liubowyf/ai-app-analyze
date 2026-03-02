@@ -376,6 +376,46 @@ function addPrintSupport() {
     document.body.appendChild(printBtn);
 }
 
+/**
+ * 打开截图模态框
+ */
+function openScreenshotModal(imgElement) {
+    // 创建模态框
+    const modal = document.createElement('div');
+    modal.className = 'screenshot-modal';
+    modal.innerHTML = `
+        <span class="screenshot-modal-close">&times;</span>
+        <div class="screenshot-modal-content">
+            <img src="${imgElement.src}" alt="${imgElement.alt}">
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    modal.style.display = 'block';
+
+    // 添加关闭事件
+    const closeBtn = modal.querySelector('.screenshot-modal-close');
+    closeBtn.addEventListener('click', function() {
+        document.body.removeChild(modal);
+    });
+
+    // 点击背景关闭
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            document.body.removeChild(modal);
+        }
+    });
+
+    // ESC键关闭
+    const escHandler = function(e) {
+        if (e.key === 'Escape') {
+            document.body.removeChild(modal);
+            document.removeEventListener('keydown', escHandler);
+        }
+    };
+    document.addEventListener('keydown', escHandler);
+}
+
 // 添加震动动画
 const style = document.createElement('style');
 style.textContent = `

@@ -7,21 +7,17 @@ import os
 import socket
 import threading
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Dict, List, Optional
 
 from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 from core.database import SessionLocal, engine
+from core.time_utils import utc_now_naive
 from models.proxy_port_lease import ProxyPortLeaseTable
 
 logger = logging.getLogger(__name__)
-
-
-def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
 
 class ProxyPortLeaseManager:
     """Manage local-node proxy port leases via MySQL."""
@@ -65,8 +61,8 @@ class ProxyPortLeaseManager:
     def _is_port_available(port: int) -> bool:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind(("127.0.0.1", int(port)))
+            # Match mitmproxy bind behavior (0.0.0.0) and avoid SO_REUSEADDR false positives.
+            sock.bind(("0.0.0.0", int(port)))
             return True
         except OSError:
             return False
@@ -74,7 +70,7 @@ class ProxyPortLeaseManager:
             sock.close()
 
     def _seed_ports(self, db: Session, ports: List[int]) -> None:
-        now = _utc_now_naive()
+        now = utc_now_naive()
         sql = text(
             """
             INSERT INTO proxy_port_leases (id, node_name, port, created_at, updated_at)
@@ -103,7 +99,7 @@ class ProxyPortLeaseManager:
         self._ensure_schema()
 
         db: Session = SessionLocal()
-        now = _utc_now_naive()
+        now = utc_now_naive()
         expires_at = now + timedelta(seconds=self.lease_ttl_seconds)
         try:
             self._seed_ports(db, ports)
@@ -171,7 +167,7 @@ class ProxyPortLeaseManager:
         self._ensure_schema()
 
         db: Session = SessionLocal()
-        now = _utc_now_naive()
+        now = utc_now_naive()
         try:
             query = db.query(ProxyPortLeaseTable).filter(
                 ProxyPortLeaseTable.node_name == node_name,

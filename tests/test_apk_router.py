@@ -24,7 +24,8 @@ class TestAPKUpload:
 
         with patch("api.routers.apk.SessionLocal") as mock_session_local, \
              patch("api.routers.apk.storage_client") as mock_storage, \
-             patch("api.routers.apk.Task") as mock_task_class:
+             patch("api.routers.apk.Task") as mock_task_class, \
+             patch("api.routers.apk.enqueue_task") as mock_enqueue:
 
             # Setup mocks
             mock_db = MagicMock(spec=Session)
@@ -38,9 +39,11 @@ class TestAPKUpload:
             mock_task_instance.apk_file_name = "test.apk"
             mock_task_instance.apk_file_size = len(apk_content)
             mock_task_instance.apk_md5 = expected_md5
+            mock_task_instance.priority = TaskPriority.NORMAL
 
             # Make Task class return our mock instance
             mock_task_class.return_value = mock_task_instance
+            mock_enqueue.return_value = True
 
             # Upload the file
             response = client.post(
@@ -58,6 +61,7 @@ class TestAPKUpload:
         assert "md5" in data
         assert data["message"] == "APK file uploaded successfully"
         assert data["md5"] == expected_md5
+        mock_enqueue.assert_called_once_with("test-task-id", priority=TaskPriority.NORMAL)
 
     def test_upload_apk_invalid_extension(self, client: TestClient):
         """Test upload with non-APK file extension."""

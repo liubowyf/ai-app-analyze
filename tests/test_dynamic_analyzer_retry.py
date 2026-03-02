@@ -1,11 +1,14 @@
-"""Tests for dynamic analyzer retry behavior when emulators are busy."""
+"""Tests for dynamic analyzer retry behavior when resources are busy."""
 
 from types import SimpleNamespace
 
 import pytest
-from celery.exceptions import Retry
 
 import workers.dynamic_analyzer as dynamic_analyzer
+
+
+class Retry(Exception):
+    """Retry sentinel to simulate task-runtime retry scheduling."""
 
 
 class _FakeQuery:
@@ -43,6 +46,16 @@ class _FakeSession:
         return None
 
 
+class _FakeTaskContext:
+    def __init__(self):
+        self.request = SimpleNamespace(retries=0)
+        self.called = False
+
+    def retry(self, **kwargs):
+        self.called = True
+        raise Retry()
+
+
 def test_run_dynamic_analysis_retries_when_no_emulator(monkeypatch):
     fake_task = SimpleNamespace(
         id="task-1",
@@ -55,27 +68,15 @@ def test_run_dynamic_analysis_retries_when_no_emulator(monkeypatch):
     monkeypatch.setattr(dynamic_analyzer, "start_stage_run", lambda *args, **kwargs: None)
     monkeypatch.setattr(dynamic_analyzer, "_commit_with_retry", lambda *args, **kwargs: None)
     monkeypatch.setattr(dynamic_analyzer, "get_available_emulator", lambda task_id: None)
-    monkeypatch.setattr(dynamic_analyzer.run_dynamic_analysis.request, "retries", 0, raising=False)
 
-    retry_called = {"called": False}
-
-    def _retry(**kwargs):
-        retry_called["called"] = True
-        raise Retry()
-
-    monkeypatch.setattr(dynamic_analyzer.run_dynamic_analysis, "retry", _retry)
-
+    retry_ctx = _FakeTaskContext()
     marked = {"called": False}
-
-    def _mark_failed(*args, **kwargs):
-        marked["called"] = True
-
-    monkeypatch.setattr(dynamic_analyzer, "_mark_task_failed", _mark_failed)
+    monkeypatch.setattr(dynamic_analyzer, "_mark_task_failed", lambda *args, **kwargs: marked.__setitem__("called", True))
 
     with pytest.raises(Retry):
-        dynamic_analyzer.run_dynamic_analysis.run("task-1")
+        dynamic_analyzer._run_dynamic_stage_impl("task-1", retry_context=retry_ctx)
 
-    assert retry_called["called"] is True
+    assert retry_ctx.called is True
     assert marked["called"] is False
 
 
@@ -102,27 +103,15 @@ def test_run_dynamic_analysis_retries_when_no_proxy_port(monkeypatch):
         "release_emulator",
         lambda emulator: release_state.__setitem__("called", True),
     )
-    monkeypatch.setattr(dynamic_analyzer.run_dynamic_analysis.request, "retries", 0, raising=False)
+    monkeypatch.setattr(dynamic_analyzer.PROXY_PORT_LEASE_MANAGER, "acquire", lambda task_id: None)
 
-    retry_called = {"called": False}
-
-    def _retry(**kwargs):
-        retry_called["called"] = True
-        raise Retry()
-
-    monkeypatch.setattr(dynamic_analyzer.run_dynamic_analysis, "retry", _retry)
-    monkeypatch.setattr(
-        dynamic_analyzer.PROXY_PORT_LEASE_MANAGER,
-        "acquire",
-        lambda task_id: None,
-    )
-
+    retry_ctx = _FakeTaskContext()
     marked = {"called": False}
     monkeypatch.setattr(dynamic_analyzer, "_mark_task_failed", lambda *args, **kwargs: marked.__setitem__("called", True))
 
     with pytest.raises(Retry):
-        dynamic_analyzer.run_dynamic_analysis.run("task-2")
+        dynamic_analyzer._run_dynamic_stage_impl("task-2", retry_context=retry_ctx)
 
-    assert retry_called["called"] is True
+    assert retry_ctx.called is True
     assert marked["called"] is False
     assert release_state["called"] is True

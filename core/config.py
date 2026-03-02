@@ -1,6 +1,7 @@
 """Configuration management using Pydantic Settings."""
 from functools import lru_cache
-from typing import Optional, List
+from urllib.parse import urlparse
+from typing import List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -14,13 +15,6 @@ class Settings(BaseSettings):
     MYSQL_USER: str = "root"
     MYSQL_PASSWORD: str = ""
     MYSQL_DATABASE: str = "apk_analysis"
-
-    # RabbitMQ Configuration
-    RABBITMQ_HOST: str = "localhost"
-    RABBITMQ_PORT: int = 5672
-    RABBITMQ_USER: str = "guest"
-    RABBITMQ_PASSWORD: str = "guest"
-    RABBITMQ_VHOST: str = "/"
 
     # MinIO Configuration
     MINIO_ENDPOINT: str = "localhost:9000"
@@ -47,9 +41,11 @@ class Settings(BaseSettings):
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
 
-    # Celery Configuration
-    CELERY_BROKER_URL: str = "amqp://guest:guest@localhost:5672//"
-    CELERY_RESULT_BACKEND: str = "rpc://"
+    # Task Queue Configuration (Dramatiq + Redis)
+    TASK_BACKEND: str = "dramatiq"
+    REDIS_BROKER_URL: str = "redis://localhost:6379/0"
+    TASK_ACTOR_LOCK_TTL_SECONDS: int = 300
+    TASK_ACTOR_RETRY_BACKOFF_SECONDS: str = "10,30,60"
     EMULATOR_LEASE_TTL_SECONDS: int = 3900
     TRAFFIC_PROXY_PORT_START: int = 18080
     TRAFFIC_PROXY_PORT_END: int = 18129
@@ -61,27 +57,6 @@ class Settings(BaseSettings):
         from urllib.parse import quote_plus
         encoded_password = quote_plus(self.MYSQL_PASSWORD)
         return f"mysql+pymysql://{self.MYSQL_USER}:{encoded_password}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DATABASE}"
-
-    @property
-    def rabbitmq_url(self) -> str:
-        """Build RabbitMQ connection URL."""
-        from urllib.parse import quote_plus
-        encoded_password = quote_plus(self.RABBITMQ_PASSWORD)
-        return f"amqp://{self.RABBITMQ_USER}:{encoded_password}@{self.RABBITMQ_HOST}:{self.RABBITMQ_PORT}/{self.RABBITMQ_VHOST}"
-
-    @property
-    def celery_broker_url(self) -> str:
-        """Broker URL with RabbitMQ-first fallback."""
-        if self.CELERY_BROKER_URL:
-            return self.CELERY_BROKER_URL
-        return self.rabbitmq_url
-
-    @property
-    def celery_result_backend(self) -> str:
-        """Result backend URL with RPC fallback."""
-        if self.CELERY_RESULT_BACKEND:
-            return self.CELERY_RESULT_BACKEND
-        return "rpc://"
 
     @property
     def android_emulators(self) -> List[str]:
@@ -103,9 +78,16 @@ class Settings(BaseSettings):
         """Safe proxy-port lease TTL in seconds."""
         return max(60, min(int(self.TRAFFIC_PROXY_LEASE_TTL_SECONDS), 12 * 3600))
 
+    @property
+    def REDIS_PORT(self) -> int:  # noqa: N802 - keep backward-compatible settings contract
+        """Back-compatible redis port field derived from broker URL."""
+        parsed = urlparse(self.REDIS_BROKER_URL)
+        return int(parsed.port or 6379)
+
     model_config = SettingsConfigDict(
         env_file=".env",
-        env_file_encoding="utf-8"
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
 

@@ -104,3 +104,84 @@ def test_download_report_success(mock_generator_class):
     assert "attachment" in response.headers["content-disposition"]
     assert "report_test_task_123.html" in response.headers["content-disposition"]
     assert "<html><body>Static Report</body></html>" in response.body.decode()
+
+
+@patch("api.routers.reports.HTMLReportGenerator")
+def test_view_report_includes_screenshots_from_dynamic_result(mock_generator_class):
+    """动态生成在线报告时应传递截图数据给模板。"""
+    mock_task = Mock()
+    mock_task.id = "test_task_123"
+    mock_task.status = "completed"
+    mock_task.created_at = None
+    mock_task.web_report_path = None
+    mock_task.static_table = None
+    mock_task.static_analysis_result = {}
+    mock_task.dynamic_analysis_result = {
+        "exploration_result": {
+            "screenshots": [
+                {
+                    "stage": "phase2",
+                    "description": "点击登录按钮后页面",
+                    "image_base64": "aGVsbG8=",
+                }
+            ]
+        },
+        "suspicious_requests": [{"url": "https://a.example.com", "method": "GET"}],
+        "network_analysis": {"total_requests": 1},
+        "master_domains": {"master_domains": []},
+    }
+
+    mock_db = Mock()
+    mock_db.query().filter().first.return_value = mock_task
+
+    mock_generator = Mock()
+    mock_generator.generate_web_report.return_value = "<html><body>Test Report</body></html>"
+    mock_generator_class.return_value = mock_generator
+
+    response = view_report("test_task_123", mock_db)
+
+    assert response.media_type == "text/html"
+    report_data = mock_generator.generate_web_report.call_args[0][0]
+    assert report_data["screenshots"]
+    assert report_data["screenshots"][0]["stage"] == "phase2"
+    assert report_data["network_requests"][0]["url"] == "https://a.example.com"
+
+
+@patch("api.routers.reports.HTMLReportGenerator")
+def test_download_report_includes_screenshots_from_dynamic_result(mock_generator_class):
+    """动态生成下载报告时应传递截图数据给模板。"""
+    mock_task = Mock()
+    mock_task.id = "test_task_123"
+    mock_task.status = "completed"
+    mock_task.created_at = None
+    mock_task.static_report_path = None
+    mock_task.static_table = None
+    mock_task.static_analysis_result = {}
+    mock_task.dynamic_analysis_result = {
+        "exploration_result": {
+            "screenshots": [
+                {
+                    "stage": "phase3",
+                    "description": "探索页面",
+                    "image_base64": "d29ybGQ=",
+                }
+            ]
+        },
+        "suspicious_requests": [],
+        "network_analysis": {"total_requests": 0},
+        "master_domains": {"master_domains": []},
+    }
+
+    mock_db = Mock()
+    mock_db.query().filter().first.return_value = mock_task
+
+    mock_generator = Mock()
+    mock_generator.generate_static_report.return_value = "<html><body>Static Report</body></html>"
+    mock_generator_class.return_value = mock_generator
+
+    response = download_report("test_task_123", mock_db)
+
+    assert response.media_type == "text/html"
+    report_data = mock_generator.generate_static_report.call_args[0][0]
+    assert report_data["screenshots"]
+    assert report_data["screenshots"][0]["stage"] == "phase3"

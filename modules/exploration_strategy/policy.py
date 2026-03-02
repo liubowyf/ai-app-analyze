@@ -37,7 +37,7 @@ def _parse_list(name: str, default: List[str] | None = None) -> List[str]:
 class ExplorationPolicy:
     """Runtime policy knobs for resilient exploration."""
 
-    max_steps: int = 80
+    max_steps: int = 10  # 减少到10步以压缩分析时间
     max_clicks_per_screen: int = 3
     stagnant_threshold: int = 2
     max_recovery_attempts: int = 6
@@ -65,7 +65,7 @@ class ExplorationPolicy:
     def from_env(cls) -> "ExplorationPolicy":
         """Build exploration policy from environment variables."""
         return cls(
-            max_steps=_parse_int("APP_EXPLORATION_MAX_STEPS", 80, 5, 500),
+            max_steps=_parse_int("APP_EXPLORATION_MAX_STEPS", 10, 5, 500),  # 默认改为10步
             max_clicks_per_screen=_parse_int("APP_EXPLORATION_MAX_CLICKS_PER_SCREEN", 3, 1, 20),
             stagnant_threshold=_parse_int("APP_EXPLORATION_STAGNANT_THRESHOLD", 2, 1, 20),
             max_recovery_attempts=_parse_int("APP_EXPLORATION_MAX_RECOVERY_ATTEMPTS", 6, 1, 20),

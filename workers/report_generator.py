@@ -1,9 +1,8 @@
-"""Report generator Celery task."""
+"""Report generator stage service."""
 import logging
 import base64
 from typing import Optional, Any
 
-from celery import shared_task
 from sqlalchemy.orm import Session
 
 from core.database import SessionLocal
@@ -34,8 +33,14 @@ def _hydrate_screenshots_from_storage(screenshots: list) -> list:
     return hydrated
 
 
-@shared_task(bind=True, name="workers.report_generator.generate_report")
-def generate_report(self, task_id: Any) -> dict:
+def generate_report(task_id: Any) -> dict:
+    """Report stage entrypoint."""
+    from modules.task_orchestration.stage_services import run_report_stage
+
+    return run_report_stage(task_id)
+
+
+def _run_report_stage_impl(task_id: Any) -> dict:
     """
     Generate PDF analysis report for a task.
 
@@ -140,7 +145,15 @@ def generate_report(self, task_id: Any) -> dict:
         task.web_report_path = web_path
         task.static_report_path = static_path
         task.status = TaskStatus.COMPLETED
-        task.error_message = None
+        quality_gate = {}
+        if isinstance(dynamic_result, dict):
+            gate_raw = dynamic_result.get("quality_gate")
+            if isinstance(gate_raw, dict):
+                quality_gate = gate_raw
+        if quality_gate.get("degraded"):
+            task.error_message = f"degraded:{quality_gate.get('reason') or 'unknown'}"
+        else:
+            task.error_message = None
         task.completed_at = func.now()
         finish_stage_run(
             db,
@@ -183,7 +196,7 @@ from sqlalchemy import func
 
 
 def _resolve_task_id(task_ref: Any) -> str:
-    """Resolve Celery chained task input into task_id string."""
+    """Resolve task input into task_id string."""
     if isinstance(task_ref, str):
         return task_ref
     if isinstance(task_ref, dict):

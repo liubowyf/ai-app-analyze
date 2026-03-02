@@ -10,7 +10,7 @@ pymysql==1.1.0
 alembic==1.13.1
 
 # Task Queue
-celery==5.3.6
+dramatiq==2.0.1
 
 # Object Storage
 minio==7.2.3

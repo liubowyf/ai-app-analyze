@@ -59,7 +59,7 @@
 ├── core/                  # 核心配置
 ├── models/                # 数据模型
 ├── modules/               # 功能模块
-├── workers/               # Celery任务
+├── workers/               # Dramatiq任务
 └── tests/                 # 单元测试 (详见 TESTING.md)
 ```
 

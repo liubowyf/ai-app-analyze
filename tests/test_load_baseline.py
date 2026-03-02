@@ -28,8 +28,9 @@ def test_recommend_worker_baseline_caps_dynamic_by_emulators():
     assert baseline["report_worker_concurrency"] >= 2
 
 
-def test_build_worker_commands_contains_dynamic_queue_command():
+def test_build_worker_commands_contains_dramatiq_worker_command():
     baseline = recommend_worker_baseline(emulator_count=2, cpu_count=8)
     commands = build_worker_commands(baseline)
-    assert len(commands) == 4
-    assert any("worker -Q dynamic" in cmd for cmd in commands)
+    assert len(commands) == 2
+    assert commands[0].startswith("uvicorn api.main:app")
+    assert commands[1].startswith("dramatiq workers.task_actor")

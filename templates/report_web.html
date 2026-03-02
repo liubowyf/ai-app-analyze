@@ -13,7 +13,7 @@
             <h2>涉诈APP分析服务报告</h2>
             <div class="app-info">
                 <h3>{{ app_name or package_name }}</h3>
-                <span class="risk-badge risk-{{ risk_level }}">{{ risk_level|upper }}</span>
+                <span class="risk-badge risk-{{ risk_level }}">{{ risk_level|risk_level_cn }}</span>
             </div>
         </header>
 
@@ -24,19 +24,234 @@
                 <div class="info-grid">
                     <div class="info-item">
                         <label>应用名称</label>
-                        <span>{{ app_name or 'N/A' }}</span>
+                        <span>{{ app_name or static_analysis.basic_info.app_name or '未知' }}</span>
                     </div>
                     <div class="info-item">
-                        <label>包名</label>
-                        <span>{{ package_name or 'N/A' }}</span>
+                        <label>应用版本</label>
+                        <span>{{ version or static_analysis.basic_info.version_name or '未知' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>文件大小</label>
+                        <span>{{ (file_size / 1024 / 1024) | round(2) if file_size else '未知' }} MB</span>
+                    </div>
+                    <div class="info-item">
+                        <label>应用包名</label>
+                        <span>{{ package_name or '未知' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>主程序入口</label>
+                        <span>{{ static_analysis.basic_info.main_activity or static_analysis.components.activities[0].name if static_analysis and static_analysis.components and static_analysis.components.activities else '未知' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>应用包MD5值</label>
+                        <span style="font-family: monospace; font-size: 0.9em;">{{ md5 or '未知' }}</span>
                     </div>
                 </div>
             </section>
 
+            <!-- 分析时间 -->
+            {% if analysis_date %}
+            <section class="info-section">
+                <h2>分析信息</h2>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <label>分析时间</label>
+                        <span>{{ analysis_date }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>网络请求数</label>
+                        <span>{{ network_requests_count or 0 }}</span>
+                    </div>
+                </div>
+            </section>
+            {% endif %}
+
+            {% if evidence_quality and evidence_quality.degraded %}
+            <section class="info-section">
+                <h2>动态证据质量告警</h2>
+                <div class="analysis-content">
+                    <div class="error-message">
+                        <p><strong>质量状态:</strong> degraded</p>
+                        <p><strong>原因:</strong> {{ evidence_quality.reason }}</p>
+                        <p><strong>统计:</strong> requests={{ evidence_quality.network_count }}, domains={{ evidence_quality.domains_count }}, screenshots={{ evidence_quality.screenshots_count }}</p>
+                    </div>
+                </div>
+            </section>
+            {% endif %}
+
+            <!-- 动态分析截图 -->
+            {% if screenshots %}
+            <section class="info-section">
+                <h2>动态分析截图</h2>
+                <div class="screenshots-grid">
+                    {% for screenshot in screenshots[:10] %}
+                    <div class="screenshot-item">
+                        {% if screenshot.image_base64 %}
+                        <img src="data:image/png;base64,{{ screenshot.image_base64 }}"
+                             alt="{{ screenshot.description or '应用截图' }}"
+                             class="screenshot-image"
+                             onclick="openScreenshotModal(this)">
+                        {% endif %}
+                        <div class="screenshot-info">
+                            <span class="screenshot-stage">{{ screenshot.stage or '未知阶段' }}</span>
+                            <span class="screenshot-desc">{{ screenshot.description or '无描述' }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            <!-- 主域名分析 -->
+            {% if master_domains %}
+            <section class="domain-section">
+                <h2>主域名分析</h2>
+                <div class="domain-list">
+                    {% for domain in master_domains %}
+                    <div class="domain-item">
+                        <div class="domain-header">
+                            <h3>{{ domain.domain }}</h3>
+                            <span class="confidence-badge confidence-{{ domain.confidence }}">{{ domain.confidence|confidence_cn }}</span>
+                        </div>
+                        <div class="domain-details">
+                            <p><strong>风险评分:</strong> {{ "%.2f"|format(domain.score) }}</p>
+                            {% if domain.ip %}
+                            <p><strong>IP地址:</strong> {{ domain.ip }}</p>
+                            {% endif %}
+                            <div class="evidence-list">
+                                <strong>威胁证据:</strong>
+                                <ul>
+                                    {% for evidence in domain.evidence %}
+                                    <li>{{ evidence|evidence_cn }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% if domain.sample_requests %}
+                            <div class="sample-requests">
+                                <strong>示例请求:</strong>
+                                <ul>
+                                    {% for req in domain.sample_requests[:3] %}
+                                    <li>{{ req.method }} {{ req.url }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            <!-- 网络行为分析 -->
+            {% if network_requests or dynamic_analysis_result %}
+            <section class="info-section">
+                <h2>网络行为分析</h2>
+
+                <!-- 可疑网络行为 -->
+                {% if network_requests %}
+                <div class="network-section">
+                    <h3>🚨 可疑网络行为</h3>
+                    <div class="network-requests">
+                        {% for request in network_requests[:20] %}
+                        <div class="request-item suspicious">
+                            <div class="request-header">
+                                <span class="method-badge method-{{ request.method|lower }}">{{ request.method }}</span>
+                                <span class="url">{{ request.url }}</span>
+                            </div>
+                            <div class="request-details">
+                                {% if request.host %}
+                                <span class="detail-item"><strong>域名:</strong> {{ request.host }}</span>
+                                {% endif %}
+                                {% if request.ip %}
+                                <span class="detail-item"><strong>IP:</strong> {{ request.ip }}</span>
+                                {% endif %}
+                                {% if request.response_code %}
+                                <span class="detail-item"><strong>状态码:</strong> {{ request.response_code }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- 正常网络活动 -->
+                {% if dynamic_analysis_result and dynamic_analysis_result.candidate_requests %}
+                <div class="network-section">
+                    <h3>✅ 正常网络活动</h3>
+                    <div class="network-requests">
+                        {% for request in dynamic_analysis_result.candidate_requests[:15] %}
+                        <div class="request-item normal">
+                            <div class="request-header">
+                                <span class="method-badge method-{{ request.method|lower }}">{{ request.method }}</span>
+                                <span class="url">{{ request.url }}</span>
+                            </div>
+                            <div class="request-details">
+                                {% if request.host %}
+                                <span class="detail-item"><strong>域名:</strong> {{ request.host }}</span>
+                                {% endif %}
+                                {% if request.source %}
+                                <span class="detail-item"><strong>来源:</strong> {{ request.source }}</span>
+                                {% endif %}
+                                <span class="detail-item normal-tag">通用SDK调用</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- 网络统计信息 -->
+                <div class="network-stats">
+                    <div class="stat-item">
+                        <label>可疑请求数</label>
+                        <span class="stat-value suspicious">{{ network_requests|length or 0 }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <label>正常请求数</label>
+                        <span class="stat-value normal">{{ dynamic_analysis_result.candidate_requests|length if dynamic_analysis_result and dynamic_analysis_result.candidate_requests else 0 }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <label>总请求数</label>
+                        <span class="stat-value">{{ (network_requests|length or 0) + (dynamic_analysis_result.candidate_requests|length if dynamic_analysis_result and dynamic_analysis_result.candidate_requests else 0) }}</span>
+                    </div>
+                </div>
+            </section>
+            {% endif %}
+
+            <!-- 静态分析结果 -->
+            {% if static_analysis_result %}
+            <section class="static-section">
+                <h2>静态分析结果</h2>
+                <div class="analysis-content">
+                    {% if static_analysis_result.error %}
+                    <div class="error-message">
+                        <p><strong>分析失败:</strong> {{ static_analysis_result.message }}</p>
+                    </div>
+                    {% else %}
+                    <div class="analysis-success">
+                        <p>静态分析成功完成</p>
+                        {% if static_analysis_result.is_packed %}
+                        <p><strong>加壳检测:</strong> 是</p>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </section>
+            {% endif %}
+
             <!-- 威胁情报 -->
             <section class="threat-section">
                 <h2>可调证线索信息</h2>
-                <p>威胁信息内容...</p>
+                {% if master_domains %}
+                <div class="threat-summary">
+                    <p>检测到 <strong>{{ master_domains|length }}</strong> 个主要通信域名，风险等级：<span class="risk-badge risk-{{ risk_level }}">{{ risk_level|risk_level_cn }}</span></p>
+                    <p>建议进一步调查这些域名的注册信息和历史活动记录。</p>
+                </div>
+                {% else %}
+                <p>未检测到明显的威胁指标，但建议持续监控应用行为。</p>
+                {% endif %}
             </section>
         </main>
     </div>

@@ -14,7 +14,7 @@ from api.schemas.task import TaskCreateRequest, TaskListResponse, TaskResponse
 from core.database import SessionLocal
 from models.analysis_tables import AnalysisRunTable, MasterDomainTable, NetworkRequestTable
 from models.task import Task, TaskStatus
-from modules.task_orchestration.orchestrator import enqueue_analysis_workflow
+from modules.task_orchestration.queue_backend import enqueue_task, get_backend_runtime_diagnostics
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -73,11 +73,7 @@ def create_task(request: TaskCreateRequest, db: Session = Depends(get_db)):
     db.refresh(task)
 
     # Use stable workflow builder to avoid chained-argument shape mismatch.
-    enqueue_ok = enqueue_analysis_workflow(
-        task_id=str(task.id),
-        include_static=True,
-        priority=task.priority,
-    )
+    enqueue_ok = enqueue_task(str(task.id), priority=task.priority)
     if not enqueue_ok:
         logger.warning("Task %s marked queued but enqueue failed", task.id)
 
@@ -103,6 +99,61 @@ def get_task_queue_metrics(db: Session = Depends(get_db)) -> Dict[str, Any]:
         "total_tasks": total,
         "in_progress": in_progress,
         "by_status": by_status,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+@router.get("/tasks/metrics/backend")
+def get_task_backend_metrics() -> Dict[str, Any]:
+    """Get queue backend runtime readiness snapshot."""
+    diagnostics = get_backend_runtime_diagnostics()
+    backend = str(diagnostics.get("backend", "dramatiq"))
+    dramatiq_ready = bool(diagnostics.get("dramatiq_ready", False))
+    can_enqueue = backend == "dramatiq" and dramatiq_ready
+    fallback_reason = diagnostics.get("fallback_reason")
+    go_no_go_reason = "ready" if can_enqueue else "enqueue_not_ready"
+    return {
+        "backend": backend,
+        "dramatiq_ready": dramatiq_ready,
+        "fallback_reason": fallback_reason,
+        "can_enqueue": can_enqueue,
+        "go_no_go_reason": go_no_go_reason,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+@router.get("/tasks/metrics/scheduling")
+def get_task_scheduling_metrics(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Get scheduling-only rollout diagnostics without E2E evidence dependency."""
+    diagnostics = get_backend_runtime_diagnostics()
+    backend = str(diagnostics.get("backend", "dramatiq"))
+    dramatiq_ready = bool(diagnostics.get("dramatiq_ready", False))
+    can_enqueue = backend == "dramatiq" and dramatiq_ready
+
+    rows = db.query(Task.status, func.count(Task.id)).group_by(Task.status).all()
+    by_status: Dict[str, int] = {}
+    for status, count in rows:
+        key = status.value if hasattr(status, "value") else str(status)
+        by_status[key] = int(count)
+
+    queued_count = by_status.get("queued", 0)
+    running_count = sum(by_status.get(key, 0) for key in ("static_analyzing", "dynamic_analyzing", "report_generating"))
+    stuck_count = (
+        db.query(func.count(Task.id))
+        .filter(
+            Task.status.in_(["queued", "static_analyzing", "dynamic_analyzing", "report_generating"]),
+            Task.started_at.is_(None),
+        )
+        .scalar()
+        or 0
+    )
+
+    return {
+        "backend": backend,
+        "can_enqueue": can_enqueue,
+        "queued_count": int(queued_count),
+        "running_count": int(running_count),
+        "stuck_count": int(stuck_count),
         "timestamp": datetime.utcnow().isoformat(),
     }
 
@@ -275,11 +326,7 @@ def retry_task(task_id: str, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(task)
 
-    enqueue_ok = enqueue_analysis_workflow(
-        task_id=str(task.id),
-        include_static=True,
-        priority=task.priority,
-    )
+    enqueue_ok = enqueue_task(str(task.id), priority=task.priority)
     if not enqueue_ok:
         logger.warning("Task %s retry enqueue failed", task.id)
 

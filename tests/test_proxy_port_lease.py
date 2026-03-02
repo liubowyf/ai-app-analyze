@@ -1,5 +1,7 @@
 """Tests for distributed proxy port lease manager."""
 
+import socket
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -75,3 +77,14 @@ def test_proxy_port_lease_release_requires_token(monkeypatch):
         }
     )
     assert ok is False
+
+
+def test_is_port_available_returns_false_when_wildcard_listener_exists():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("0.0.0.0", 0))
+    sock.listen(1)
+    try:
+        port = sock.getsockname()[1]
+        assert ProxyPortLeaseManager._is_port_available(port) is False
+    finally:
+        sock.close()

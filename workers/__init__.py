@@ -1,9 +1,4 @@
-"""Celery workers module."""
-from workers.celery_app import celery_app
+"""Workers package (Dramatiq runtime)."""
 
-# Import tasks to register them with Celery
-from workers import static_analyzer
-from workers import dynamic_analyzer
-from workers import report_generator
+__all__: list[str] = []
 
-__all__ = ["celery_app", "static_analyzer", "dynamic_analyzer", "report_generator"]

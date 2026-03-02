@@ -34,7 +34,8 @@ class TestTasksRouter:
         """Test successful task creation."""
         mock_task = create_mock_task(status=TaskStatus.PENDING)
 
-        with patch("api.routers.tasks.SessionLocal") as mock_session_local:
+        with patch("api.routers.tasks.SessionLocal") as mock_session_local, \
+             patch("api.routers.tasks.enqueue_task", return_value=True) as mock_enqueue:
             mock_db = MagicMock(spec=Session)
             mock_session_local.return_value = mock_db
             mock_db.query.return_value.filter.return_value.first.return_value = mock_task
@@ -49,6 +50,7 @@ class TestTasksRouter:
             data = response.json()
             assert data["id"] == "test-task-id"
             assert data["status"] == "queued"
+            mock_enqueue.assert_called_once_with("test-task-id", priority=TaskPriority.NORMAL)
 
     def test_create_task_not_found(self, client: TestClient):
         """Test task creation with non-existent task_id."""
@@ -149,7 +151,8 @@ class TestTasksRouter:
         """Test successful task retry."""
         mock_task = create_mock_task(status=TaskStatus.FAILED, retry_count=1)
 
-        with patch("api.routers.tasks.SessionLocal") as mock_session_local:
+        with patch("api.routers.tasks.SessionLocal") as mock_session_local, \
+             patch("api.routers.tasks.enqueue_task", return_value=True) as mock_enqueue:
             mock_db = MagicMock(spec=Session)
             mock_session_local.return_value = mock_db
             mock_db.query.return_value.filter.return_value.first.return_value = mock_task
@@ -161,6 +164,7 @@ class TestTasksRouter:
             data = response.json()
             assert data["status"] == "queued"
             assert data["retry_count"] == 2
+            mock_enqueue.assert_called_once_with("test-task-id", priority=TaskPriority.NORMAL)
 
     def test_retry_task_not_failed(self, client: TestClient):
         """Test retry on non-failed task."""
@@ -205,6 +209,25 @@ class TestTasksRouter:
             assert data["in_progress"] == 5
             assert data["by_status"]["queued"] == 3
             assert data["by_status"]["dynamic_analyzing"] == 2
+
+    def test_get_task_backend_metrics(self, client: TestClient):
+        """Test backend readiness metrics endpoint."""
+        with patch(
+            "api.routers.tasks.get_backend_runtime_diagnostics",
+            return_value={
+                "backend": "dramatiq",
+                "dramatiq_ready": False,
+                "fallback_reason": "dramatiq_not_ready",
+            },
+        ):
+            response = client.get("/api/v1/tasks/metrics/backend")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["backend"] == "dramatiq"
+        assert data["dramatiq_ready"] is False
+        assert data["can_enqueue"] is False
+        assert isinstance(data["timestamp"], str)
 
     def test_get_task_network_requests(self, client: TestClient):
         """Test network requests query endpoint."""

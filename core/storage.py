@@ -1,6 +1,7 @@
 """MinIO storage management for APK Analysis Platform."""
 from datetime import timedelta
 from io import BytesIO
+from threading import Lock
 from typing import Optional
 
 from minio import Minio
@@ -13,26 +14,62 @@ class StorageManager:
     """Manages MinIO storage operations for APK analysis files."""
 
     def __init__(self):
-        """Initialize MinIO client and create bucket if needed."""
+        """Initialize manager state without network calls."""
         self.client: Optional[Minio] = None
         self.bucket = settings.MINIO_BUCKET
+        self._client_initialized = False
+        self._bucket_ensured = False
+        self._client_lock = Lock()
+        self._bucket_lock = Lock()
 
-        try:
-            # Initialize MinIO client
-            self.client = Minio(
-                endpoint=settings.MINIO_ENDPOINT,
-                access_key=settings.MINIO_ACCESS_KEY,
-                secret_key=settings.MINIO_SECRET_KEY,
-                secure=settings.MINIO_SECURE
-            )
+    def _get_client(self, ensure_bucket: bool = False) -> Optional[Minio]:
+        """Lazily initialize MinIO client and optional bucket setup."""
+        client = self._initialize_client()
+        if not client:
+            return None
+        if ensure_bucket and not self._ensure_bucket(client):
+            return None
+        return client
 
-            # Create bucket if it doesn't exist
-            if not self.client.bucket_exists(self.bucket):
-                self.client.make_bucket(self.bucket)
-        except Exception as e:
-            # Handle connection errors gracefully
-            print(f"Warning: Failed to initialize MinIO client: {e}")
-            self.client = None
+    def _initialize_client(self) -> Optional[Minio]:
+        """Initialize MinIO client once on first real storage access."""
+        if self._client_initialized:
+            return self.client
+
+        with self._client_lock:
+            if self._client_initialized:
+                return self.client
+            try:
+                self.client = Minio(
+                    endpoint=settings.MINIO_ENDPOINT,
+                    access_key=settings.MINIO_ACCESS_KEY,
+                    secret_key=settings.MINIO_SECRET_KEY,
+                    secure=settings.MINIO_SECURE,
+                )
+            except Exception as e:
+                print(f"Warning: Failed to initialize MinIO client: {e}")
+                self.client = None
+            finally:
+                self._client_initialized = True
+
+        return self.client
+
+    def _ensure_bucket(self, client: Minio) -> bool:
+        """Ensure bucket exists only once."""
+        if self._bucket_ensured:
+            return True
+
+        with self._bucket_lock:
+            if self._bucket_ensured:
+                return True
+            try:
+                if not client.bucket_exists(self.bucket):
+                    client.make_bucket(self.bucket)
+                self._bucket_ensured = True
+                return True
+            except Exception as e:
+                print(f"Warning: Failed to ensure bucket {self.bucket}: {e}")
+                return False
 
     @staticmethod
     def generate_apk_path(task_id: str, md5: str) -> str:
@@ -92,12 +129,13 @@ class StorageManager:
         Returns:
             True if upload successful, False otherwise
         """
-        if not self.client:
+        client = self._get_client(ensure_bucket=True)
+        if not client:
             return False
 
         try:
             data_stream = BytesIO(data)
-            self.client.put_object(
+            client.put_object(
                 bucket_name=self.bucket,
                 object_name=object_name,
                 data=data_stream,
@@ -119,11 +157,12 @@ class StorageManager:
         Returns:
             File content as bytes if successful, None otherwise
         """
-        if not self.client:
+        client = self._get_client(ensure_bucket=True)
+        if not client:
             return None
 
         try:
-            response = self.client.get_object(self.bucket, object_name)
+            response = client.get_object(self.bucket, object_name)
             with response:
                 return response.read()
         except Exception as e:
@@ -145,11 +184,12 @@ class StorageManager:
         Returns:
             Presigned URL if successful, None otherwise
         """
-        if not self.client:
+        client = self._get_client(ensure_bucket=True)
+        if not client:
             return None
 
         try:
-            url = self.client.presigned_get_object(
+            url = client.presigned_get_object(
                 bucket_name=self.bucket,
                 object_name=object_name,
                 expires=timedelta(seconds=expires)
@@ -169,11 +209,12 @@ class StorageManager:
         Returns:
             True if deletion successful, False otherwise
         """
-        if not self.client:
+        client = self._get_client(ensure_bucket=True)
+        if not client:
             return False
 
         try:
-            self.client.remove_object(self.bucket, object_name)
+            client.remove_object(self.bucket, object_name)
             return True
         except Exception as e:
             print(f"Error deleting file {object_name}: {e}")

@@ -3,11 +3,11 @@
 ## Project Structure & Module Organization
 Core service code is split by layer:
 - `api/`: FastAPI entrypoint (`api/main.py`), routers, and request/response schemas.
-- `workers/`: Celery app and async task pipeline (`static`, `dynamic`, `report` queues).
+- `workers/`: Dramatiq app and async task pipeline (`static`, `dynamic`, `report` queues).
 - `modules/`: analysis components (APK parsing, traffic monitoring, AI driver, domain analysis, reporting).
 - `core/`: shared config, DB engine/session setup, and storage client wrappers.
 - `models/`: SQLAlchemy models and related table definitions.
-- `tests/`: unit/integration tests (`test_*.py`) plus `tests/task_tests/` for task-level scenarios.
+- `tests/`: unit/integration tests (`test_*.py`).
 - `templates/`: report templates (for PDF/report output).
 - `docs/`: architecture, operations, and testing references.
 
@@ -15,7 +15,7 @@ Core service code is split by layer:
 - `python -m venv venv && source venv/bin/activate`: create and activate local env.
 - `pip install -r requirements.txt`: install runtime + test dependencies.
 - `uvicorn api.main:app --reload --host 0.0.0.0 --port 8000`: run API locally.
-- `celery -A workers.celery_app worker -l info -Q default,static,dynamic,report`: run worker.
+- `dramatiq -A workers.task_actor worker -l info -Q default,static,dynamic,report`: run worker.
 - `pytest -v`: run all tests with verbose output.
 - `pytest --cov=. --cov-report=html`: run coverage and generate `htmlcov/`.
 - `pytest tests/test_tasks_router.py::TestTasksRouter`: run one test class.
@@ -43,7 +43,7 @@ Core service code is split by layer:
 
 ## Security & Configuration Tips
 - Copy `.env.example` to `.env`; never commit secrets.
-- Validate key integrations (MySQL/RabbitMQ/MinIO/AI endpoint) before running workers.
+- Validate key integrations (MySQL/Redis/MinIO/AI endpoint) before running workers.
 - Use test doubles/mocks for external systems in CI and local test runs.
 
 ## Current Core Baseline (2026-02-22)
@@ -75,7 +75,7 @@ Core service code is split by layer:
   - stage run persistence is enabled (`analysis_runs`),
   - distributed emulator lease is enabled (`emulator_leases`, MySQL-backed),
   - distributed proxy-port lease is enabled (`proxy_port_leases`, MySQL-backed),
-  - task queue is RabbitMQ-only (`CELERY_BROKER_URL=amqp://...`, `CELERY_RESULT_BACKEND=rpc://`),
+- task queue is Dramatiq+Redis (`REDIS_BROKER_URL=redis://...`),
   - API evidence query endpoints are enabled (`/tasks/{id}/runs`, `/tasks/{id}/network-requests`, `/tasks/{id}/domains`).
 - Parallel execution baseline:
   - with 3 emulator instances, dynamic tasks should run concurrently and bind distinct emulator slots,

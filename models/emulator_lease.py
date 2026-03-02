@@ -1,17 +1,13 @@
 """Database table for distributed emulator lease coordination."""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import Column, DateTime, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped
 
 from core.database import Base
-
-
-def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
+from core.time_utils import utc_now_naive
 
 class EmulatorLeaseTable(Base):
     """One row per emulator endpoint for cross-worker distributed leasing."""
@@ -31,11 +27,11 @@ class EmulatorLeaseTable(Base):
     released_at: Mapped[Optional[datetime]] = Column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = Column(
         DateTime,
-        default=_utc_now_naive,
-        onupdate=_utc_now_naive,
+        default=utc_now_naive,
+        onupdate=utc_now_naive,
         nullable=False,
     )
-    created_at: Mapped[datetime] = Column(DateTime, default=_utc_now_naive, nullable=False)
+    created_at: Mapped[datetime] = Column(DateTime, default=utc_now_naive, nullable=False)
 
     __table_args__ = (
         UniqueConstraint("host", "port", name="uq_emulator_host_port"),

@@ -4,6 +4,7 @@ from datetime import datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from core.config import settings
 from core.database import Base, engine
@@ -80,9 +81,13 @@ async def health():
 
 
 # Router imports
-from api.routers import apk, tasks, whitelist
+from api.routers import apk, tasks, whitelist, reports
 
 # Include routers
 app.include_router(apk.router, prefix="/api/v1/apk", tags=["apk"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(whitelist.router, prefix="/api/v1/whitelist", tags=["whitelist"])
+app.include_router(reports.router, prefix="/api/v1", tags=["reports"])
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")

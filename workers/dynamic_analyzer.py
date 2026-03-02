@@ -1,4 +1,4 @@
-"""Dynamic analysis Celery task."""
+"""Dynamic analysis stage service."""
 import argparse
 import json
 import logging
@@ -12,8 +12,6 @@ import os
 import time
 import uuid
 
-from celery import shared_task
-from celery.exceptions import Retry
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 
@@ -228,6 +226,28 @@ def _build_dynamic_result(exploration_result, traffic_monitor, domain_report, ma
         "network_aggregated": traffic_monitor.get_aggregated_requests()[:200],
         "candidate_aggregated": traffic_monitor.get_candidate_aggregated_requests()[:200],
         "master_domains": domain_report,
+    }
+
+
+def _build_dynamic_quality_gate(
+    screenshot_count: int,
+    primary_request_count: int,
+    candidate_request_count: int,
+    master_domain_count: int,
+) -> dict[str, Any]:
+    """Build quality gate result for dynamic evidence completeness."""
+    screenshots_count = max(0, int(screenshot_count or 0))
+    primary_count = max(0, int(primary_request_count or 0))
+    candidate_count = max(0, int(candidate_request_count or 0))
+    domains_count = max(0, int(master_domain_count or 0))
+    network_count = primary_count + candidate_count
+    degraded = network_count == 0 and domains_count == 0 and screenshots_count == 0
+    return {
+        "degraded": degraded,
+        "reason": "empty_dynamic_evidence" if degraded else None,
+        "network_count": network_count,
+        "domains_count": domains_count,
+        "screenshots_count": screenshots_count,
     }
 
 
@@ -880,8 +900,17 @@ def run_dynamic_analysis_minimal(
     }
 
 
-@shared_task(bind=True, name="workers.dynamic_analyzer.run_dynamic_analysis")
-def run_dynamic_analysis(self, task_id: str) -> dict:
+def run_dynamic_analysis(task_id: str) -> dict:
+    """Dynamic stage entrypoint."""
+    from modules.task_orchestration.stage_services import run_dynamic_stage
+
+    return run_dynamic_stage(task_id=task_id, retry_context=None)
+
+
+def _run_dynamic_stage_impl(
+    task_id: str,
+    retry_context: Optional[object] = None,
+) -> dict:
     """
     Run dynamic analysis on an APK file.
 
@@ -899,6 +928,7 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
     apk_temp_path: Optional[str] = None
 
     try:
+        task_context = retry_context
         # 1. Get Task
         task = db.query(Task).filter(Task.id == task_id).first()
         if not task:
@@ -921,33 +951,39 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
         # 2. Select available emulator
         emulator = get_available_emulator(task_id=task_id)
         if not emulator:
+            retry_attempt = getattr(getattr(task_context, "request", None), "retries", 0) + 1
             logger.info(
                 "No emulator slot for task=%s, retry in %ss (attempt %s/%s)",
                 task_id,
                 EMULATOR_WAIT_RETRY_SECONDS,
-                self.request.retries + 1,
+                retry_attempt,
                 EMULATOR_WAIT_MAX_RETRIES,
             )
-            raise self.retry(
-                countdown=EMULATOR_WAIT_RETRY_SECONDS,
-                max_retries=EMULATOR_WAIT_MAX_RETRIES,
-                exc=RuntimeError("No available emulators in distributed lease pool"),
-            )
+            if task_context is not None and hasattr(task_context, "retry"):
+                raise task_context.retry(
+                    countdown=EMULATOR_WAIT_RETRY_SECONDS,
+                    max_retries=EMULATOR_WAIT_MAX_RETRIES,
+                    exc=RuntimeError("No available emulators in distributed lease pool"),
+                )
+            raise RuntimeError("No available emulators in distributed lease pool")
 
         proxy_lease = get_available_proxy_port(task_id=task_id)
         if not proxy_lease:
+            retry_attempt = getattr(getattr(task_context, "request", None), "retries", 0) + 1
             logger.info(
                 "No proxy port slot for task=%s, retry in %ss (attempt %s/%s)",
                 task_id,
                 PROXY_PORT_WAIT_RETRY_SECONDS,
-                self.request.retries + 1,
+                retry_attempt,
                 PROXY_PORT_WAIT_MAX_RETRIES,
             )
-            raise self.retry(
-                countdown=PROXY_PORT_WAIT_RETRY_SECONDS,
-                max_retries=PROXY_PORT_WAIT_MAX_RETRIES,
-                exc=RuntimeError("No available proxy ports in distributed lease pool"),
-            )
+            if task_context is not None and hasattr(task_context, "retry"):
+                raise task_context.retry(
+                    countdown=PROXY_PORT_WAIT_RETRY_SECONDS,
+                    max_retries=PROXY_PORT_WAIT_MAX_RETRIES,
+                    exc=RuntimeError("No available proxy ports in distributed lease pool"),
+                )
+            raise RuntimeError("No available proxy ports in distributed lease pool")
         proxy_port = int(proxy_lease["port"])
 
         host = emulator["host"]
@@ -1072,6 +1108,7 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
 
         # Collect network requests
         network_requests = traffic_monitor.get_requests()
+        candidate_requests = getattr(traffic_monitor, "get_candidate_requests", lambda: [])()
 
         # Use MasterDomainAnalyzer to identify master control domains
         domain_analyzer = MasterDomainAnalyzer()
@@ -1090,6 +1127,20 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
             max_screenshots=MAX_DB_SCREENSHOTS,
             max_requests=MAX_DB_REQUESTS,
         )
+        quality_gate = _build_dynamic_quality_gate(
+            screenshot_count=len(exploration_result.screenshots or []),
+            primary_request_count=len(network_requests or []),
+            candidate_request_count=len(candidate_requests or []),
+            master_domain_count=len(master_domains or []),
+        )
+        dynamic_result["quality_gate"] = quality_gate
+        if quality_gate["degraded"]:
+            logger.warning(
+                "Dynamic evidence degraded task=%s reason=%s",
+                task_id,
+                quality_gate["reason"],
+            )
+
         payload_size = len(json.dumps(dynamic_result, ensure_ascii=False))
         if payload_size > MAX_DB_PAYLOAD_BYTES:
             logger.warning(
@@ -1105,8 +1156,14 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
             )
             payload_size = len(json.dumps(dynamic_result, ensure_ascii=False))
             logger.info("Reduced dynamic result payload size: %s bytes", payload_size)
+            dynamic_result["quality_gate"] = quality_gate
 
         task.dynamic_analysis_result = dynamic_result
+        task.error_message = (
+            f"degraded:{quality_gate['reason']}"
+            if quality_gate["degraded"]
+            else None
+        )
         _persist_dynamic_normalized_tables(
             db=db,
             task_id=task_id,
@@ -1123,7 +1180,10 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
             details={
                 "steps": exploration_result.total_steps,
                 "primary_requests": len(network_requests),
+                "candidate_requests": len(candidate_requests),
                 "master_domains": len(master_domains),
+                "degraded": quality_gate["degraded"],
+                "degraded_reason": quality_gate["reason"],
             },
         )
         _commit_with_retry(db, context="save_dynamic_result")
@@ -1136,12 +1196,15 @@ def run_dynamic_analysis(self, task_id: str) -> dict:
             "exploration_steps": exploration_result.total_steps,
             "screenshots": len(exploration_result.screenshots),
             "network_requests": len(network_requests),
+            "candidate_requests": len(candidate_requests),
             "master_domains": len(master_domains),
+            "quality_gate": quality_gate,
         }
 
-    except Retry:
-        raise
     except Exception as e:
+        # Keep compatibility with retry-style task contexts that raise Retry.
+        if e.__class__.__name__ == "Retry":
+            raise
         logger.error(f"Dynamic analysis failed for task {task_id}: {e}", exc_info=True)
         try:
             db.rollback()

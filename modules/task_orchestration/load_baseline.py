@@ -61,13 +61,14 @@ def recommend_worker_baseline(
 
 def build_worker_commands(baseline: Dict[str, int]) -> List[str]:
     """Render recommended process commands from baseline values."""
+    dramatiq_processes = max(
+        baseline["dynamic_worker_concurrency"],
+        baseline["static_worker_concurrency"],
+        baseline["report_worker_concurrency"],
+    )
     return [
         "uvicorn api.main:app --host 0.0.0.0 --port 8000 "
         f"--workers {baseline['api_workers']}",
-        "celery -A workers.celery_app worker -Q dynamic -l info "
-        f"--concurrency={baseline['dynamic_worker_concurrency']} --prefetch-multiplier=1",
-        "celery -A workers.celery_app worker -Q static -l info "
-        f"--concurrency={baseline['static_worker_concurrency']} --prefetch-multiplier=1",
-        "celery -A workers.celery_app worker -Q report -l info "
-        f"--concurrency={baseline['report_worker_concurrency']} --prefetch-multiplier=1",
+        "dramatiq workers.task_actor "
+        f"--processes {dramatiq_processes} --threads 1",
     ]

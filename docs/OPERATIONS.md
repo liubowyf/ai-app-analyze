@@ -2,6 +2,8 @@
 
 本文档包含 APK 智能动态分析平台的运维操作指南,涵盖数据库初始化、服务启动、Android 模拟器配置等常见操作。
 
+> 当前生效基线：Dramatiq-only。文档中若存在历史 Dramatiq 片段，均视为归档信息，不作为执行指令。
+
 ---
 
 ## 目录
@@ -21,7 +23,7 @@
 
 - Python 3.11+
 - MySQL 8.0+
-- RabbitMQ 3.x+
+- Redis 6.x+
 - MinIO
 - Docker (用于 Android 模拟器)
 
@@ -95,24 +97,134 @@ uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-### Celery Worker
+### Dramatiq Worker
 
 #### 启动命令
 
 ```bash
 # 前台运行 (推荐调试时使用)
-celery -A workers.celery_app worker \
-    -Q default,static,dynamic,report \
-    --loglevel=info
+PYTHONPATH=. ./venv/bin/dramatiq workers.task_actor
 
 # 后台运行
-celery -A workers.celery_app worker \
-    -Q default,static,dynamic,report \
-    --loglevel=info \
-    > /tmp/celery_worker.log 2>&1 &
+PYTHONPATH=. ./venv/bin/dramatiq workers.task_actor \
+    > /tmp/dramatiq_worker.log 2>&1 &
 
 # 查看日志
-tail -f /tmp/celery_worker.log
+tail -f /tmp/dramatiq_worker.log
+```
+
+#### 运行就绪自检
+
+```bash
+PYTHONPATH=. ./venv/bin/python -c "from workers.dramatiq_app import is_dramatiq_ready; print(is_dramatiq_ready())"
+```
+
+#### Canary 验收阈值（Phase 2.3-R2）
+
+Canary 任务必须满足以下最低证据门槛才可判定为 `go`：
+
+- `runs_count > 0`
+- `network_count > 0`
+- `domains_count > 0`
+- `report_img_count > 0`
+
+验证命令（示例）：
+
+```bash
+PYTHONPATH=. ./venv/bin/python scripts/canary_rollout_smoke.py \
+  --runs-count 3 \
+  --network-count 10 \
+  --domains-count 3 \
+  --report-img-count 1
+```
+
+#### Rollback 验证步骤（Dramatiq-only）
+
+1. 启动 API：`TASK_BACKEND=dramatiq PYTHONPATH=. ./venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000`
+2. 启动 Worker：`PYTHONPATH=. ./venv/bin/dramatiq workers.task_actor`
+3. 运行：`PYTHONPATH=. ./venv/bin/python scripts/rollback_smoke.py`
+4. 提交 1 个 smoke 任务并确认状态从 `queued` 推进到后续阶段（`static_analyzing` 或之后）。
+
+#### Phase 3+ 运行手册（Dramatiq-only）
+
+1. 启动 API 与 Worker：
+```bash
+TASK_BACKEND=dramatiq PYTHONPATH=. ./venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000
+PYTHONPATH=. ./venv/bin/dramatiq workers.task_actor
+```
+2. 运行门禁脚本：
+```bash
+PYTHONPATH=. ./venv/bin/python scripts/canary_rollout_smoke.py --snapshot-json /tmp/rollout_window.json
+PYTHONPATH=. ./venv/bin/python scripts/rollout_guard.py --snapshot-json /tmp/rollout_window.json
+PYTHONPATH=. ./venv/bin/python scripts/rollback_smoke.py
+```
+
+#### Rollback 触发器（立即执行 rollback）
+
+- 失败率 `> 5%`
+- 任一任务证据为空（`runs/network/domains/img` 任一为 `0`）
+- `can_enqueue=false`
+
+`scripts/rollout_guard.py` 会输出：
+- `action=continue` 或 `action=rollback_now`
+- `reason=<trigger_code>`
+
+#### Phase 5 发布前一键门禁（调度验证）
+
+推荐本地/CI 统一入口：
+
+```bash
+bash scripts/ci_gate_entry.sh
+```
+
+CI 阻断规则：
+- `scripts/ci_gate_entry.sh` 返回非 `0` 时，CI 任务必须立即失败。
+- 日志必须包含 `final_action=` 与 `final_reason=`，否则视为门禁输出不完整并失败。
+
+连续稳定性验证（任一非 continue 即失败）：
+
+```bash
+PYTHONPATH=. ./venv/bin/python scripts/phase5_stability_check.py --runs 3
+```
+
+每日巡检（建议 crontab 或 CI schedule）：
+
+```bash
+PYTHONPATH=. ./venv/bin/python scripts/daily_gate_healthcheck.py
+```
+
+巡检失败告警载荷（JSON）：
+- 字段：`timestamp`、`action`、`reason`、`source`
+- 触发条件：`phase5_stability_check` 任一轮非 `continue`
+
+标准处置动作：
+- `continue`：允许发布推进。
+- `hold`：暂停发布，先补样本，再重跑门禁。
+- `rollback_now`：立即执行回滚路径，停止推进并排障。
+
+#### Evidence Checklist
+
+- `/api/v1/tasks/metrics/backend`：`backend`, `dramatiq_ready`, `can_enqueue`
+- 每个 canary 任务：`runs > 0`, `network > 0`, `domains > 0`, `img_count > 0`
+- 汇总：`success_rate`, `p95_duration_seconds`, `evidence_completeness_rate`, `failed_reason_topN`
+
+#### Incident Handoff Template
+
+```
+[Phase3 Incident]
+window_id:
+start_time:
+end_time:
+backend_group: dramatiq|dramatiq
+trigger: failure_rate_above_5_percent | zero_evidence_task_detected | backend_not_ready
+affected_task_ids:
+evidence_snapshot:
+  success_rate:
+  p95_duration_seconds:
+  evidence_completeness_rate:
+actions_taken:
+rollback_completed_at:
+next_owner:
 ```
 
 #### 队列说明
@@ -128,10 +240,10 @@ tail -f /tmp/celery_worker.log
 
 ```bash
 # 查找 Worker 进程
-ps aux | grep "celery.*worker"
+ps aux | grep "dramatiq.*worker"
 
 # 停止所有 Worker
-pkill -f "celery.*worker"
+pkill -f "dramatiq.*worker"
 
 # 停止指定 PID
 kill <PID>
@@ -394,21 +506,21 @@ cat .env | grep MYSQL
 mysql -h ${MYSQL_HOST} -P ${MYSQL_PORT} -u ${MYSQL_USER} -p
 ```
 
-### 2. Celery Worker 无法接收任务
+### 2. Dramatiq Worker 无法接收任务
 
 **错误**: 任务一直处于 pending 状态
 
 **解决方案**:
 ```bash
 # 检查 Worker 是否运行
-ps aux | grep "celery.*worker"
+ps aux | grep "dramatiq.*worker"
 
 # 检查队列配置
-celery -A workers.celery_app inspect active_queues
+dramatiq -A workers.task_actor inspect active_queues
 
 # 重启 Worker
-pkill -f "celery.*worker"
-celery -A workers.celery_app worker -Q default,static,dynamic,report --loglevel=info
+pkill -f "dramatiq.*worker"
+dramatiq -A workers.task_actor worker -Q default,static,dynamic,report --loglevel=info
 ```
 
 ### 3. Android 模拟器无法启动
@@ -501,11 +613,11 @@ DATABASE_POOL_SIZE=20
 DATABASE_MAX_OVERFLOW=10
 ```
 
-### 2. Celery 优化
+### 2. Dramatiq 优化
 
 ```bash
 # 启动多个 Worker 进程
-celery -A workers.celery_app worker \
+dramatiq -A workers.task_actor worker \
     -Q default,static,dynamic,report \
     --loglevel=info \
     --concurrency=4 \
@@ -532,8 +644,8 @@ docker run ... --log-opt max-size=10m --log-opt max-file=3
 # API 日志
 tail -f /var/log/apk-analysis/api.log
 
-# Celery Worker 日志
-tail -f /tmp/celery_worker.log
+# Dramatiq Worker 日志
+tail -f /tmp/dramatiq_worker.log
 
 # MinIO 日志
 tail -f /tmp/minio.log

@@ -9,25 +9,25 @@ from modules.task_orchestration.orchestrator import (
 )
 
 
-def test_build_analysis_workflow_with_static_is_immutable_for_task_id():
-    workflow = build_analysis_workflow(task_id="task-1", include_static=True)
-    assert len(workflow.tasks) == 3
-    assert workflow.tasks[0].immutable is True
-    assert workflow.tasks[1].immutable is True
-    assert workflow.tasks[0].args == ("task-1",)
-    assert workflow.tasks[1].args == ("task-1",)
+def test_build_analysis_workflow_with_static():
+    task_id, stages = build_analysis_workflow(task_id="task-1", include_static=True)
+    assert task_id == "task-1"
+    assert stages == ("static", "dynamic", "report")
 
 
 def test_build_analysis_workflow_without_static():
-    workflow = build_analysis_workflow(task_id="task-2", include_static=False)
-    assert len(workflow.tasks) == 2
-    assert workflow.tasks[0].immutable is True
-    assert workflow.tasks[0].args == ("task-2",)
+    task_id, stages = build_analysis_workflow(task_id="task-2", include_static=False)
+    assert task_id == "task-2"
+    assert stages == ("dynamic", "report")
 
 
 def test_enqueue_analysis_workflow_success():
-    workflow = MagicMock()
-    with patch("modules.task_orchestration.orchestrator.build_analysis_workflow", return_value=workflow):
+    mock_actor = MagicMock()
+    mock_task_actor_module = MagicMock(run_task=mock_actor)
+    with patch(
+        "modules.task_orchestration.orchestrator.importlib.import_module",
+        return_value=mock_task_actor_module,
+    ):
         ok = enqueue_analysis_workflow(
             task_id="task-3",
             include_static=True,
@@ -35,13 +35,14 @@ def test_enqueue_analysis_workflow_success():
         )
 
     assert ok is True
-    workflow.apply_async.assert_called_once_with(priority=0)
+    mock_actor.send.assert_called_once_with("task-3")
 
 
 def test_enqueue_analysis_workflow_returns_false_on_error():
-    workflow = MagicMock()
-    workflow.apply_async.side_effect = RuntimeError("broker down")
-    with patch("modules.task_orchestration.orchestrator.build_analysis_workflow", return_value=workflow):
+    with patch(
+        "modules.task_orchestration.orchestrator.importlib.import_module",
+        side_effect=RuntimeError("actor down"),
+    ):
         ok = enqueue_analysis_workflow(
             task_id="task-4",
             include_static=False,
@@ -49,3 +50,4 @@ def test_enqueue_analysis_workflow_returns_false_on_error():
         )
 
     assert ok is False
+

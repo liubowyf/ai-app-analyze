@@ -306,3 +306,30 @@ def test_detect_package_name_fallback_to_aapt(monkeypatch):
 
     package = dynamic_analyzer._detect_package_name("/tmp/fake.apk")
     assert package == "com.fallback.demo"
+
+
+def test_build_dynamic_quality_gate_marks_degraded_when_all_evidence_empty():
+    gate = dynamic_analyzer._build_dynamic_quality_gate(
+        screenshot_count=0,
+        primary_request_count=0,
+        candidate_request_count=0,
+        master_domain_count=0,
+    )
+
+    assert gate["degraded"] is True
+    assert gate["reason"] == "empty_dynamic_evidence"
+    assert gate["network_count"] == 0
+    assert gate["domains_count"] == 0
+    assert gate["screenshots_count"] == 0
+
+
+def test_build_dynamic_quality_gate_passes_when_any_evidence_present():
+    gate = dynamic_analyzer._build_dynamic_quality_gate(
+        screenshot_count=1,
+        primary_request_count=0,
+        candidate_request_count=0,
+        master_domain_count=0,
+    )
+
+    assert gate["degraded"] is False
+    assert gate["reason"] is None

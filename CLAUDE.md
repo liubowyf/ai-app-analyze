@@ -29,13 +29,13 @@ cp .env.example .env
 # Start API server (development)
 uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 
-# Start Celery worker (development - all queues)
-celery -A workers.celery_app worker -l info -Q default,static,dynamic,report
+# Start Dramatiq worker (development - all queues)
+dramatiq -A workers.task_actor worker -l info -Q default,static,dynamic,report
 
-# Start Celery worker (production - separate queues)
-celery -A workers.celery_app worker -l info -Q static --concurrency=2 --max-tasks-per-child=50
-celery -A workers.celery_app worker -l info -Q dynamic --concurrency=4 --max-tasks-per-child=20
-celery -A workers.celery_app worker -l info -Q report --concurrency=2 --max-tasks-per-child=100
+# Start Dramatiq worker (production - separate queues)
+dramatiq -A workers.task_actor worker -l info -Q static --concurrency=2 --max-tasks-per-child=50
+dramatiq -A workers.task_actor worker -l info -Q dynamic --concurrency=4 --max-tasks-per-child=20
+dramatiq -A workers.task_actor worker -l info -Q report --concurrency=2 --max-tasks-per-child=100
 
 # API with gunicorn (production)
 gunicorn api.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
@@ -88,7 +88,7 @@ alembic upgrade head
 - Input validation via Pydantic schemas
 
 **Task Queue Layer** (`workers/`)
-- Celery-based async task processing
+- Dramatiq-based async task processing
 - Task routing by queue: `static`, `dynamic`, `report`
 - Redis as message broker and result backend
 
@@ -99,7 +99,7 @@ alembic upgrade head
 **Infrastructure Layer**
 - MySQL: Task metadata and analysis results
 - MinIO: APK files, screenshots, reports
-- Redis: Celery broker and result storage
+- Redis: Dramatiq broker and result storage
 - Android Emulators: Remote device pool (10.16.148.66:5555-5558)
 - AI Service: AutoGLM-Phone at 10.16.148.66:6000
 
@@ -187,13 +187,12 @@ On failure: transition to `failed`, can retry via `/tasks/{id}/retry` endpoint.
 
 Critical settings:
 - `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`
-- `RABBITMQ_HOST`, `RABBITMQ_PORT`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD` (Celery broker)
-- `REDIS_HOST`, `REDIS_PORT` (result backend)
+- `TASK_BACKEND`, `REDIS_BROKER_URL` (Dramatiq broker)
 - `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`
 - `AI_BASE_URL`, `AI_MODEL_NAME` (AutoGLM-Phone)
 - `ANDROID_EMULATOR_1` through `ANDROID_EMULATOR_4`
 
-**Note**: The code currently uses RabbitMQ as Celery broker but Redis as result backend. Ensure both services are running.
+**Note**: The code currently uses Redis as Dramatiq broker. Ensure Redis is running.
 
 ### Database Connection Pool
 
@@ -203,9 +202,9 @@ Configured in `core/database.py`:
 - Pool recycle: 3600s (1 hour) to prevent MySQL timeout
 - SSL enabled with certificate verification disabled
 
-### Celery Configuration
+### Dramatiq Configuration
 
-In `workers/celery_app.py`:
+In `workers/task_actor.py`:
 - Task timeout: 3600s (1 hour hard limit)
 - Soft timeout: 3300s (55 minutes)
 - Worker prefetch: 1 task per worker
@@ -284,7 +283,7 @@ Screenshot deduplication saves ~60% storage.
 ## Key Dependencies
 
 - **FastAPI**: Web framework
-- **Celery + Redis**: Task queue
+- **Dramatiq + Redis**: Task queue
 - **SQLAlchemy + PyMySQL**: Database ORM
 - **MinIO**: Object storage
 - **androguard**: APK static analysis
@@ -297,21 +296,21 @@ Screenshot deduplication saves ~60% storage.
 
 1. Upload APK via `/api/v1/apk/upload` → returns `task_id`
 2. Start analysis via `/api/v1/tasks` with `task_id` → task queued
-3. Celery worker picks up task, runs static → dynamic → report pipeline
+3. Dramatiq worker picks up task, runs static → dynamic → report pipeline
 4. Poll `/api/v1/tasks/{task_id}` for status updates
 5. Download report when status is `completed`
 
 ### Task Flow Sequence
 
-Tasks are automatically chained through Celery:
+Tasks are automatically chained through Dramatiq:
 1. Task created with status `pending`
 2. POST `/api/v1/tasks` → status becomes `queued`
-3. Celery picks up → `static_analyzing` → `dynamic_analyzing` → `report_generating`
+3. Dramatiq picks up → `static_analyzing` → `dynamic_analyzing` → `report_generating`
 4. Final status: `completed` or `failed`
 
 ### Debugging Tips
 
-- Check Celery worker logs: Workers log task progress with task_id
+- Check Dramatiq worker logs: Workers log task progress with task_id
 - Database queries: All task data is in MySQL `tasks` table
 - MinIO storage: APK files stored in bucket defined by `MINIO_BUCKET`
 - Emulator issues: Check `EMULATOR_POOL` in `workers/dynamic_analyzer.py:23-28`
@@ -327,7 +326,7 @@ Tasks are automatically chained through Celery:
 
 ## Key Implementation Details
 
-### Celery Task Routing
+### Dramatiq Task Routing
 
 Tasks are routed to specific queues based on type:
 - `workers.static_analyzer.*` → `static` queue

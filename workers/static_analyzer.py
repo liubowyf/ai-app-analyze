@@ -1,8 +1,7 @@
-"""Static analysis Celery task."""
+"""Static analysis stage service."""
 import logging
 from typing import Optional
 
-from celery import shared_task
 from sqlalchemy.orm import Session
 
 from core.database import SessionLocal
@@ -14,8 +13,14 @@ from modules.task_orchestration.run_tracker import finish_stage_run, start_stage
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True, name="workers.static_analyzer.run_static_analysis")
-def run_static_analysis(self, task_id: str) -> dict:
+def run_static_analysis(task_id: str) -> dict:
+    """Static stage entrypoint."""
+    from modules.task_orchestration.stage_services import run_static_stage
+
+    return run_static_stage(task_id)
+
+
+def _run_static_stage_impl(task_id: str) -> dict:
     """
     Run static analysis on an APK file.
 

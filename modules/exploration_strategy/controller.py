@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class ExplorationState:
     """Exploration state tracking."""
     current_depth: int = 0
-    max_depth: int = 50
+    max_depth: int = 10  # 减少到10步以压缩分析时间
     visited_screens: List[str] = field(default_factory=list)
     screen_hash_history: List[str] = field(default_factory=list)
 
@@ -19,7 +19,7 @@ class ExplorationState:
 class ExplorationController:
     """Control exploration depth and detect loops."""
 
-    def __init__(self, max_depth: int = 50):
+    def __init__(self, max_depth: int = 10):  # 默认改为10步
         """
         Initialize controller.
 
