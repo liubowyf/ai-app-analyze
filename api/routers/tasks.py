@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from typing import Any, Dict, List
@@ -52,6 +53,192 @@ def _to_task_response(task: Task) -> TaskResponse:
         dynamic_analysis_result=task.dynamic_analysis_result,
         report_storage_path=task.report_storage_path,
     )
+
+
+def _isoformat(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    formatter = getattr(value, "isoformat", None)
+    if callable(formatter):
+        return formatter()
+    return None
+
+
+def _parse_jsonish(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return json.loads(stripped)
+        except Exception:
+            return value
+    return value
+
+
+def _serialize_network_observation(row: Any) -> Dict[str, Any]:
+    first_seen_at = getattr(row, "first_seen_at", None) or getattr(row, "request_time", None)
+    last_seen_at = getattr(row, "last_seen_at", None) or getattr(row, "request_time", None)
+    domain = getattr(row, "host", None)
+    return {
+        "id": getattr(row, "id", None),
+        "url": getattr(row, "url", None),
+        "method": getattr(row, "method", None) or "UNKNOWN",
+        "domain": domain,
+        "host": domain,
+        "path": getattr(row, "path", None),
+        "ip": getattr(row, "ip", None),
+        "port": getattr(row, "port", None),
+        "scheme": getattr(row, "scheme", None),
+        "response_code": getattr(row, "response_code", None),
+        "content_type": getattr(row, "content_type", None),
+        "request_time": _isoformat(first_seen_at),
+        "first_seen_at": _isoformat(first_seen_at),
+        "last_seen_at": _isoformat(last_seen_at),
+        "hit_count": int(getattr(row, "hit_count", 0) or 1),
+        "source_type": getattr(row, "source_type", None) or "unknown",
+        "transport": getattr(row, "transport", None) or "unknown",
+        "protocol": getattr(row, "protocol", None) or "unknown",
+        "capture_mode": getattr(row, "capture_mode", None) or "redroid_zeek",
+        "attribution_tier": getattr(row, "attribution_tier", None) or "primary",
+        "package_name": getattr(row, "package_name", None),
+        "uid": getattr(row, "uid", None),
+        "process_name": getattr(row, "process_name", None),
+        "attribution_confidence": getattr(row, "attribution_confidence", None),
+    }
+
+
+def _normalize_observation_item(item: Dict[str, Any], default_tier: str, capture_mode: str | None) -> Dict[str, Any]:
+    first_seen_at = item.get("first_seen_at") or item.get("request_time")
+    last_seen_at = item.get("last_seen_at") or item.get("request_time") or first_seen_at
+    domain = item.get("domain") or item.get("host")
+    return {
+        "id": item.get("id"),
+        "url": item.get("url"),
+        "method": item.get("method") or "UNKNOWN",
+        "domain": domain,
+        "host": domain,
+        "path": item.get("path"),
+        "ip": item.get("ip"),
+        "port": item.get("port"),
+        "scheme": item.get("scheme"),
+        "response_code": item.get("response_code"),
+        "content_type": item.get("content_type"),
+        "request_time": first_seen_at,
+        "first_seen_at": first_seen_at,
+        "last_seen_at": last_seen_at,
+        "hit_count": int(item.get("hit_count") or item.get("count") or 1),
+        "source_type": item.get("source_type") or item.get("source") or "unknown",
+        "transport": item.get("transport") or "unknown",
+        "protocol": item.get("protocol") or "unknown",
+        "capture_mode": item.get("capture_mode") or capture_mode or "redroid_zeek",
+        "attribution_tier": item.get("attribution_tier") or default_tier,
+        "package_name": item.get("package_name"),
+        "uid": item.get("uid"),
+        "process_name": item.get("process_name"),
+        "attribution_confidence": item.get("attribution_confidence"),
+    }
+
+
+def _fallback_network_observations(dynamic_result: Any) -> List[Dict[str, Any]]:
+    if not isinstance(dynamic_result, dict):
+        return []
+    capture_mode = dynamic_result.get("capture_mode")
+    items: List[Dict[str, Any]] = []
+    preview_sources = [
+        ("primary_observations_preview", "primary"),
+        ("candidate_observations_preview", "candidate"),
+        ("suspicious_requests", "primary"),
+        ("candidate_requests", "candidate"),
+    ]
+    for key, tier in preview_sources:
+        rows = dynamic_result.get(key)
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if isinstance(row, dict):
+                items.append(_normalize_observation_item(row, tier, capture_mode))
+    return items
+
+
+def _normalize_source_types(value: Any) -> List[str]:
+    parsed = _parse_jsonish(value)
+    if parsed is None:
+        return []
+    if isinstance(parsed, dict):
+        return sorted(str(key) for key in parsed.keys())
+    if isinstance(parsed, list):
+        return [str(item) for item in parsed]
+    return [str(parsed)]
+
+
+def _serialize_master_domain(row: Any) -> Dict[str, Any]:
+    hit_count = int(getattr(row, "request_count", 0) or 0)
+    return {
+        "domain": getattr(row, "domain", None),
+        "ip": getattr(row, "ip", None),
+        "score": getattr(row, "confidence_score", None),
+        "confidence": getattr(row, "confidence_level", None),
+        "hit_count": hit_count,
+        "request_count": hit_count,
+        "post_count": int(getattr(row, "post_count", 0) or 0),
+        "unique_ip_count": int(getattr(row, "unique_ip_count", 0) or (1 if getattr(row, "ip", None) else 0)),
+        "source_types": _normalize_source_types(getattr(row, "source_types_json", None)),
+        "first_seen_at": _isoformat(getattr(row, "first_seen_at", None)),
+        "last_seen_at": _isoformat(getattr(row, "last_seen_at", None)),
+        "evidence": _parse_jsonish(getattr(row, "evidence", None)),
+        "capture_mode": getattr(row, "capture_mode", None) or "redroid_zeek",
+    }
+
+
+def _fallback_master_domains(dynamic_result: Any) -> List[Dict[str, Any]]:
+    if not isinstance(dynamic_result, dict):
+        return []
+
+    rows: Any = None
+    masters = dynamic_result.get("master_domains")
+    if isinstance(masters, dict):
+        rows = masters.get("master_domains")
+    elif isinstance(masters, list):
+        rows = masters
+
+    if not isinstance(rows, list):
+        summary = dynamic_result.get("network_observation_summary")
+        if isinstance(summary, dict):
+            rows = summary.get("domain_stats")
+    if not isinstance(rows, list):
+        rows = dynamic_result.get("domain_stats")
+    if not isinstance(rows, list):
+        return []
+
+    domains: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        domains.append(
+            {
+                "domain": row.get("domain"),
+                "ip": row.get("ip"),
+                "score": row.get("score"),
+                "confidence": row.get("confidence"),
+                "hit_count": int(row.get("hit_count") or row.get("request_count") or 0),
+                "request_count": int(row.get("hit_count") or row.get("request_count") or 0),
+                "post_count": int(row.get("post_count") or 0),
+                "unique_ip_count": int(row.get("unique_ip_count") or 0),
+                "source_types": _normalize_source_types(row.get("source_types") or row.get("source_types_json")),
+                "first_seen_at": row.get("first_seen_at"),
+                "last_seen_at": row.get("last_seen_at"),
+                "evidence": row.get("evidence"),
+                "capture_mode": row.get("capture_mode") or dynamic_result.get("capture_mode") or "redroid_zeek",
+            }
+        )
+    return domains
 
 
 @router.post("/tasks", response_model=TaskResponse)
@@ -166,7 +353,7 @@ def get_task_network_requests(
     host: str | None = Query(None, description="Optional host exact filter"),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Query normalized network requests for a task."""
+    """Query normalized network observations for a task."""
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -181,23 +368,13 @@ def get_task_network_requests(
         .limit(limit)
         .all()
     )
-    items: List[Dict[str, Any]] = []
-    for row in rows:
-        items.append(
-            {
-                "id": row.id,
-                "url": row.url,
-                "method": row.method,
-                "host": row.host,
-                "path": row.path,
-                "ip": row.ip,
-                "port": row.port,
-                "scheme": row.scheme,
-                "response_code": row.response_code,
-                "content_type": row.content_type,
-                "request_time": row.request_time.isoformat() if row.request_time else None,
-            }
-        )
+    items = [_serialize_network_observation(row) for row in rows]
+    if not items:
+        fallback_items = _fallback_network_observations(task.dynamic_analysis_result)
+        if host:
+            fallback_items = [item for item in fallback_items if item.get("host") == host]
+        total = len(fallback_items)
+        items = fallback_items[skip: skip + limit]
 
     return {
         "task_id": task_id,
@@ -206,6 +383,18 @@ def get_task_network_requests(
         "limit": limit,
         "items": items,
     }
+
+
+@router.get("/tasks/{task_id}/network-observations")
+def get_task_network_observations(
+    task_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    host: str | None = Query(None, description="Optional host exact filter"),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Canonical passive observation endpoint."""
+    return get_task_network_requests(task_id=task_id, skip=skip, limit=limit, host=host, db=db)
 
 
 @router.get("/tasks/{task_id}/runs")
@@ -268,22 +457,10 @@ def get_task_domains(task_id: str, db: Session = Depends(get_db)) -> Dict[str, A
         .order_by(MasterDomainTable.confidence_score.desc(), MasterDomainTable.id.desc())
         .all()
     )
-    domains = [
-        {
-            "domain": row.domain,
-            "ip": row.ip,
-            "score": row.confidence_score,
-            "confidence": row.confidence_level,
-            "request_count": row.request_count,
-            "post_count": row.post_count,
-            "evidence": row.evidence,
-        }
-        for row in rows
-    ]
+    domains = [_serialize_master_domain(row) for row in rows]
 
-    if not domains and task.dynamic_analysis_result:
-        fallback = task.dynamic_analysis_result.get("master_domains", {})
-        domains = fallback.get("master_domains", []) if isinstance(fallback, dict) else []
+    if not domains:
+        domains = _fallback_master_domains(task.dynamic_analysis_result)
 
     return {"task_id": task_id, "count": len(domains), "domains": domains}
 

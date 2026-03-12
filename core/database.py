@@ -2,7 +2,7 @@
 import ssl
 from typing import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -34,6 +34,36 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Create base class for models
 Base = declarative_base()
+
+
+SCHEMA_LOCK_NAME = "app_analysis_schema_init"
+SCHEMA_LOCK_TIMEOUT_SECONDS = 120
+
+
+def ensure_schema_ready() -> None:
+    """Create tables under a MySQL advisory lock.
+
+    This prevents multiple uvicorn workers from racing inside
+    ``Base.metadata.create_all(...)`` during startup.
+    """
+
+    lock_sql = text("SELECT GET_LOCK(:name, :timeout)")
+    unlock_sql = text("SELECT RELEASE_LOCK(:name)")
+
+    with engine.connect() as connection:
+        lock_result = connection.execute(
+            lock_sql,
+            {"name": SCHEMA_LOCK_NAME, "timeout": SCHEMA_LOCK_TIMEOUT_SECONDS},
+        ).scalar()
+        if lock_result != 1:
+            raise RuntimeError("Could not acquire schema initialization lock")
+
+        try:
+            Base.metadata.create_all(bind=connection)
+            connection.commit()
+        finally:
+            connection.execute(unlock_sql, {"name": SCHEMA_LOCK_NAME})
+            connection.commit()
 
 
 def get_db() -> Generator:

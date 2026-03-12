@@ -33,3 +33,73 @@ def test_config_has_defaults():
 
     assert settings.MYSQL_PORT == 3306
     assert settings.REDIS_PORT == 6379
+
+
+def test_config_builds_authenticated_redis_url_from_split_password(monkeypatch):
+    """Split broker password should be folded into REDIS_BROKER_URL."""
+    monkeypatch.setenv("REDIS_BROKER_URL", "redis://10.0.0.8:6379/1")
+    monkeypatch.setenv("REDIS_PASSWORD", "s3cret@value")
+
+    from core.config import Settings
+
+    settings = Settings(_env_file=None)
+
+    assert settings.REDIS_BROKER_URL == "redis://:s3cret%40value@10.0.0.8:6379/1"
+    assert settings.REDIS_PORT == 6379
+
+
+def test_config_supports_legacy_lowercase_password_alias(monkeypatch):
+    """Legacy lowercase password entry in .env should still authenticate Redis."""
+    monkeypatch.setenv("REDIS_BROKER_URL", "redis://10.0.0.9:6379/2")
+    monkeypatch.delenv("REDIS_PASSWORD", raising=False)
+    monkeypatch.setenv("password", "legacy-secret")
+
+    from core.config import Settings
+
+    settings = Settings(_env_file=None)
+
+    assert settings.REDIS_BROKER_URL == "redis://:legacy-secret@10.0.0.9:6379/2"
+
+
+def test_config_preserves_embedded_redis_credentials(monkeypatch):
+    """Already-authenticated broker URLs should not be rewritten."""
+    monkeypatch.setenv("REDIS_BROKER_URL", "redis://:embedded%21secret@10.0.0.10:6379/3")
+    monkeypatch.setenv("REDIS_PASSWORD", "ignored")
+
+    from core.config import Settings
+
+    settings = Settings(_env_file=None)
+
+    assert settings.REDIS_BROKER_URL == "redis://:embedded%21secret@10.0.0.10:6379/3"
+
+
+def test_config_defaults_analysis_backend_to_redroid_remote(monkeypatch):
+    """Analysis backend should default to the redroid remote path."""
+    monkeypatch.delenv("ANALYSIS_BACKEND", raising=False)
+
+    from core.config import Settings
+
+    settings = Settings(_env_file=None)
+
+    assert settings.ANALYSIS_BACKEND == "redroid_remote"
+
+
+def test_config_accepts_redroid_remote_analysis_backend(monkeypatch):
+    """Analysis backend should support the redroid remote adapter."""
+    monkeypatch.setenv("ANALYSIS_BACKEND", "redroid_remote")
+
+    from core.config import Settings
+
+    settings = Settings(_env_file=None)
+
+    assert settings.ANALYSIS_BACKEND == "redroid_remote"
+
+
+def test_config_rejects_unknown_analysis_backend(monkeypatch):
+    """Analysis backend should be constrained to known adapters."""
+    monkeypatch.setenv("ANALYSIS_BACKEND", "unsupported_backend")
+
+    from core.config import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)

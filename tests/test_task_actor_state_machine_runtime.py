@@ -46,6 +46,20 @@ def test_run_task_executes_static_stage_for_pending_status():
     send.assert_called_once_with("task-pending")
 
 
+def test_run_task_executes_dynamic_stage_for_static_analyzing_status():
+    task = SimpleNamespace(id="task-dynamic", status=TaskStatus.STATIC_ANALYZING, error_message=None, retry_count=0)
+    db = _build_db_with_task(task)
+
+    with patch("workers.task_actor.SessionLocal", return_value=db), \
+         patch("workers.task_actor.run_dynamic_stage", return_value={"status": "success", "capture_mode": "redroid_zeek"}) as run_dynamic, \
+         patch.object(run_task, "send") as send:
+        run_task("task-dynamic")
+
+    run_dynamic.assert_called_once_with("task-dynamic", retry_context=None)
+    assert task.status == TaskStatus.DYNAMIC_ANALYZING
+    send.assert_called_once_with("task-dynamic")
+
+
 def test_run_task_marks_failed_when_stage_raises():
     task = SimpleNamespace(id="task-2", status=TaskStatus.QUEUED, error_message=None, retry_count=10)
     db = _build_db_with_task(task)

@@ -1,57 +1,39 @@
-"""Traffic Monitor module for network traffic analysis."""
+"""Passive traffic monitor and observation aggregation helpers."""
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from collections import defaultdict
-from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from .attribution import AttributionEngine
 from .filter_policy import TrafficFilterPolicy
+from .observation_models import PASSIVE_CAPTURE_MODE, NetworkObservation, parse_observation_timestamp
+from .passive_sources import ProxyConnectTcpdumpObservationSource
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class NetworkRequest:
-    """Network request data structure."""
-
-    url: str
-    method: str
-    host: str
-    path: str
-    ip: Optional[str]
-    port: int
-    scheme: str
-    request_time: datetime
-    response_code: Optional[int]
-    content_type: Optional[str]
-    request_headers: Dict[str, str]
-    response_headers: Dict[str, str]
-    request_body: Optional[str]
-    response_body: Optional[str]
-    uid: Optional[int] = None
-    package_name: Optional[str] = None
-    process_name: Optional[str] = None
-    source: str = "unknown"
-    capture_backend: str = "mitm"
-    attribution_confidence: float = 0.0
-
-
 class TrafficMonitor:
-    """Network traffic monitor using mitmproxy."""
+    """Aggregate passive domain/IP observations without MITM proxying."""
 
-    def __init__(self, proxy_port: int = 8080):
-        self.requests: List[NetworkRequest] = []
-        self.candidate_requests: List[NetworkRequest] = []
+    def __init__(
+        self,
+        proxy_port: int = 8080,
+        observation_sources: Optional[Iterable[Any]] = None,
+        capture_mode: str = PASSIVE_CAPTURE_MODE,
+    ):
+        self.proxy_port = proxy_port
+        self.capture_mode = capture_mode or PASSIVE_CAPTURE_MODE
         self.whitelist_rules: List[str] = []
         self._running = False
-        self.proxy_port = proxy_port
-        self._mitmproxy_manager = None
+        self._primary_observations: Dict[tuple[str, str, str, str, str], NetworkObservation] = {}
+        self._candidate_observations: Dict[tuple[str, str, str, str, str], NetworkObservation] = {}
+        self._observation_sources = list(observation_sources or [])
         self._emulator_host: Optional[str] = None
         self._emulator_port: Optional[int] = None
         self._android_runner = None
@@ -63,7 +45,31 @@ class TrafficMonitor:
         self.filter_policy = TrafficFilterPolicy()
         self._attribution_engine: Optional[AttributionEngine] = None
         self._candidate_limit = 5000
-        self._cert_diagnostics: Dict[str, Any] = {}
+        self._proxy_session = None
+        self._cert_diagnostics: Dict[str, Any] = {"verification_status": "not_applicable"}
+        self._capture_diagnostics: Dict[str, Any] = {
+            "capture_mode": self.capture_mode,
+            "backend": "none",
+            "switch_applied": False,
+            "degraded_reason": None,
+            "sources": [],
+        }
+
+    @staticmethod
+    def _default_proxy_port() -> int:
+        baseline = (
+            os.getenv("ANDROID_HTTP_PROXY_BASELINE")
+            or os.getenv("EMULATOR_HTTP_PROXY_BASELINE")
+            or os.getenv("HTTP_PROXY")
+            or os.getenv("http_proxy")
+            or ""
+        )
+        if ":" in baseline:
+            try:
+                return int(str(baseline).rsplit(":", 1)[-1])
+            except Exception:
+                return 3128
+        return 3128
 
     def set_target_app_context(
         self,
@@ -72,12 +78,12 @@ class TrafficMonitor:
         emulator_port: Optional[int],
         android_runner: Optional[Any] = None,
     ) -> None:
-        """Bind monitor to target app context so only in-app traffic is captured."""
+        """Bind monitor to target app context for best-effort attribution and filtering."""
         self._target_package = target_package
         self._emulator_host = emulator_host
         self._emulator_port = emulator_port
         self._android_runner = android_runner
-        self._capture_only_target_foreground = bool(target_package and emulator_host and emulator_port)
+        self._capture_only_target_foreground = bool(target_package and emulator_host and emulator_port and android_runner)
         self._last_foreground_check_at = 0.0
         self._last_foreground_package = None
         self._attribution_engine = AttributionEngine(
@@ -86,14 +92,6 @@ class TrafficMonitor:
             android_runner=android_runner,
             target_package=target_package,
         )
-
-        if self._capture_only_target_foreground:
-            logger.info(
-                "Traffic monitor foreground filter enabled (target=%s, emulator=%s:%s)",
-                target_package,
-                emulator_host,
-                emulator_port,
-            )
 
     def set_filter_policy(self, policy: Optional[Dict[str, Any]] = None) -> None:
         """Override default filter policy with runtime config."""
@@ -116,9 +114,7 @@ class TrafficMonitor:
                 pass
 
     def _is_system_noise_request(self, host: str, path: str) -> bool:
-        if not host:
-            return False
-        host_l = host.lower()
+        host_l = (host or "").lower()
         path_l = (path or "").lower()
         if host_l == "connectivitycheck.gstatic.com" and "generate_204" in path_l:
             return True
@@ -161,7 +157,6 @@ class TrafficMonitor:
             if domain not in merged:
                 merged.append(domain)
         self.filter_policy.exclude_domains = merged
-        logger.info("Set whitelist with %s rules", len(domains))
 
     def is_whitelisted(self, host: str) -> bool:
         import fnmatch
@@ -172,111 +167,229 @@ class TrafficMonitor:
         return False
 
     @staticmethod
-    def _parse_request_time(request_data: Dict[str, Any]) -> datetime:
-        value = request_data.get("request_time", datetime.now())
-        if isinstance(value, datetime):
-            return value
-        if isinstance(value, str):
-            try:
-                return datetime.fromisoformat(value)
-            except Exception:
-                return datetime.now()
-        if isinstance(value, (int, float)):
-            return datetime.fromtimestamp(value)
-        return datetime.now()
+    def _safe_int(value: Any, default: int = 0) -> int:
+        try:
+            return int(value)
+        except Exception:
+            return default
 
-    def _build_request(self, request_data: Dict[str, Any]) -> NetworkRequest:
-        attrs = None
-        if self._attribution_engine:
-            attrs = self._attribution_engine.enrich(request_data)
+    @staticmethod
+    def _infer_transport(request_data: Dict[str, Any], source_type: str) -> str:
+        if request_data.get("transport"):
+            return str(request_data["transport"])
+        if source_type == "dns":
+            return "udp"
+        return "tcp"
 
-        return NetworkRequest(
-            url=request_data.get("url", ""),
-            method=request_data.get("method", "GET"),
-            host=request_data.get("host", ""),
-            path=request_data.get("path", "/"),
-            ip=request_data.get("ip"),
-            port=request_data.get("port", 80),
-            scheme=request_data.get("scheme", "https"),
-            request_time=self._parse_request_time(request_data),
+    @staticmethod
+    def _infer_protocol(request_data: Dict[str, Any], source_type: str) -> str:
+        if request_data.get("protocol"):
+            return str(request_data["protocol"])
+        scheme = str(request_data.get("scheme") or "").lower()
+        method = str(request_data.get("method") or "").upper()
+        if source_type == "dns":
+            return "dns"
+        if source_type == "connect" or method == "CONNECT" or scheme == "https":
+            return "https_tunnel"
+        if scheme == "http":
+            return "http"
+        return "unknown"
+
+    @staticmethod
+    def _infer_scheme(request_data: Dict[str, Any], protocol: str) -> Optional[str]:
+        if request_data.get("scheme"):
+            return str(request_data["scheme"])
+        if protocol in {"https_tunnel", "tls"}:
+            return "https"
+        if protocol == "http":
+            return "http"
+        return None
+
+    def _build_observation(self, request_data: Dict[str, Any]) -> NetworkObservation:
+        attrs = self._attribution_engine.enrich(request_data) if self._attribution_engine else None
+        source_type = str(
+            request_data.get("source_type")
+            or request_data.get("source")
+            or (attrs.source if attrs else "unknown")
+            or "unknown"
+        )
+        protocol = self._infer_protocol(request_data, source_type)
+        first_seen_at = parse_observation_timestamp(
+            request_data.get("first_seen_at")
+            or request_data.get("request_time")
+            or request_data.get("timestamp")
+        )
+        last_seen_at = parse_observation_timestamp(
+            request_data.get("last_seen_at")
+            or request_data.get("request_time")
+            or request_data.get("timestamp")
+        )
+        if last_seen_at < first_seen_at:
+            last_seen_at = first_seen_at
+
+        method = str(request_data.get("method") or ("CONNECT" if source_type == "connect" else "UNKNOWN"))
+        domain = request_data.get("domain") or request_data.get("host")
+        package_name = request_data.get("package_name") or (attrs.package_name if attrs else None)
+        uid = request_data.get("uid")
+        if uid is None and attrs:
+            uid = attrs.uid
+        process_name = request_data.get("process_name") or (attrs.process_name if attrs else None)
+        confidence = request_data.get("attribution_confidence")
+        if confidence is None and attrs:
+            confidence = attrs.confidence
+
+        return NetworkObservation(
+            domain=str(domain).strip() if domain else None,
+            ip=str(request_data.get("ip")).strip() if request_data.get("ip") else None,
+            port=self._safe_int(request_data.get("port"), 0) or None,
+            source_type=source_type,
+            transport=self._infer_transport(request_data, source_type),
+            protocol=protocol,
+            first_seen_at=first_seen_at,
+            last_seen_at=last_seen_at,
+            hit_count=max(1, self._safe_int(request_data.get("hit_count"), 1)),
+            uid=self._safe_int(uid, 0) or None,
+            package_name=str(package_name).strip() if package_name else None,
+            process_name=str(process_name).strip() if process_name else None,
+            attribution_confidence=float(confidence or 0.0),
+            attribution_tier=str(request_data.get("attribution_tier") or "primary"),
+            capture_mode=str(request_data.get("capture_mode") or PASSIVE_CAPTURE_MODE),
+            method=method,
+            url=request_data.get("url"),
+            path=request_data.get("path"),
+            scheme=self._infer_scheme(request_data, protocol),
             response_code=request_data.get("response_code"),
             content_type=request_data.get("content_type"),
-            request_headers=request_data.get("request_headers", {}),
-            response_headers=request_data.get("response_headers", {}),
+            request_headers=request_data.get("request_headers", {}) or {},
+            response_headers=request_data.get("response_headers", {}) or {},
             request_body=request_data.get("request_body"),
             response_body=request_data.get("response_body"),
-            uid=attrs.uid if attrs else None,
-            package_name=attrs.package_name if attrs else None,
-            process_name=attrs.process_name if attrs else None,
-            source=attrs.source if attrs else "unknown",
-            capture_backend=request_data.get("capture_backend", "mitm"),
-            attribution_confidence=attrs.confidence if attrs else 0.0,
         )
 
-    def _should_capture_request(self, request: NetworkRequest) -> bool:
-        if self.is_whitelisted(request.host):
+    def _should_capture_observation(self, observation: NetworkObservation) -> bool:
+        if not observation.host and not observation.ip:
+            return False
+        if self.is_whitelisted(observation.host):
+            return False
+        if self._is_system_noise_request(observation.host, observation.path or ""):
             return False
 
-        if self._is_system_noise_request(request.host, request.path):
-            return False
-
-        # Keep highly confident target-package requests even if app is not in foreground.
-        if self._target_package and request.package_name == self._target_package and request.attribution_confidence >= 0.9:
+        if self._target_package and observation.package_name == self._target_package:
             return not self.filter_policy.should_drop(
-                request.host,
-                request.path,
-                request.package_name,
-                request.uid,
-                request.process_name,
+                observation.host,
+                observation.path or "",
+                observation.package_name,
+                observation.uid,
+                observation.process_name,
                 self._target_package,
             )
 
         if self._capture_only_target_foreground:
             current_pkg = self._get_foreground_package()
-            if not current_pkg:
-                return False
-            if current_pkg != self._target_package:
+            if not current_pkg or current_pkg != self._target_package:
                 return False
 
-        if self.filter_policy.should_drop(
-            request.host,
-            request.path,
-            request.package_name,
-            request.uid,
-            request.process_name,
+        return not self.filter_policy.should_drop(
+            observation.host,
+            observation.path or "",
+            observation.package_name,
+            observation.uid,
+            observation.process_name,
             self._target_package,
-        ):
-            return False
+        )
 
+    def _should_keep_candidate_observation(self, observation: NetworkObservation) -> bool:
+        if not observation.host and not observation.ip:
+            return False
+        if self.is_whitelisted(observation.host):
+            return False
+        if self._is_system_noise_request(observation.host, observation.path or ""):
+            return False
         return True
 
-    def _should_keep_candidate_request(self, request: NetworkRequest) -> bool:
-        """Keep a secondary candidate pool for low-confidence but relevant traffic."""
-        if not request.host:
-            return False
-        if self.is_whitelisted(request.host):
-            return False
-        if self._is_system_noise_request(request.host, request.path):
-            return False
-        # Candidate pool keeps all non-system requests that were excluded from primary set.
-        return True
+    @staticmethod
+    def _observation_key(observation: NetworkObservation) -> tuple[str, str, str, str, str]:
+        return (
+            observation.host or "",
+            observation.ip or "",
+            observation.source_type or "unknown",
+            observation.transport or "unknown",
+            observation.protocol or "unknown",
+        )
+
+    def _merge_observation(
+        self,
+        pool: Dict[tuple[str, str, str, str, str], NetworkObservation],
+        observation: NetworkObservation,
+    ) -> None:
+        key = self._observation_key(observation)
+        existing = pool.get(key)
+        if existing is None:
+            pool[key] = observation
+            return
+
+        existing.first_seen_at = min(existing.first_seen_at, observation.first_seen_at)
+        existing.last_seen_at = max(existing.last_seen_at, observation.last_seen_at)
+        existing.hit_count += max(1, observation.hit_count)
+        existing.port = existing.port or observation.port
+        existing.scheme = existing.scheme or observation.scheme
+        existing.url = existing.url or observation.url
+        existing.path = existing.path or observation.path
+        if existing.method == "UNKNOWN" and observation.method:
+            existing.method = observation.method
+        existing.response_code = existing.response_code or observation.response_code
+        existing.content_type = existing.content_type or observation.content_type
+        existing.package_name = existing.package_name or observation.package_name
+        existing.uid = existing.uid or observation.uid
+        existing.process_name = existing.process_name or observation.process_name
+        existing.attribution_confidence = max(existing.attribution_confidence, observation.attribution_confidence)
+        if not existing.request_headers and observation.request_headers:
+            existing.request_headers = dict(observation.request_headers)
+        if not existing.response_headers and observation.response_headers:
+            existing.response_headers = dict(observation.response_headers)
+        existing.request_body = existing.request_body or observation.request_body
+        existing.response_body = existing.response_body or observation.response_body
 
     def add_request(self, request_data: Dict[str, Any]) -> None:
-        try:
-            request = self._build_request(request_data)
-            if self._should_capture_request(request):
-                self.requests.append(request)
-                logger.info("Captured(primary): %s %s%s", request.method, request.host, request.path)
-                return
+        """Ingest one observation event (legacy name kept for compatibility)."""
+        observation = self._build_observation(request_data)
+        if self._should_capture_observation(observation):
+            observation.attribution_tier = "primary"
+            self._merge_observation(self._primary_observations, observation)
+            return
 
-            if self._should_keep_candidate_request(request):
-                if len(self.candidate_requests) < self._candidate_limit:
-                    self.candidate_requests.append(request)
-                logger.debug("Captured(candidate): %s %s%s", request.method, request.host, request.path)
-            else:
-                logger.debug("Skipping non-target/noise traffic: %s%s", request.host, request.path)
-        except Exception as e:
-            logger.error("Failed to add request: %s", e)
+        if self._should_keep_candidate_observation(observation):
+            observation.attribution_tier = "candidate"
+            key = self._observation_key(observation)
+            if key in self._candidate_observations or len(self._candidate_observations) < self._candidate_limit:
+                self._merge_observation(self._candidate_observations, observation)
+
+    def record_observation(self, observation_data: Dict[str, Any]) -> None:
+        """Explicit passive observation ingestion API."""
+        self.add_request(observation_data)
+
+    def _filter_observations(
+        self,
+        observations: Iterable[NetworkObservation],
+        domain: Optional[str] = None,
+        package_name: Optional[str] = None,
+        uid: Optional[int] = None,
+        process_name: Optional[str] = None,
+    ) -> List[NetworkObservation]:
+        items = list(observations)
+        if domain:
+            items = [item for item in items if domain in (item.host or "")]
+        if package_name:
+            items = [item for item in items if item.package_name == package_name]
+        if uid is not None:
+            items = [item for item in items if item.uid == uid]
+        if process_name:
+            items = [item for item in items if item.process_name == process_name]
+        return sorted(
+            items,
+            key=lambda item: (item.last_seen_at, item.hit_count, item.host or "", item.ip or ""),
+            reverse=True,
+        )
 
     def get_requests(
         self,
@@ -284,20 +397,29 @@ class TrafficMonitor:
         package_name: Optional[str] = None,
         uid: Optional[int] = None,
         process_name: Optional[str] = None,
-    ) -> List[NetworkRequest]:
-        items = self.requests
-        if domain:
-            items = [r for r in items if domain in r.host]
-        if package_name:
-            items = [r for r in items if r.package_name == package_name]
-        if uid is not None:
-            items = [r for r in items if r.uid == uid]
-        if process_name:
-            items = [r for r in items if r.process_name == process_name]
-        return items
+    ) -> List[NetworkObservation]:
+        return self._filter_observations(
+            self._primary_observations.values(),
+            domain=domain,
+            package_name=package_name,
+            uid=uid,
+            process_name=process_name,
+        )
+
+    def get_observations(
+        self,
+        domain: Optional[str] = None,
+        package_name: Optional[str] = None,
+        uid: Optional[int] = None,
+        process_name: Optional[str] = None,
+    ) -> List[NetworkObservation]:
+        return self.get_requests(domain=domain, package_name=package_name, uid=uid, process_name=process_name)
 
     def get_requests_as_dict(self) -> List[Dict[str, Any]]:
-        return [self._request_to_dict(req) for req in self.requests]
+        return [self._observation_to_dict(req) for req in self.get_requests()]
+
+    def get_observations_as_dict(self) -> List[Dict[str, Any]]:
+        return self.get_requests_as_dict()
 
     def get_candidate_requests(
         self,
@@ -305,164 +427,259 @@ class TrafficMonitor:
         package_name: Optional[str] = None,
         uid: Optional[int] = None,
         process_name: Optional[str] = None,
-    ) -> List[NetworkRequest]:
-        items = self.candidate_requests
-        if domain:
-            items = [r for r in items if domain in r.host]
-        if package_name:
-            items = [r for r in items if r.package_name == package_name]
-        if uid is not None:
-            items = [r for r in items if r.uid == uid]
-        if process_name:
-            items = [r for r in items if r.process_name == process_name]
-        return items
+    ) -> List[NetworkObservation]:
+        return self._filter_observations(
+            self._candidate_observations.values(),
+            domain=domain,
+            package_name=package_name,
+            uid=uid,
+            process_name=process_name,
+        )
 
     def get_candidate_requests_as_dict(self) -> List[Dict[str, Any]]:
-        return [self._request_to_dict(req) for req in self.candidate_requests]
+        return [self._observation_to_dict(req) for req in self.get_candidate_requests()]
+
+    def get_candidate_observations_as_dict(self) -> List[Dict[str, Any]]:
+        return self.get_candidate_requests_as_dict()
 
     def get_aggregated_requests(self) -> List[Dict[str, Any]]:
-        return self._aggregate(self.requests)
+        return [self._observation_to_aggregate_dict(req) for req in self.get_requests()]
 
     def get_candidate_aggregated_requests(self) -> List[Dict[str, Any]]:
-        return self._aggregate(self.candidate_requests)
-
-    def _aggregate(self, requests: List[NetworkRequest]) -> List[Dict[str, Any]]:
-        grouped: Dict[tuple, Dict[str, Any]] = {}
-        for req in requests:
-            key = (req.host, req.path, req.method)
-            if key not in grouped:
-                grouped[key] = {
-                    "host": req.host,
-                    "path": req.path,
-                    "method": req.method,
-                    "count": 0,
-                    "packages": set(),
-                    "sources": set(),
-                }
-            grouped[key]["count"] += 1
-            if req.package_name:
-                grouped[key]["packages"].add(req.package_name)
-            if req.source:
-                grouped[key]["sources"].add(req.source)
-
-        rows: List[Dict[str, Any]] = []
-        for item in grouped.values():
-            rows.append(
-                {
-                    "host": item["host"],
-                    "path": item["path"],
-                    "method": item["method"],
-                    "count": item["count"],
-                    "packages": sorted(item["packages"]),
-                    "sources": sorted(item["sources"]),
-                }
-            )
-        rows.sort(key=lambda x: x["count"], reverse=True)
-        return rows
+        return [self._observation_to_aggregate_dict(req) for req in self.get_candidate_requests()]
 
     @staticmethod
-    def _request_to_dict(req: NetworkRequest) -> Dict[str, Any]:
+    def _observation_to_dict(req: NetworkObservation) -> Dict[str, Any]:
+        return req.to_dict()
+
+    @staticmethod
+    def _observation_to_aggregate_dict(req: NetworkObservation) -> Dict[str, Any]:
         return {
-            "url": req.url,
-            "method": req.method,
+            "domain": req.domain,
             "host": req.host,
             "path": req.path,
-            "ip": req.ip,
-            "port": req.port,
-            "scheme": req.scheme,
-            "request_time": req.request_time.isoformat() if req.request_time else None,
-            "response_code": req.response_code,
-            "content_type": req.content_type,
-            "request_headers": req.request_headers,
-            "response_headers": req.response_headers,
-            "uid": req.uid,
-            "package_name": req.package_name,
-            "process_name": req.process_name,
-            "source": req.source,
-            "capture_backend": req.capture_backend,
-            "attribution_confidence": req.attribution_confidence,
+            "method": req.method,
+            "count": req.hit_count,
+            "packages": [req.package_name] if req.package_name else [],
+            "sources": [req.source_type] if req.source_type else [],
+            "ips": [req.ip] if req.ip else [],
+            "first_seen_at": req.first_seen_at.isoformat() if req.first_seen_at else None,
+            "last_seen_at": req.last_seen_at.isoformat() if req.last_seen_at else None,
+            "transport": req.transport,
+            "protocol": req.protocol,
+            "attribution_tier": req.attribution_tier,
         }
 
-    def get_suspicious_requests(self) -> List[NetworkRequest]:
-        return self.requests
+    def get_suspicious_requests(self) -> List[NetworkObservation]:
+        return self.get_requests()
 
     def clear_requests(self) -> None:
-        self.requests.clear()
-        self.candidate_requests.clear()
-        logger.info("Cleared all captured requests")
+        self._primary_observations.clear()
+        self._candidate_observations.clear()
 
     def get_tls_handshake_failures(self) -> Dict[str, int]:
-        """Return TLS handshake failure counts keyed by host."""
-        if not self._mitmproxy_manager or not hasattr(self._mitmproxy_manager, "get_tls_handshake_failures"):
-            return {}
-        try:
-            return self._mitmproxy_manager.get_tls_handshake_failures()
-        except Exception:
-            return {}
+        return {}
 
     def get_capture_diagnostics(self) -> Dict[str, Any]:
-        """Return capture diagnostics for observability/reporting."""
-        tls_by_host = self.get_tls_handshake_failures()
-        tls_total = sum(tls_by_host.values())
-        return {
+        diagnostics = self._collect_source_diagnostics()
+        self._capture_diagnostics = {
+            "capture_mode": diagnostics.get("capture_mode", self.capture_mode),
+            "backend": diagnostics.get("backend", "none"),
+            "switch_applied": diagnostics.get("switch_applied", False),
+            "degraded_reason": diagnostics.get("degraded_reason"),
+            "sources": diagnostics.get("sources", []),
             "cert": dict(self._cert_diagnostics),
             "tls": {
-                "total_failures": tls_total,
-                "by_host": tls_by_host,
+                "total_failures": 0,
+                "by_host": {},
             },
         }
+        return dict(self._capture_diagnostics)
+
+    def _collect_source_diagnostics(self) -> Dict[str, Any]:
+        source_diagnostics: List[Dict[str, Any]] = []
+        for source in self._observation_sources:
+            getter = getattr(source, "get_diagnostics", None)
+            if callable(getter):
+                try:
+                    value = getter()
+                except Exception:
+                    continue
+                if isinstance(value, dict):
+                    source_diagnostics.append(value)
+        if not source_diagnostics:
+            return {"sources": []}
+        primary = source_diagnostics[0]
+        merged = dict(primary)
+        merged["sources"] = source_diagnostics
+        return merged
 
     def export_to_json(self) -> str:
-        return json.dumps(self.get_requests_as_dict(), indent=2, ensure_ascii=False)
+        return json.dumps(self.get_observations_as_dict(), indent=2, ensure_ascii=False)
+
+    def get_domain_stats(self) -> List[Dict[str, Any]]:
+        grouped: Dict[str, Dict[str, Any]] = {}
+        for observation in self.get_requests() + self.get_candidate_requests():
+            if not observation.host:
+                continue
+            row = grouped.setdefault(
+                observation.host,
+                {
+                    "domain": observation.host,
+                    "ip": observation.ip,
+                    "hit_count": 0,
+                    "ips": set(),
+                    "source_types": set(),
+                    "transports": set(),
+                    "protocols": set(),
+                    "primary_hits": 0,
+                    "candidate_hits": 0,
+                    "first_seen_at": observation.first_seen_at,
+                    "last_seen_at": observation.last_seen_at,
+                },
+            )
+            row["hit_count"] += observation.hit_count
+            if observation.ip:
+                row["ips"].add(observation.ip)
+                row["ip"] = row["ip"] or observation.ip
+            if observation.source_type:
+                row["source_types"].add(observation.source_type)
+            if observation.transport:
+                row["transports"].add(observation.transport)
+            if observation.protocol:
+                row["protocols"].add(observation.protocol)
+            if observation.attribution_tier == "candidate":
+                row["candidate_hits"] += observation.hit_count
+            else:
+                row["primary_hits"] += observation.hit_count
+            row["first_seen_at"] = min(row["first_seen_at"], observation.first_seen_at)
+            row["last_seen_at"] = max(row["last_seen_at"], observation.last_seen_at)
+
+        items: List[Dict[str, Any]] = []
+        for row in grouped.values():
+            items.append(
+                {
+                    "domain": row["domain"],
+                    "ip": row["ip"],
+                    "hit_count": row["hit_count"],
+                    "unique_ip_count": len(row["ips"]),
+                    "ips": sorted(row["ips"]),
+                    "source_types": sorted(row["source_types"]),
+                    "transports": sorted(row["transports"]),
+                    "protocols": sorted(row["protocols"]),
+                    "primary_hits": row["primary_hits"],
+                    "candidate_hits": row["candidate_hits"],
+                    "first_seen_at": row["first_seen_at"].isoformat() if row["first_seen_at"] else None,
+                    "last_seen_at": row["last_seen_at"].isoformat() if row["last_seen_at"] else None,
+                }
+            )
+        return sorted(items, key=lambda item: (item["hit_count"], item["domain"] or ""), reverse=True)
+
+    def get_ip_stats(self) -> List[Dict[str, Any]]:
+        grouped: Dict[str, Dict[str, Any]] = {}
+        for observation in self.get_requests() + self.get_candidate_requests():
+            if not observation.ip:
+                continue
+            row = grouped.setdefault(
+                observation.ip,
+                {
+                    "ip": observation.ip,
+                    "hit_count": 0,
+                    "domains": set(),
+                    "source_types": set(),
+                    "transports": set(),
+                    "protocols": set(),
+                    "first_seen_at": observation.first_seen_at,
+                    "last_seen_at": observation.last_seen_at,
+                },
+            )
+            row["hit_count"] += observation.hit_count
+            if observation.host:
+                row["domains"].add(observation.host)
+            if observation.source_type:
+                row["source_types"].add(observation.source_type)
+            if observation.transport:
+                row["transports"].add(observation.transport)
+            if observation.protocol:
+                row["protocols"].add(observation.protocol)
+            row["first_seen_at"] = min(row["first_seen_at"], observation.first_seen_at)
+            row["last_seen_at"] = max(row["last_seen_at"], observation.last_seen_at)
+
+        items: List[Dict[str, Any]] = []
+        for row in grouped.values():
+            items.append(
+                {
+                    "ip": row["ip"],
+                    "hit_count": row["hit_count"],
+                    "domain_count": len(row["domains"]),
+                    "domains": sorted(row["domains"]),
+                    "source_types": sorted(row["source_types"]),
+                    "transports": sorted(row["transports"]),
+                    "protocols": sorted(row["protocols"]),
+                    "first_seen_at": row["first_seen_at"].isoformat() if row["first_seen_at"] else None,
+                    "last_seen_at": row["last_seen_at"].isoformat() if row["last_seen_at"] else None,
+                }
+            )
+        return sorted(items, key=lambda item: (item["hit_count"], item["ip"] or ""), reverse=True)
 
     def analyze_traffic(self) -> Dict[str, Any]:
-        total_requests = len(self.requests)
-        unique_hosts = set(r.host for r in self.requests)
-        unique_ips = set(r.ip for r in self.requests if r.ip)
+        primary = self.get_requests()
+        candidate = self.get_candidate_requests()
+        all_observations = primary + candidate
 
-        response_codes: Dict[int, int] = {}
-        methods: Dict[str, int] = {}
         source_counts: Dict[str, int] = defaultdict(int)
         package_counts: Dict[str, int] = defaultdict(int)
-
-        for req in self.requests:
-            code = req.response_code
-            if code:
-                response_codes[code] = response_codes.get(code, 0) + 1
-            methods[req.method] = methods.get(req.method, 0) + 1
-            source_counts[req.source or "unknown"] += 1
-            package_counts[req.package_name or "unknown"] += 1
-
-        candidate_total = len(self.candidate_requests)
-        candidate_hosts = set(r.host for r in self.candidate_requests)
         candidate_sources: Dict[str, int] = defaultdict(int)
         candidate_packages: Dict[str, int] = defaultdict(int)
-        for req in self.candidate_requests:
-            candidate_sources[req.source or "unknown"] += 1
-            candidate_packages[req.package_name or "unknown"] += 1
 
-        diagnostics = self.get_capture_diagnostics()
-        cert_diag = diagnostics.get("cert", {})
-        tls_diag = diagnostics.get("tls", {})
+        for observation in primary:
+            source_counts[observation.source_type or "unknown"] += observation.hit_count
+            package_counts[observation.package_name or "unknown"] += observation.hit_count
+
+        for observation in candidate:
+            source_counts[observation.source_type or "unknown"] += observation.hit_count
+            package_counts[observation.package_name or "unknown"] += observation.hit_count
+            candidate_sources[observation.source_type or "unknown"] += observation.hit_count
+            candidate_packages[observation.package_name or "unknown"] += observation.hit_count
+
+        total_observations = sum(item.hit_count for item in all_observations)
+        primary_observations = sum(item.hit_count for item in primary)
+        candidate_observations = sum(item.hit_count for item in candidate)
+        unique_domains = sorted({item.host for item in all_observations if item.host})
+        unique_ips = sorted({item.ip for item in all_observations if item.ip})
+
         return {
-            "total_requests": total_requests,
-            "unique_hosts": len(unique_hosts),
+            "capture_mode": self.get_capture_diagnostics().get("capture_mode", self.capture_mode),
+            "total_observations": total_observations,
+            "total_requests": total_observations,
+            "primary_observations": primary_observations,
+            "candidate_observations": candidate_observations,
+            "candidate_total_requests": candidate_observations,
+            "unique_domains": len(unique_domains),
+            "unique_hosts": len(unique_domains),
             "unique_ips": len(unique_ips),
-            "response_codes": response_codes,
-            "methods": methods,
-            "hosts": sorted(list(unique_hosts)),
+            "hosts": unique_domains,
+            "source_breakdown": dict(source_counts),
             "sources": dict(source_counts),
             "packages": dict(package_counts),
             "aggregated": self.get_aggregated_requests()[:100],
-            "candidate_total_requests": candidate_total,
-            "candidate_unique_hosts": len(candidate_hosts),
+            "candidate_unique_hosts": len({item.host for item in candidate if item.host}),
             "candidate_sources": dict(candidate_sources),
             "candidate_packages": dict(candidate_packages),
             "candidate_aggregated": self.get_candidate_aggregated_requests()[:100],
-            "cert_verification_status": cert_diag.get("verification_status", "unknown"),
-            "cert_diagnostics": cert_diag,
-            "tls_handshake_failures": tls_diag.get("total_failures", 0),
-            "tls_handshake_failures_by_host": tls_diag.get("by_host", {}),
+            "domain_stats": self.get_domain_stats()[:100],
+            "ip_stats": self.get_ip_stats()[:100],
+            "quality_gate": {
+                "status": "pass" if total_observations > 0 else "degraded",
+                "observed_domains": len(unique_domains),
+                "observed_ips": len(unique_ips),
+                "observation_hits": total_observations,
+            },
+            "capture_diagnostics": self.get_capture_diagnostics(),
+            "cert_verification_status": "not_applicable",
+            "cert_diagnostics": {"verification_status": "not_applicable"},
+            "tls_handshake_failures": 0,
+            "tls_handshake_failures_by_host": {},
         }
 
     def start(
@@ -473,109 +690,46 @@ class TrafficMonitor:
         android_runner: Optional[Any] = None,
         port_fallback_attempts: int = 5,
     ) -> None:
-        """Start the traffic monitor."""
-        try:
-            self.set_target_app_context(
-                target_package=target_package,
-                emulator_host=emulator_host,
-                emulator_port=emulator_port,
-                android_runner=android_runner,
-            )
-
-            from .mitmproxy_integration import (
-                MitmProxyManager,
-                collect_mitmproxy_cert_diagnostics,
-                configure_android_proxy,
-            )
-
-            self._mitmproxy_manager = MitmProxyManager()
-
-            started = False
-            last_error: Optional[Exception] = None
-            base_port = self.proxy_port
-            attempts = max(1, min(int(port_fallback_attempts), 20))
-            for offset in range(attempts):
-                candidate_port = base_port + offset
+        """Start passive observation sources without touching device proxy state."""
+        del port_fallback_attempts
+        self.set_target_app_context(
+            target_package=target_package,
+            emulator_host=emulator_host,
+            emulator_port=emulator_port,
+            android_runner=android_runner,
+        )
+        if not self._observation_sources and emulator_host and emulator_port:
+            self._observation_sources = [ProxyConnectTcpdumpObservationSource(self._default_proxy_port())]
+        self._running = True
+        for source in self._observation_sources:
+            starter = getattr(source, "start", None)
+            if callable(starter):
                 try:
-                    self._mitmproxy_manager.start_proxy(
-                        port=candidate_port,
-                        request_callback=self._on_request_captured,
+                    starter(
+                        self._on_request_captured,
+                        emulator_host=emulator_host,
+                        emulator_port=emulator_port,
+                        target_package=target_package,
+                        android_runner=android_runner,
                     )
-                    # Mitmproxy starts in a background thread. Give it a short
-                    # readiness window so bind/startup errors are surfaced here.
-                    time.sleep(0.35)
-                    if not getattr(self._mitmproxy_manager, "is_running", True):
-                        raise RuntimeError("proxy bootstrap failed")
-                    self.proxy_port = candidate_port
-                    started = True
-                    break
                 except Exception as exc:
-                    last_error = exc
-                    message = str(exc).lower()
-                    if "address already in use" in message and offset < attempts - 1:
-                        logger.warning(
-                            "Proxy port %s is busy, retrying with port %s",
-                            candidate_port,
-                            candidate_port + 1,
-                        )
-                        continue
-                    raise
-
-            if not started and last_error:
-                raise last_error
-
-            if emulator_host and emulator_port:
-                configure_android_proxy(emulator_host, emulator_port, self.proxy_port)
-                self._cert_diagnostics = collect_mitmproxy_cert_diagnostics(
-                    emulator_host=emulator_host,
-                    emulator_port=emulator_port,
-                )
-                cert_status = self._cert_diagnostics.get("verification_status", "unknown")
-                if cert_status != "installed":
-                    logger.warning("MITM certificate verification status: %s", cert_status)
-                else:
-                    logger.info("MITM certificate verified as installed in device trust store")
-
-            self._running = True
-            logger.info("Traffic monitor started on port %s", self.proxy_port)
-
-        except Exception as e:
-            logger.error("Failed to start traffic monitor: %s", e)
-            self._running = False
-            try:
-                if self._mitmproxy_manager:
-                    self._mitmproxy_manager.stop_proxy()
-            except Exception:
-                pass
-            raise RuntimeError(f"traffic monitor start failed: {e}") from e
+                    logger.warning("Passive observation source failed to start: %s", exc)
+        self._capture_diagnostics = self.get_capture_diagnostics()
+        logger.info("Traffic monitor started in passive mode with %s observation source(s)", len(self._observation_sources))
 
     def _on_request_captured(self, request_data: Dict[str, Any]) -> None:
         self.add_request(request_data)
 
     def stop(self) -> None:
-        if self._mitmproxy_manager:
-            try:
-                self._mitmproxy_manager.stop_proxy()
-            except Exception as e:
-                logger.error("Error stopping mitmproxy: %s", e)
-        if self._emulator_host and self._emulator_port:
-            try:
-                from .mitmproxy_integration import reset_android_proxy
-
-                reset_android_proxy(
-                    emulator_host=self._emulator_host,
-                    emulator_port=self._emulator_port,
-                    proxy_port=self.proxy_port,
-                )
-            except Exception as e:
-                logger.warning("Failed to reset emulator proxy on stop: %s", e)
-
+        for source in self._observation_sources:
+            stopper = getattr(source, "stop", None)
+            if callable(stopper):
+                try:
+                    stopper()
+                except Exception as exc:
+                    logger.warning("Failed to stop passive observation source: %s", exc)
         self._running = False
-        logger.info(
-            "Traffic monitor stopped. Captured %s primary + %s candidate requests",
-            len(self.requests),
-            len(self.candidate_requests),
-        )
+        self._capture_diagnostics = self.get_capture_diagnostics()
 
     @property
     def is_running(self) -> bool:

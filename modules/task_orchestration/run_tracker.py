@@ -30,6 +30,19 @@ def _next_attempt(db: Session, task_id: str, stage: str) -> int:
     return int(latest.attempt or 0) + 1
 
 
+def _merge_details(existing: Optional[Dict[str, Any]], incoming: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Merge stage details incrementally so one update does not erase prior context."""
+    if incoming is None:
+        return existing
+    if not isinstance(existing, dict):
+        return incoming
+    if not isinstance(incoming, dict):
+        return incoming
+    merged = dict(existing)
+    merged.update(incoming)
+    return merged
+
+
 def start_stage_run(
     db: Session,
     task_id: str,
@@ -78,7 +91,7 @@ def update_stage_context(
     if emulator is not None:
         run.emulator = emulator
     if details is not None:
-        run.details = details
+        run.details = _merge_details(run.details, details)
 
 
 def finish_stage_run(
@@ -112,4 +125,4 @@ def finish_stage_run(
         int((completed_at - (run.started_at or completed_at)).total_seconds()),
     )
     if details is not None:
-        run.details = details
+        run.details = _merge_details(run.details, details)

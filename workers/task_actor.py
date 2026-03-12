@@ -154,6 +154,7 @@ def run_task(task_id: str) -> None:
 
     lock_key, lock_token = lock_info
     db = None
+    reenqueue_task_id: str | None = None
     try:
         db = SessionLocal()
         task = db.query(Task).filter(Task.id == task_id).first()
@@ -243,14 +244,17 @@ def run_task(task_id: str) -> None:
             task.status = TaskStatus(to_status)
             task.error_message = None
             db.commit()
-            run_task.send(task_id)
-            return
+            reenqueue_task_id = task_id
+        else:
+            db.commit()
 
-        db.commit()
     finally:
         if db is not None:
             db.close()
         _release_task_lock(lock_key, lock_token)
+
+    if reenqueue_task_id is not None:
+        run_task.send(reenqueue_task_id)
 
 
 __all__ = ["run_task"]

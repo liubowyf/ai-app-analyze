@@ -37,7 +37,9 @@ def _parse_list(name: str, default: List[str] | None = None) -> List[str]:
 class ExplorationPolicy:
     """Runtime policy knobs for resilient exploration."""
 
-    max_steps: int = 10  # 减少到10步以压缩分析时间
+    max_steps: int = 25
+    total_action_budget: int = 25
+    total_screenshot_budget: int = 25
     max_clicks_per_screen: int = 3
     stagnant_threshold: int = 2
     max_recovery_attempts: int = 6
@@ -57,7 +59,7 @@ class ExplorationPolicy:
     relaunch_cycles: int = 4
     dialog_repeat_limit: int = 3
     dialog_repeat_limit_with_form: int = 1
-    skip_permission_grant: bool = True
+    skip_permission_grant: bool = False
     enable_clear_data_recovery: bool = False
     enable_reinstall_recovery: bool = False
 
@@ -65,7 +67,9 @@ class ExplorationPolicy:
     def from_env(cls) -> "ExplorationPolicy":
         """Build exploration policy from environment variables."""
         return cls(
-            max_steps=_parse_int("APP_EXPLORATION_MAX_STEPS", 10, 5, 500),  # 默认改为10步
+            max_steps=_parse_int("APP_EXPLORATION_MAX_STEPS", 25, 5, 500),
+            total_action_budget=_parse_int("APP_EXPLORATION_TOTAL_ACTION_BUDGET", 25, 5, 500),
+            total_screenshot_budget=_parse_int("APP_EXPLORATION_TOTAL_SCREENSHOT_BUDGET", 25, 1, 500),
             max_clicks_per_screen=_parse_int("APP_EXPLORATION_MAX_CLICKS_PER_SCREEN", 3, 1, 20),
             stagnant_threshold=_parse_int("APP_EXPLORATION_STAGNANT_THRESHOLD", 2, 1, 20),
             max_recovery_attempts=_parse_int("APP_EXPLORATION_MAX_RECOVERY_ATTEMPTS", 6, 1, 20),
@@ -120,7 +124,7 @@ class ExplorationPolicy:
                 1,
                 10,
             ),
-            skip_permission_grant=_parse_bool("APP_EXPLORATION_SKIP_PERMISSION_GRANT", True),
+            skip_permission_grant=_parse_bool("APP_EXPLORATION_SKIP_PERMISSION_GRANT", False),
             enable_clear_data_recovery=_parse_bool("APP_EXPLORATION_ENABLE_CLEAR_DATA_RECOVERY", False),
             enable_reinstall_recovery=_parse_bool("APP_EXPLORATION_ENABLE_REINSTALL_RECOVERY", False),
         )

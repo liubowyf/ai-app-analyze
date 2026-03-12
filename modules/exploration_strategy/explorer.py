@@ -20,6 +20,12 @@ from .ui_explorer import UIExplorer
 
 logger = logging.getLogger(__name__)
 
+SPECIAL_PERMISSION_PACKAGES = {
+    "com.android.settings",
+    "com.android.permissioncontroller",
+    "com.google.android.permissioncontroller",
+}
+
 
 @dataclass
 class ExplorationResult:
@@ -63,6 +69,7 @@ class AppExplorer:
         self.screen_action_counts: Dict[str, int] = defaultdict(int)
         self.screen_form_action_counts: Dict[str, int] = defaultdict(int)
         self._apk_path: Optional[str] = None
+        self._captured_screenshot_count: int = 0
         self.dialog_handler = DialogHandler()
         self.ui_explorer = UIExplorer(
             blacklist=self.policy.widget_blacklist,
@@ -94,13 +101,14 @@ class AppExplorer:
         host: str,
         port: int,
         package_name: str,
+        activity_name: Optional[str] = None,
         retries: int = 3,
     ) -> None:
         """Launch target app and require it to become foreground."""
         attempts = max(1, retries)
         last_foreground = ""
         for attempt in range(1, attempts + 1):
-            self.android_runner.launch_app(host, port, package_name)
+            self.android_runner.launch_app(host, port, package_name, activity_name=activity_name)
             time.sleep(2)
             current_pkg = self._get_foreground_package(host, port)
             if current_pkg == package_name:
@@ -168,15 +176,47 @@ class AppExplorer:
                 )
                 return None
 
-        return self.screenshot_manager.capture(
+        if self._captured_screenshot_count >= self.policy.total_screenshot_budget:
+            logger.info(
+                "Skip screenshot %s: total screenshot budget reached (%s)",
+                stage,
+                self.policy.total_screenshot_budget,
+            )
+            return None
+
+        screenshot = self.screenshot_manager.capture(
             stage=stage,
             description=description,
             emulator_host=host,
             emulator_port=port,
         )
+        if screenshot:
+            self._captured_screenshot_count += 1
+        return screenshot
 
-    def phase1_basic_setup(self, host: str, port: int,
-                          apk_path: str, package_name: Optional[str] = None) -> List[Screenshot]:
+    def _record_action(self, entry: Dict[str, Any]) -> bool:
+        """Append action history only when global action budget allows it."""
+        if len(self.exploration_history) >= self.policy.total_action_budget:
+            logger.info(
+                "Skip action record: total action budget reached (%s)",
+                self.policy.total_action_budget,
+            )
+            return False
+        self.exploration_history.append(entry)
+        return True
+
+    def _action_budget_remaining(self) -> bool:
+        """Check whether total action budget still allows more actions."""
+        return len(self.exploration_history) < self.policy.total_action_budget
+
+    def phase1_basic_setup(
+        self,
+        host: str,
+        port: int,
+        apk_path: str,
+        package_name: Optional[str] = None,
+        activity_name: Optional[str] = None,
+    ) -> List[Screenshot]:
         """
         Phase 1: Basic setup - install, grant permissions, launch.
 
@@ -213,11 +253,12 @@ class AppExplorer:
             raise RuntimeError("Failed to install APK")
 
         # Screenshot: Installation complete
-        screenshot = self.screenshot_manager.capture(
+        screenshot = self._capture_app_screenshot(
             stage="install",
             description="APK安装完成",
-            emulator_host=host,
-            emulator_port=port
+            host=host,
+            port=port,
+            require_target=False,
         )
         if screenshot:
             screenshots.append(screenshot)
@@ -255,7 +296,7 @@ class AppExplorer:
             self.android_runner.grant_all_permissions(host, port, package_name)
 
         logger.info(f"Launching app {package_name}...")
-        self._launch_target_with_verification(host, port, package_name)
+        self._launch_target_with_verification(host, port, package_name, activity_name=activity_name)
 
         # Screenshot: App launched
         screenshot = self._capture_app_screenshot(
@@ -283,7 +324,7 @@ class AppExplorer:
         ):
             self.activities_visited.append(activity)
 
-        self.exploration_history.append({
+        self._record_action({
             "phase": "setup",
             "action": "install_and_launch",
             "success": True
@@ -335,6 +376,9 @@ class AppExplorer:
             if not self._within_deadline(deadline_ts):
                 logger.info("Phase 2 stopped due to time budget")
                 break
+            if not self._action_budget_remaining():
+                logger.info("Phase 2 stopped due to total action budget")
+                break
             logger.info(f"Tapping navigation position {i+1}")
             if not self._ensure_target_app_foreground(host, port):
                 logger.warning("Skip nav tap %s: target app not foreground", i + 1)
@@ -363,7 +407,7 @@ class AppExplorer:
             ):
                 self.activities_visited.append(activity)
 
-            self.exploration_history.append({
+            self._record_action({
                 "phase": "navigation",
                 "action": f"tap_nav_{i+1}",
                 "position": (x, nav_y)
@@ -461,11 +505,14 @@ class AppExplorer:
             if not self._within_deadline(deadline_ts):
                 logger.info("Phase 3 stopped due to time budget")
                 break
+            if not self._action_budget_remaining():
+                logger.info("Phase 3 stopped due to total action budget")
+                break
             logger.info(f"Exploration step {step + 1}/{max_steps}")
 
             try:
                 if not self._ensure_target_app_foreground(host, port):
-                    self.exploration_history.append({
+                    self._record_action({
                         "phase": "autonomous",
                         "step": step + 1,
                         "operation": "Recovery",
@@ -543,7 +590,7 @@ class AppExplorer:
                         )
                         if screenshot:
                             screenshots.append(screenshot)
-                        self.exploration_history.append({
+                        self._record_action({
                             "phase": "autonomous",
                             "step": step + 1,
                             "operation": "Tap",
@@ -579,7 +626,7 @@ class AppExplorer:
                         )
                         if screenshot:
                             screenshots.append(screenshot)
-                        self.exploration_history.append({
+                        self._record_action({
                             "phase": "autonomous",
                             "step": step + 1,
                             "operation": "FormInteraction",
@@ -596,7 +643,7 @@ class AppExplorer:
                     )
                     self._execute_recovery_action(host, port, recovery_action.kind)
                     recovery_count += 1
-                    self.exploration_history.append({
+                    self._record_action({
                         "phase": "autonomous",
                         "step": step + 1,
                         "operation": "Recovery",
@@ -651,7 +698,7 @@ class AppExplorer:
                     )
                     self._execute_recovery_action(host, port, recovery_action.kind)
                     recovery_count += 1
-                    self.exploration_history.append({
+                    self._record_action({
                         "phase": "autonomous",
                         "step": step + 1,
                         "operation": "Recovery",
@@ -692,7 +739,7 @@ class AppExplorer:
                     screenshots.append(screenshot)
 
                 # Record in history
-                self.exploration_history.append({
+                self._record_action({
                     "phase": "autonomous",
                     "step": step + 1,
                     "operation": operation.type.value,
@@ -730,6 +777,15 @@ class AppExplorer:
         if current_pkg == self.target_package:
             return True
 
+        if self._is_special_permission_package(current_pkg):
+            logger.info(
+                "Foreground drift entered special-permission page: %s (target=%s)",
+                current_pkg,
+                self.target_package,
+            )
+            if self._recover_from_special_permission_page(host, port, current_pkg):
+                return True
+
         logger.info(
             "Foreground drift detected: %s (target=%s), relaunching target app",
             current_pkg or "unknown",
@@ -746,6 +802,45 @@ class AppExplorer:
             "Failed to restore target app to foreground (target=%s, current=%s)",
             self.target_package,
             current_pkg or "unknown",
+        )
+        return False
+
+    def _is_special_permission_package(self, package_name: str) -> bool:
+        """Return whether current foreground belongs to system settings/permission UI."""
+        normalized = (package_name or "").strip()
+        if not normalized:
+            return False
+        return normalized in SPECIAL_PERMISSION_PACKAGES or "permissioncontroller" in normalized
+
+    def _recover_from_special_permission_page(self, host: str, port: int, package_name: str) -> bool:
+        """Best-effort recovery from system settings/special permission screens."""
+        action = self._tap_priority_dialog_action(host, port)
+        if action:
+            logger.info(
+                "Tapped action on special-permission page package=%s action=%s",
+                package_name,
+                action,
+            )
+            time.sleep(1.5)
+            if self._is_target_app_foreground(host, port):
+                return True
+
+        self.android_runner.press_back(host, port)
+        time.sleep(1)
+        current_pkg = self._get_foreground_package(host, port)
+        if current_pkg == self.target_package:
+            logger.info(
+                "Recovered target app from special-permission page via back package=%s target=%s",
+                package_name,
+                self.target_package,
+            )
+            return True
+
+        logger.info(
+            "Special-permission page back recovery incomplete package=%s current=%s target=%s",
+            package_name,
+            current_pkg or "unknown",
+            self.target_package,
         )
         return False
 
@@ -884,7 +979,7 @@ class AppExplorer:
             if screenshot:
                 screenshots.append(screenshot)
 
-            self.exploration_history.append({
+            self._record_action({
                 "phase": "setup",
                 "action": "dialog_accept",
                 "description": action,
@@ -996,6 +1091,9 @@ class AppExplorer:
         for scenario_name, scenario_func in scenarios:
             if not self._within_deadline(deadline_ts):
                 logger.info("Phase 4 stopped due to time budget")
+                break
+            if not self._action_budget_remaining():
+                logger.info("Phase 4 stopped due to total action budget")
                 break
             if used_actions >= action_budget:
                 logger.info("Phase 4 stopped due to action budget: %s", action_budget)
@@ -1548,6 +1646,7 @@ class AppExplorer:
         port = emulator_config["port"]
         apk_path = apk_info["apk_path"]
         package_name = apk_info.get("package_name")  # 使用get方法,允许为None
+        activity_name = apk_info.get("activity_name")
         try:
             max_steps = int(os.getenv("APP_EXPLORATION_MAX_STEPS", str(self.policy.max_steps)))
         except ValueError:
@@ -1573,6 +1672,7 @@ class AppExplorer:
         self.screen_form_action_counts.clear()
         self.clicked_ui_signatures.clear()
         self.filled_input_signatures.clear()
+        self._captured_screenshot_count = 0
 
         all_screenshots = []
         phases_completed = []
@@ -1580,7 +1680,7 @@ class AppExplorer:
 
         try:
             # Phase 1: Setup
-            screenshots = self.phase1_basic_setup(host, port, apk_path, package_name)
+            screenshots = self.phase1_basic_setup(host, port, apk_path, package_name, activity_name=activity_name)
             all_screenshots.extend(screenshots)
             phases_completed.append("setup")
 
@@ -1635,7 +1735,9 @@ class AppExplorer:
                     logger.info(f"Successfully uninstalled {cleanup_package}")
                 else:
                     logger.warning(f"Failed to uninstall {cleanup_package}: {output}")
-            except Exception as e:
+            except BaseException as e:
+                if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                    raise
                 logger.warning(f"Error during app cleanup: {e}")
         else:
             logger.warning("Package name not available, skipping uninstall")

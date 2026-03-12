@@ -57,3 +57,5 @@ reports/
 test_output/
 tmp/
 .worktrees/
+node_modules/
+.runtime_logs/

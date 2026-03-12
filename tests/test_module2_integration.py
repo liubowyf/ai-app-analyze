@@ -20,9 +20,9 @@ class TestModule2Integration:
         assert ExplorationController is not None
 
         # Traffic monitoring
-        from modules.traffic_monitor.websocket_interceptor import WebSocketInterceptor
+        from modules.traffic_monitor.monitor import TrafficMonitor
         from modules.traffic_monitor.grpc_parser import GRPCParser
-        assert WebSocketInterceptor is not None
+        assert TrafficMonitor is not None
         assert GRPCParser is not None
 
     def test_risk_scorer_with_scenario_detector(self):

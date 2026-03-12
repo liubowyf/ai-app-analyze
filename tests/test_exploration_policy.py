@@ -5,6 +5,8 @@ from modules.exploration_strategy.policy import ExplorationPolicy
 
 def test_policy_from_env_parses_runtime_controls(monkeypatch):
     monkeypatch.setenv("APP_EXPLORATION_MAX_STEPS", "120")
+    monkeypatch.setenv("APP_EXPLORATION_TOTAL_ACTION_BUDGET", "25")
+    monkeypatch.setenv("APP_EXPLORATION_TOTAL_SCREENSHOT_BUDGET", "25")
     monkeypatch.setenv("APP_EXPLORATION_MAX_CLICKS_PER_SCREEN", "4")
     monkeypatch.setenv("APP_EXPLORATION_STAGNANT_THRESHOLD", "3")
     monkeypatch.setenv("APP_EXPLORATION_MAX_RECOVERY_ATTEMPTS", "7")
@@ -21,6 +23,8 @@ def test_policy_from_env_parses_runtime_controls(monkeypatch):
     policy = ExplorationPolicy.from_env()
 
     assert policy.max_steps == 120
+    assert policy.total_action_budget == 25
+    assert policy.total_screenshot_budget == 25
     assert policy.max_clicks_per_screen == 4
     assert policy.stagnant_threshold == 3
     assert policy.max_recovery_attempts == 7
@@ -37,9 +41,14 @@ def test_policy_from_env_parses_runtime_controls(monkeypatch):
 
 def test_policy_from_env_uses_safe_defaults(monkeypatch):
     monkeypatch.delenv("APP_EXPLORATION_MAX_STEPS", raising=False)
+    monkeypatch.delenv("APP_EXPLORATION_TOTAL_ACTION_BUDGET", raising=False)
+    monkeypatch.delenv("APP_EXPLORATION_TOTAL_SCREENSHOT_BUDGET", raising=False)
     monkeypatch.delenv("APP_EXPLORATION_WIDGET_BLACKLIST", raising=False)
 
     policy = ExplorationPolicy.from_env()
 
-    assert policy.max_steps >= 50
+    assert policy.max_steps == 25
+    assert policy.total_action_budget == 25
+    assert policy.total_screenshot_budget == 25
     assert isinstance(policy.widget_blacklist, list)
+    assert policy.skip_permission_grant is False

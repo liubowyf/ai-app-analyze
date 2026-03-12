@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey, JSON, BigInteger
+from sqlalchemy import BigInteger, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, relationship
 
 from core.database import Base
@@ -87,8 +87,15 @@ class DynamicAnalysisTable(Base):
 
     # Network summary
     total_requests: Mapped[int] = Column(Integer, default=0)
+    total_observations: Mapped[int] = Column(Integer, default=0)
     unique_domains: Mapped[int] = Column(Integer, default=0)
+    unique_ips: Mapped[int] = Column(Integer, default=0)
     master_domains: Mapped[int] = Column(Integer, default=0)
+    primary_observations: Mapped[int] = Column(Integer, default=0)
+    candidate_observations: Mapped[int] = Column(Integer, default=0)
+    capture_mode: Mapped[Optional[str]] = Column(String(32), nullable=True)
+    source_breakdown: Mapped[Optional[dict]] = Column(JSON, nullable=True)
+    quality_gate_status: Mapped[Optional[str]] = Column(String(32), nullable=True)
 
     # Status
     success: Mapped[int] = Column(Integer, default=0)
@@ -139,6 +146,20 @@ class NetworkRequestTable(Base):
 
     # Time
     request_time: Mapped[Optional[datetime]] = Column(DateTime, nullable=True)
+    first_seen_at: Mapped[Optional[datetime]] = Column(DateTime, nullable=True)
+    last_seen_at: Mapped[Optional[datetime]] = Column(DateTime, nullable=True)
+    hit_count: Mapped[int] = Column(Integer, default=1)
+
+    # Passive observation metadata
+    source_type: Mapped[Optional[str]] = Column(String(32), nullable=True, index=True)
+    transport: Mapped[Optional[str]] = Column(String(32), nullable=True)
+    protocol: Mapped[Optional[str]] = Column(String(32), nullable=True)
+    capture_mode: Mapped[Optional[str]] = Column(String(32), nullable=True)
+    attribution_tier: Mapped[Optional[str]] = Column(String(16), nullable=True)
+    package_name: Mapped[Optional[str]] = Column(String(255), nullable=True, index=True)
+    uid: Mapped[Optional[int]] = Column(Integer, nullable=True, index=True)
+    process_name: Mapped[Optional[str]] = Column(String(255), nullable=True)
+    attribution_confidence: Mapped[Optional[float]] = Column(Float, nullable=True)
 
     # Sensitive data
     has_sensitive_data: Mapped[int] = Column(Integer, default=0)
@@ -174,6 +195,11 @@ class MasterDomainTable(Base):
     # Request stats
     request_count: Mapped[int] = Column(Integer, default=0)
     post_count: Mapped[int] = Column(Integer, default=0)
+    first_seen_at: Mapped[Optional[datetime]] = Column(DateTime, nullable=True)
+    last_seen_at: Mapped[Optional[datetime]] = Column(DateTime, nullable=True)
+    unique_ip_count: Mapped[int] = Column(Integer, default=0)
+    source_types_json: Mapped[Optional[dict]] = Column(JSON, nullable=True)
+    capture_mode: Mapped[Optional[str]] = Column(String(32), nullable=True)
 
     # Relationship
     task = relationship("Task", back_populates="master_domains_table")

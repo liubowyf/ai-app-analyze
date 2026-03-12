@@ -1,4 +1,18 @@
-"""Traffic Monitor module."""
-from modules.traffic_monitor.monitor import TrafficMonitor, NetworkRequest
+"""Traffic monitor public exports."""
 
-__all__ = ["TrafficMonitor", "NetworkRequest"]
+from modules.traffic_monitor.monitor import TrafficMonitor
+from modules.traffic_monitor.observation_models import (
+    PASSIVE_CAPTURE_MODE,
+    NetworkObservation,
+    NetworkRequest,
+)
+from modules.traffic_monitor.passive_sources import ObservationSourceAdapter, ReplayObservationSource
+
+__all__ = [
+    "ObservationSourceAdapter",
+    "NetworkObservation",
+    "NetworkRequest",
+    "PASSIVE_CAPTURE_MODE",
+    "ReplayObservationSource",
+    "TrafficMonitor",
+]

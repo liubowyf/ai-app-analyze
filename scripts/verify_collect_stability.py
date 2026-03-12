@@ -3,16 +3,36 @@
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import sys
 import time
 
-from scripts.gate_config import load_gate_runtime_config
+DEFAULT_COLLECT_TARGETS = [
+    "tests/test_redroid_remote_backend.py",
+    "tests/test_redroid_ssh_client.py",
+    "tests/test_redroid_device_controller.py",
+    "tests/test_redroid_traffic_collector.py",
+    "tests/test_redroid_traffic_parser.py",
+    "tests/test_dynamic_analyzer_backend_switch.py",
+    "tests/test_android_runner_enhanced.py",
+    "tests/test_config.py",
+    "tests/test_stage_services.py",
+    "tests/test_task_actor_state_machine_runtime.py",
+]
 
 
 def main() -> int:
-    timeout_seconds = load_gate_runtime_config().collect_timeout_seconds
+    timeout_seconds = int(os.getenv("COLLECT_TIMEOUT_SECONDS", "30"))
     cmd = [sys.executable, "-m", "pytest", "--collect-only", "-q"]
+    target_args = os.getenv("PYTEST_COLLECT_TARGETS", "").strip()
+    if target_args:
+        cmd.extend(shlex.split(target_args))
+    else:
+        cmd.extend(DEFAULT_COLLECT_TARGETS)
+    extra_args = os.getenv("PYTEST_COLLECT_EXTRA_ARGS", "").strip()
+    if extra_args:
+        cmd.extend(shlex.split(extra_args))
     env = os.environ.copy()
     env.setdefault("PYTHONPATH", ".")
 

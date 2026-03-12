@@ -1,0 +1,42 @@
+services:
+  backend-a:
+    image: python:3.11-slim
+    container_name: apk-analysis-backend-a
+    working_dir: /app
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PYTHONPATH: /app
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      BACKEND_NODE_NAME: backend-a
+    volumes:
+      - ../..:/app
+    command: >-
+      sh -lc "pip install --no-cache-dir -r requirements.txt &&
+      uvicorn api.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "${BACKEND_A_PORT:-8000}:8000"
+    restart: unless-stopped
+
+  backend-b:
+    image: python:3.11-slim
+    container_name: apk-analysis-backend-b
+    working_dir: /app
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PYTHONPATH: /app
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      BACKEND_NODE_NAME: backend-b
+    volumes:
+      - ../..:/app
+    command: >-
+      sh -lc "pip install --no-cache-dir -r requirements.txt &&
+      uvicorn api.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "${BACKEND_B_PORT:-8001}:8000"
+    restart: unless-stopped

@@ -8,7 +8,11 @@ from sqlalchemy.orm import Session
 from core.database import SessionLocal
 from core.storage import storage_client
 from models.task import Task, TaskStatus
-from modules.report_generator import ReportGenerator, generate_analysis_report
+from modules.frontend_presenters.report import (
+    build_frontend_report_download_context,
+    resolve_frontend_report_screenshot_source,
+)
+from modules.report_generator import ReportGenerator
 from modules.report_generator.html_generator import HTMLReportGenerator
 from modules.task_orchestration.run_tracker import finish_stage_run, start_stage_run
 
@@ -31,6 +35,47 @@ def _hydrate_screenshots_from_storage(screenshots: list) -> list:
                 logger.warning("Failed to load screenshot from %s: %s", item.get("storage_path"), exc)
         hydrated.append(item)
     return hydrated
+
+
+def _build_report_context_for_stage(db: Session, task_id: str) -> dict:
+    """Build report context using the frontend/domain-IP DTO contract."""
+    report_data = build_frontend_report_download_context(
+        db,
+        task_id,
+        require_completed=False,
+    )
+    if report_data is None:
+        raise ValueError(f"Task {task_id} not found")
+
+    screenshots = report_data.get("screenshots")
+    if not isinstance(screenshots, list):
+        return report_data
+
+    hydrated_screenshots = []
+    for shot in screenshots:
+        if not isinstance(shot, dict):
+            continue
+        item = dict(shot)
+        screenshot_ref = str(item.get("id") or "")
+        if screenshot_ref and not item.get("storage_path") and not item.get("image_base64"):
+            source = resolve_frontend_report_screenshot_source(
+                db,
+                task_id,
+                screenshot_ref,
+                require_completed=False,
+            )
+            if source:
+                if source.storage_path:
+                    item["storage_path"] = source.storage_path
+                if source.image_base64:
+                    item["image_base64"] = source.image_base64
+                if source.content_type:
+                    item["content_type"] = source.content_type
+        hydrated_screenshots.append(item)
+
+    report_data = dict(report_data)
+    report_data["screenshots"] = _hydrate_screenshots_from_storage(hydrated_screenshots)
+    return report_data
 
 
 def generate_report(task_id: Any) -> dict:
@@ -67,39 +112,8 @@ def _run_report_stage_impl(task_id: Any) -> dict:
 
         logger.info(f"Starting report generation for task {task_id}")
 
-        # Get task data
-        task_data = {
-            "id": task.id,
-            "package_name": task.apk_file_name,
-            "apk_file_size": task.apk_file_size,
-            "apk_md5": task.apk_md5,
-            "apk_sha256": task.apk_sha256,
-        }
-
-        # Get analysis results
-        static_result = task.static_analysis_result
-        dynamic_result = task.dynamic_analysis_result
-
-        # Extract network requests from dynamic analysis
-        network_requests = []
-        if dynamic_result and "suspicious_requests" in dynamic_result:
-            network_requests = dynamic_result["suspicious_requests"]
-
-        # Extract screenshots from dynamic analysis
-        screenshots = []
-        if dynamic_result and "exploration_result" in dynamic_result:
-            exploration_result = dynamic_result["exploration_result"]
-            if isinstance(exploration_result, dict) and "screenshots" in exploration_result:
-                screenshots = _hydrate_screenshots_from_storage(exploration_result["screenshots"])
-
-        # Generate report data
-        report_data = generate_analysis_report(
-            task_data=task_data,
-            static_result=static_result,
-            dynamic_result=dynamic_result,
-            network_requests=network_requests,
-            screenshots=screenshots,
-        )
+        dynamic_result = task.dynamic_analysis_result if isinstance(task.dynamic_analysis_result, dict) else {}
+        report_data = _build_report_context_for_stage(db, task_id)
 
         # Generate PDF
         generator = ReportGenerator()
@@ -107,7 +121,7 @@ def _run_report_stage_impl(task_id: Any) -> dict:
         # Generate PDF to bytes first
         pdf_bytes = generator.generate_report(
             analysis_data=report_data,
-            template_name="report.html",
+            template_name="report_static.html",
             output_path=None,  # Return bytes
         )
 

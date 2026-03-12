@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from core.config import settings
-from core.database import Base, engine
+from core.database import ensure_schema_ready
 import models.analysis_tables  # noqa: F401
 
 
@@ -22,8 +22,8 @@ async def lifespan(app: FastAPI):
     Shutdown:
         - Cleanup resources (placeholder for future use)
     """
-    # Startup: Create database tables
-    Base.metadata.create_all(bind=engine)
+    # Startup: Create database tables under advisory lock
+    ensure_schema_ready()
 
     yield
 
@@ -81,11 +81,12 @@ async def health():
 
 
 # Router imports
-from api.routers import apk, tasks, whitelist, reports
+from api.routers import apk, frontend, tasks, whitelist, reports
 
 # Include routers
 app.include_router(apk.router, prefix="/api/v1/apk", tags=["apk"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
+app.include_router(frontend.router, prefix="/api/v1/frontend", tags=["frontend"])
 app.include_router(whitelist.router, prefix="/api/v1/whitelist", tags=["whitelist"])
 app.include_router(reports.router, prefix="/api/v1", tags=["reports"])
 

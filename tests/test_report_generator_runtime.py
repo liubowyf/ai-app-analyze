@@ -1,10 +1,12 @@
 """Runtime tests for report generator task helpers."""
 
+import base64
 import pytest
 
+from modules.frontend_presenters.report import FrontendReportScreenshotSource
 from modules.report_generator.generator import generate_analysis_report
 from modules.report_generator.html_generator import HTMLReportGenerator
-from workers.report_generator import _resolve_task_id
+from workers.report_generator import _build_report_context_for_stage, _resolve_task_id
 
 
 def test_resolve_task_id_accepts_string():
@@ -69,3 +71,56 @@ def test_web_report_renders_degraded_evidence_banner():
     )
 
     assert "empty_dynamic_evidence" in html
+
+
+def test_build_report_context_for_stage_uses_frontend_report_contract(monkeypatch):
+    monkeypatch.setattr(
+        "workers.report_generator.build_frontend_report_download_context",
+        lambda db, task_id, require_completed=False: {
+            "task": {"id": task_id, "app_name": "征途国际"},
+            "summary": {
+                "risk_level": "medium",
+                "risk_label": "中风险",
+                "conclusion": "测试结论",
+                "highlights": [],
+            },
+            "evidence_summary": {
+                "domains_count": 2,
+                "ips_count": 1,
+                "observation_hits": 3,
+                "capture_mode": "redroid_zeek",
+                "screenshots_count": 1,
+                "source_breakdown": {"connect": 3},
+            },
+            "screenshots": [{"id": "shot-1"}],
+            "top_domains": [],
+            "top_ips": [],
+            "timeline": [],
+        },
+    )
+    monkeypatch.setattr(
+        "workers.report_generator.resolve_frontend_report_screenshot_source",
+        lambda db, task_id, screenshot_ref, require_completed=False: FrontendReportScreenshotSource(
+            storage_path="screens/task/shot-1.png"
+        ),
+    )
+    monkeypatch.setattr(
+        "workers.report_generator.storage_client.download_file",
+        lambda storage_path: b"png-bytes",
+    )
+
+    context = _build_report_context_for_stage(object(), "task-1")
+
+    assert context["summary"]["conclusion"] == "测试结论"
+    assert context["screenshots"][0]["storage_path"] == "screens/task/shot-1.png"
+    assert context["screenshots"][0]["image_base64"] == base64.b64encode(b"png-bytes").decode("utf-8")
+
+
+def test_build_report_context_for_stage_raises_when_task_missing(monkeypatch):
+    monkeypatch.setattr(
+        "workers.report_generator.build_frontend_report_download_context",
+        lambda db, task_id, require_completed=False: None,
+    )
+
+    with pytest.raises(ValueError):
+        _build_report_context_for_stage(object(), "missing-task")

@@ -321,7 +321,7 @@ Tasks are automatically chained through Dramatiq:
 - `README.md`: Project overview and quick start
 - `docs/ARCHITECTURE.md`: Detailed system architecture
 - `docs/OPERATIONS.md`: Deployment and operations guide
-- `docs/TESTING.md`: Testing framework and conventions
+- `docs/TESTING_GUIDE.md`: Testing framework and conventions
 - `docs/PRD.md`: Product requirements
 
 ## Key Implementation Details
@@ -426,4 +426,4 @@ AI driver (`modules/ai_driver/`) uses OpenAI client SDK:
 
 ## Document Organization
 
-All design and documentation files are in `docs/plans/` directory. See `docs/plans/DOCUMENTATION_INDEX.md` for navigation. Root directory contains only `README.md` and `CLAUDE.md`.
+Current design and documentation files are consolidated under `docs/` with entrypoint `docs/DOCUMENTATION_INDEX.md`. Root directory contains `README.md` and `CLAUDE.md`.

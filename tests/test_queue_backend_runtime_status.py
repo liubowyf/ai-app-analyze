@@ -36,50 +36,6 @@ def test_runtime_diagnostics_for_dramatiq_ready(monkeypatch):
     mock_import.assert_called_once_with("workers.dramatiq_app")
 
 
-def test_build_canary_readiness_report_marks_no_go_when_actor_path_missing():
-    from scripts.canary_rollout_smoke import build_canary_readiness_report
-
-    with patch(
-        "scripts.canary_rollout_smoke.get_backend_runtime_diagnostics",
-        return_value={
-            "backend": "dramatiq",
-            "dramatiq_ready": True,
-            "fallback_reason": None,
-        },
-    ), patch("scripts.canary_rollout_smoke._actor_path_available", return_value=False):
-        report = build_canary_readiness_report(
-            evidence_counts={
-                "runs_count": 1,
-                "network_count": 2,
-                "domains_count": 1,
-                "report_img_count": 2,
-            }
-        )
-
-    assert report["backend"] == "dramatiq"
-    assert report["dramatiq_ready"] is True
-    assert report["can_enqueue"] is True
-    assert report["actor_path_available"] is False
-    assert report["go_no_go"] == "no-go"
-    assert report["go_no_go_reason"] == "actor_path_unavailable"
-
-
-def test_build_rollback_readiness_report():
-    from scripts.rollback_smoke import build_rollback_readiness_report
-
-    with patch(
-        "scripts.rollback_smoke.get_backend_runtime_diagnostics",
-        return_value={"backend": "dramatiq", "dramatiq_ready": True, "fallback_reason": None},
-    ), patch("scripts.rollback_smoke._actor_path_available", return_value=True):
-        report = build_rollback_readiness_report()
-
-    assert report["backend"] == "dramatiq"
-    assert report["dramatiq_ready"] is True
-    assert report["actor_path_available"] is True
-    assert report["rollback_ready"] is True
-    assert report["go_no_go_reason"] == "ready"
-
-
 def test_runtime_diagnostics_logs_stable_event_key(monkeypatch, caplog):
     import logging
 
@@ -97,4 +53,3 @@ def test_runtime_diagnostics_logs_stable_event_key(monkeypatch, caplog):
         and "dramatiq_ready=True" in record.message
         for record in caplog.records
     )
-

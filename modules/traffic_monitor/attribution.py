@@ -109,13 +109,17 @@ class AttributionEngine:
     def enrich(self, request_data: Dict[str, Any]) -> AttributionResult:
         self.refresh_maps()
         headers = request_data.get("request_headers") or {}
-        source = self._infer_source(headers)
+        explicit_source = request_data.get("source_type") or request_data.get("source")
+        source = str(explicit_source or self._infer_source(headers) or "unknown")
 
         requested_with = headers.get("X-Requested-With") or headers.get("x-requested-with")
-        package_name = None
+        package_name = request_data.get("package_name")
         confidence = 0.2
 
-        if requested_with:
+        if package_name:
+            package_name = str(package_name).strip()
+            confidence = float(request_data.get("attribution_confidence") or 0.95)
+        elif requested_with:
             package_name = str(requested_with).strip()
             confidence = 0.95
         else:
@@ -131,8 +135,11 @@ class AttributionEngine:
             package_name = self.target_package
             confidence = 0.4
 
-        uid = self._package_uid_map.get(package_name or "")
-        process_name = package_name
+        uid = request_data.get("uid")
+        if uid is None:
+            uid = self._package_uid_map.get(package_name or "")
+
+        process_name = request_data.get("process_name") or package_name
         if package_name and process_name not in self._process_uid_map and uid is None:
             # fallback by package prefix search in process map
             for proc_name, proc_uid in self._process_uid_map.items():

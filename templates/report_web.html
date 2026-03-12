@@ -3,258 +3,377 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ app_name or package_name }} - 涉诈APP分析报告</title>
-    <link rel="stylesheet" href="/static/css/report.css">
+    <title>{{ (task.app_name if task is defined and task and task.app_name else app_name or package_name or "未知应用") }} - 域名/IP 观察报告</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f4f7fb;
+            color: #122033;
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        .hero {
+            background: linear-gradient(135deg, #13213a 0%, #284b63 100%);
+            color: #fff;
+            border-radius: 24px;
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+        .hero h1, .hero h2, .hero p {
+            margin: 0;
+        }
+        .hero h1 {
+            font-size: 30px;
+            margin-top: 8px;
+        }
+        .hero-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 16px;
+            font-size: 14px;
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.14);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+        }
+        .grid {
+            display: grid;
+            gap: 20px;
+        }
+        .grid-two {
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        }
+        .grid-four {
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        }
+        .card {
+            background: #fff;
+            border: 1px solid #d9e1ec;
+            border-radius: 22px;
+            padding: 22px;
+            box-sizing: border-box;
+        }
+        .card h3 {
+            margin: 0 0 16px;
+            font-size: 20px;
+        }
+        .summary-card {
+            background: #f7f9fc;
+            border: 1px solid #d9e1ec;
+            border-radius: 18px;
+            padding: 16px;
+        }
+        .summary-label {
+            color: #58708a;
+            font-size: 13px;
+        }
+        .summary-value {
+            margin-top: 10px;
+            font-size: 28px;
+            font-weight: 700;
+            color: #122033;
+        }
+        .muted {
+            color: #58708a;
+            font-size: 13px;
+        }
+        .pill-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: #eef3f8;
+            color: #27425d;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .entity-list {
+            display: grid;
+            gap: 14px;
+        }
+        .entity-item {
+            border: 1px solid #d9e1ec;
+            border-radius: 18px;
+            padding: 16px;
+            background: #f9fbfd;
+        }
+        .entity-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+        }
+        .entity-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #122033;
+        }
+        .entity-meta {
+            margin-top: 6px;
+            color: #58708a;
+            font-size: 13px;
+        }
+        .entity-stats {
+            text-align: right;
+            font-size: 13px;
+            color: #58708a;
+        }
+        .timeline-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        .timeline-table th,
+        .timeline-table td {
+            text-align: left;
+            padding: 12px 8px;
+            border-bottom: 1px solid #e6edf5;
+            vertical-align: top;
+        }
+        .timeline-table th {
+            color: #58708a;
+            font-weight: 600;
+        }
+        .source-row {
+            display: grid;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+        .source-bar {
+            height: 8px;
+            border-radius: 999px;
+            background: #e7edf5;
+            overflow: hidden;
+        }
+        .source-bar > span {
+            display: block;
+            height: 8px;
+            background: #13213a;
+            border-radius: 999px;
+        }
+        .warning {
+            border: 1px solid #f0c5c5;
+            background: #fff1f1;
+            color: #8b2b2b;
+            border-radius: 16px;
+            padding: 16px;
+            margin-top: 16px;
+            font-size: 14px;
+        }
+        ul {
+            margin: 0;
+            padding-left: 18px;
+        }
+        li + li {
+            margin-top: 6px;
+        }
+    </style>
 </head>
 <body>
+    {% set task_info = task if task is defined and task else {} %}
+    {% set summary_info = summary if summary is defined and summary else {} %}
+    {% set evidence = evidence_summary if evidence_summary is defined and evidence_summary else {} %}
+    {% set domain_rows = top_domains if top_domains is defined and top_domains else (master_domains if master_domains is defined else []) %}
+    {% set ip_rows = top_ips if top_ips is defined and top_ips else [] %}
+    {% set timeline_rows = timeline if timeline is defined and timeline else [] %}
+    {% set screenshot_rows = screenshots if screenshots is defined and screenshots else [] %}
+    {% set risk_value = summary_info.get('risk_level') or risk_level or task_info.get('risk_level') or 'unknown' %}
+    {% set risk_text = summary_info.get('risk_label') or risk_label or risk_value %}
+    {% set title_name = task_info.get('app_name') or app_name or package_name or '未知应用' %}
+    {% set analysis_time = analysis_date or task_info.get('completed_at') or task_info.get('created_at') %}
+    {% set domain_count = evidence.get('domains_count') or domain_rows|length %}
+    {% set ip_count = evidence.get('ips_count') or ip_rows|length %}
+    {% set observation_hits = evidence.get('observation_hits') or evidence.get('network_requests_count') or network_requests_count or 0 %}
+    {% set screenshot_count = evidence.get('screenshots_count') or screenshot_rows|length %}
+    {% set source_breakdown_map = evidence.get('source_breakdown') if evidence.get('source_breakdown') else {} %}
+
     <div class="container">
-        <header class="report-header">
-            <h1>网络反诈中心</h1>
-            <h2>涉诈APP分析服务报告</h2>
-            <div class="app-info">
-                <h3>{{ app_name or package_name }}</h3>
-                <span class="risk-badge risk-{{ risk_level }}">{{ risk_level|risk_level_cn }}</span>
+        <header class="hero">
+            <p>网络反诈中心</p>
+            <h1>{{ title_name }}</h1>
+            <p style="margin-top: 12px; max-width: 760px; line-height: 1.7;">
+                {{ summary_info.get('conclusion') or '本报告已切换为域名/IP 统计优先视图，聚焦被动网络观测中的主通信端点。' }}
+            </p>
+            <div class="hero-meta">
+                <span class="badge">风险结论 {{ risk_text }}</span>
+                <span class="badge">任务 ID {{ task_info.get('id') or task_id or '-' }}</span>
+                <span class="badge">采集模式 {{ evidence.get('capture_mode') or 'redroid_zeek' }}</span>
+                <span class="badge">分析时间 {{ analysis_time or '-' }}</span>
             </div>
         </header>
 
-        <main class="report-content">
-            <!-- 基本信息 -->
-            <section class="info-section">
-                <h2>应用基本信息</h2>
-                <div class="info-grid">
-                    <div class="info-item">
-                        <label>应用名称</label>
-                        <span>{{ app_name or static_analysis.basic_info.app_name or '未知' }}</span>
-                    </div>
-                    <div class="info-item">
-                        <label>应用版本</label>
-                        <span>{{ version or static_analysis.basic_info.version_name or '未知' }}</span>
-                    </div>
-                    <div class="info-item">
-                        <label>文件大小</label>
-                        <span>{{ (file_size / 1024 / 1024) | round(2) if file_size else '未知' }} MB</span>
-                    </div>
-                    <div class="info-item">
-                        <label>应用包名</label>
-                        <span>{{ package_name or '未知' }}</span>
-                    </div>
-                    <div class="info-item">
-                        <label>主程序入口</label>
-                        <span>{{ static_analysis.basic_info.main_activity or static_analysis.components.activities[0].name if static_analysis and static_analysis.components and static_analysis.components.activities else '未知' }}</span>
-                    </div>
-                    <div class="info-item">
-                        <label>应用包MD5值</label>
-                        <span style="font-family: monospace; font-size: 0.9em;">{{ md5 or '未知' }}</span>
-                    </div>
-                </div>
-            </section>
+        {% if evidence_quality and evidence_quality.degraded %}
+        <section class="warning">
+            <strong>动态证据质量告警：</strong>
+            原因 {{ evidence_quality.reason }}，
+            domains={{ evidence_quality.domains_count or domain_count }}，
+            observations={{ evidence_quality.network_count or observation_hits }}，
+            screenshots={{ evidence_quality.screenshots_count or screenshot_count }}。
+        </section>
+        {% endif %}
 
-            <!-- 分析时间 -->
-            {% if analysis_date %}
-            <section class="info-section">
-                <h2>分析信息</h2>
-                <div class="info-grid">
-                    <div class="info-item">
-                        <label>分析时间</label>
-                        <span>{{ analysis_date }}</span>
-                    </div>
-                    <div class="info-item">
-                        <label>网络请求数</label>
-                        <span>{{ network_requests_count or 0 }}</span>
-                    </div>
-                </div>
-            </section>
-            {% endif %}
+        <section class="grid grid-four" style="margin-top: 24px;">
+            <div class="summary-card">
+                <div class="summary-label">Top Domains</div>
+                <div class="summary-value">{{ domain_count }}</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Top IPs</div>
+                <div class="summary-value">{{ ip_count }}</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Observation Hits</div>
+                <div class="summary-value">{{ observation_hits }}</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Screenshots</div>
+                <div class="summary-value">{{ screenshot_count }}</div>
+            </div>
+        </section>
 
-            {% if evidence_quality and evidence_quality.degraded %}
-            <section class="info-section">
-                <h2>动态证据质量告警</h2>
-                <div class="analysis-content">
-                    <div class="error-message">
-                        <p><strong>质量状态:</strong> degraded</p>
-                        <p><strong>原因:</strong> {{ evidence_quality.reason }}</p>
-                        <p><strong>统计:</strong> requests={{ evidence_quality.network_count }}, domains={{ evidence_quality.domains_count }}, screenshots={{ evidence_quality.screenshots_count }}</p>
-                    </div>
-                </div>
-            </section>
-            {% endif %}
-
-            <!-- 动态分析截图 -->
-            {% if screenshots %}
-            <section class="info-section">
-                <h2>动态分析截图</h2>
-                <div class="screenshots-grid">
-                    {% for screenshot in screenshots[:10] %}
-                    <div class="screenshot-item">
-                        {% if screenshot.image_base64 %}
-                        <img src="data:image/png;base64,{{ screenshot.image_base64 }}"
-                             alt="{{ screenshot.description or '应用截图' }}"
-                             class="screenshot-image"
-                             onclick="openScreenshotModal(this)">
+        <section class="grid grid-two" style="margin-top: 24px;">
+            <div class="card">
+                <h3>Top Domains</h3>
+                {% if domain_rows %}
+                <div class="entity-list">
+                    {% for domain in domain_rows[:10] %}
+                    <article class="entity-item">
+                        <div class="entity-header">
+                            <div>
+                                <div class="entity-title">{{ domain.domain or '未知域名' }}</div>
+                                <div class="entity-meta">
+                                    IP {{ domain.ip or '暂无' }} · 置信度 {{ domain.confidence or 'unknown' }}
+                                </div>
+                            </div>
+                            <div class="entity-stats">
+                                <div>命中 {{ domain.hit_count or domain.request_count or 0 }}</div>
+                                <div>IP 数 {{ domain.unique_ip_count or 0 }}</div>
+                            </div>
+                        </div>
+                        {% if domain.source_types %}
+                        <div class="pill-list">
+                            {% for source in domain.source_types %}
+                            <span class="pill">{{ source }}</span>
+                            {% endfor %}
+                        </div>
                         {% endif %}
-                        <div class="screenshot-info">
-                            <span class="screenshot-stage">{{ screenshot.stage or '未知阶段' }}</span>
-                            <span class="screenshot-desc">{{ screenshot.description or '无描述' }}</span>
+                        <div class="entity-meta">
+                            {{ domain.first_seen_at or '-' }} 至 {{ domain.last_seen_at or '-' }}
                         </div>
-                    </div>
+                    </article>
                     {% endfor %}
-                </div>
-            </section>
-            {% endif %}
-
-            <!-- 主域名分析 -->
-            {% if master_domains %}
-            <section class="domain-section">
-                <h2>主域名分析</h2>
-                <div class="domain-list">
-                    {% for domain in master_domains %}
-                    <div class="domain-item">
-                        <div class="domain-header">
-                            <h3>{{ domain.domain }}</h3>
-                            <span class="confidence-badge confidence-{{ domain.confidence }}">{{ domain.confidence|confidence_cn }}</span>
-                        </div>
-                        <div class="domain-details">
-                            <p><strong>风险评分:</strong> {{ "%.2f"|format(domain.score) }}</p>
-                            {% if domain.ip %}
-                            <p><strong>IP地址:</strong> {{ domain.ip }}</p>
-                            {% endif %}
-                            <div class="evidence-list">
-                                <strong>威胁证据:</strong>
-                                <ul>
-                                    {% for evidence in domain.evidence %}
-                                    <li>{{ evidence|evidence_cn }}</li>
-                                    {% endfor %}
-                                </ul>
-                            </div>
-                            {% if domain.sample_requests %}
-                            <div class="sample-requests">
-                                <strong>示例请求:</strong>
-                                <ul>
-                                    {% for req in domain.sample_requests[:3] %}
-                                    <li>{{ req.method }} {{ req.url }}</li>
-                                    {% endfor %}
-                                </ul>
-                            </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </section>
-            {% endif %}
-
-            <!-- 网络行为分析 -->
-            {% if network_requests or dynamic_analysis_result %}
-            <section class="info-section">
-                <h2>网络行为分析</h2>
-
-                <!-- 可疑网络行为 -->
-                {% if network_requests %}
-                <div class="network-section">
-                    <h3>🚨 可疑网络行为</h3>
-                    <div class="network-requests">
-                        {% for request in network_requests[:20] %}
-                        <div class="request-item suspicious">
-                            <div class="request-header">
-                                <span class="method-badge method-{{ request.method|lower }}">{{ request.method }}</span>
-                                <span class="url">{{ request.url }}</span>
-                            </div>
-                            <div class="request-details">
-                                {% if request.host %}
-                                <span class="detail-item"><strong>域名:</strong> {{ request.host }}</span>
-                                {% endif %}
-                                {% if request.ip %}
-                                <span class="detail-item"><strong>IP:</strong> {{ request.ip }}</span>
-                                {% endif %}
-                                {% if request.response_code %}
-                                <span class="detail-item"><strong>状态码:</strong> {{ request.response_code }}</span>
-                                {% endif %}
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                {% endif %}
-
-                <!-- 正常网络活动 -->
-                {% if dynamic_analysis_result and dynamic_analysis_result.candidate_requests %}
-                <div class="network-section">
-                    <h3>✅ 正常网络活动</h3>
-                    <div class="network-requests">
-                        {% for request in dynamic_analysis_result.candidate_requests[:15] %}
-                        <div class="request-item normal">
-                            <div class="request-header">
-                                <span class="method-badge method-{{ request.method|lower }}">{{ request.method }}</span>
-                                <span class="url">{{ request.url }}</span>
-                            </div>
-                            <div class="request-details">
-                                {% if request.host %}
-                                <span class="detail-item"><strong>域名:</strong> {{ request.host }}</span>
-                                {% endif %}
-                                {% if request.source %}
-                                <span class="detail-item"><strong>来源:</strong> {{ request.source }}</span>
-                                {% endif %}
-                                <span class="detail-item normal-tag">通用SDK调用</span>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                {% endif %}
-
-                <!-- 网络统计信息 -->
-                <div class="network-stats">
-                    <div class="stat-item">
-                        <label>可疑请求数</label>
-                        <span class="stat-value suspicious">{{ network_requests|length or 0 }}</span>
-                    </div>
-                    <div class="stat-item">
-                        <label>正常请求数</label>
-                        <span class="stat-value normal">{{ dynamic_analysis_result.candidate_requests|length if dynamic_analysis_result and dynamic_analysis_result.candidate_requests else 0 }}</span>
-                    </div>
-                    <div class="stat-item">
-                        <label>总请求数</label>
-                        <span class="stat-value">{{ (network_requests|length or 0) + (dynamic_analysis_result.candidate_requests|length if dynamic_analysis_result and dynamic_analysis_result.candidate_requests else 0) }}</span>
-                    </div>
-                </div>
-            </section>
-            {% endif %}
-
-            <!-- 静态分析结果 -->
-            {% if static_analysis_result %}
-            <section class="static-section">
-                <h2>静态分析结果</h2>
-                <div class="analysis-content">
-                    {% if static_analysis_result.error %}
-                    <div class="error-message">
-                        <p><strong>分析失败:</strong> {{ static_analysis_result.message }}</p>
-                    </div>
-                    {% else %}
-                    <div class="analysis-success">
-                        <p>静态分析成功完成</p>
-                        {% if static_analysis_result.is_packed %}
-                        <p><strong>加壳检测:</strong> 是</p>
-                        {% endif %}
-                    </div>
-                    {% endif %}
-                </div>
-            </section>
-            {% endif %}
-
-            <!-- 威胁情报 -->
-            <section class="threat-section">
-                <h2>可调证线索信息</h2>
-                {% if master_domains %}
-                <div class="threat-summary">
-                    <p>检测到 <strong>{{ master_domains|length }}</strong> 个主要通信域名，风险等级：<span class="risk-badge risk-{{ risk_level }}">{{ risk_level|risk_level_cn }}</span></p>
-                    <p>建议进一步调查这些域名的注册信息和历史活动记录。</p>
                 </div>
                 {% else %}
-                <p>未检测到明显的威胁指标，但建议持续监控应用行为。</p>
+                <div class="muted">暂无域名线索。</div>
                 {% endif %}
-            </section>
-        </main>
+            </div>
+
+            <div class="card">
+                <h3>Top IPs</h3>
+                {% if ip_rows %}
+                <div class="entity-list">
+                    {% for ip in ip_rows[:10] %}
+                    <article class="entity-item">
+                        <div class="entity-header">
+                            <div>
+                                <div class="entity-title">{{ ip.ip or '未知 IP' }}</div>
+                                <div class="entity-meta">
+                                    主域名 {{ ip.primary_domain or '暂无' }}
+                                </div>
+                            </div>
+                            <div class="entity-stats">
+                                <div>命中 {{ ip.hit_count or 0 }}</div>
+                                <div>域名数 {{ ip.domain_count or 0 }}</div>
+                            </div>
+                        </div>
+                        {% if ip.source_types %}
+                        <div class="pill-list">
+                            {% for source in ip.source_types %}
+                            <span class="pill">{{ source }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        <div class="entity-meta">
+                            {{ ip.first_seen_at or '-' }} 至 {{ ip.last_seen_at or '-' }}
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="muted">暂无关键 IP。</div>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="grid grid-two" style="margin-top: 24px;">
+            <div class="card">
+                <h3>观测来源拆分</h3>
+                {% if source_breakdown_map %}
+                    {% set source_total = source_breakdown_map.values() | sum %}
+                    {% for source, count in source_breakdown_map.items() %}
+                    <div class="source-row">
+                        <div class="entity-header">
+                            <div class="entity-title" style="font-size: 14px;">{{ source }}</div>
+                            <div class="entity-stats">{{ count }} 次</div>
+                        </div>
+                        <div class="source-bar">
+                            <span style="width: {{ ((count / source_total) * 100) if source_total else 0 }}%;"></span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                <div class="muted">暂无来源拆分。</div>
+                {% endif %}
+            </div>
+
+            <div class="card">
+                <h3>观测时间线</h3>
+                {% if timeline_rows %}
+                <table class="timeline-table">
+                    <thead>
+                        <tr>
+                            <th>来源</th>
+                            <th>域名</th>
+                            <th>IP</th>
+                            <th>协议</th>
+                            <th>命中</th>
+                            <th>时间窗</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in timeline_rows[:12] %}
+                        <tr>
+                            <td>{{ row.source_type or row.source or 'unknown' }}</td>
+                            <td>{{ row.domain or row.host or '暂无' }}</td>
+                            <td>{{ row.ip or '暂无' }}</td>
+                            <td>{{ row.protocol or '-' }} / {{ row.transport or '-' }}</td>
+                            <td>{{ row.hit_count or row.count or 0 }}</td>
+                            <td>{{ row.first_seen_at or row.request_time or '-' }} 至 {{ row.last_seen_at or row.request_time or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="muted">暂无观测时间线。</div>
+                {% endif %}
+            </div>
+        </section>
     </div>
-    <script src="/static/js/report.js"></script>
 </body>
 </html>

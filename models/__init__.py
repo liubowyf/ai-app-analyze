@@ -19,8 +19,6 @@ from models.analysis_tables import (
     ScreenshotTable,
     StaticAnalysisTable,
 )
-from models.emulator_lease import EmulatorLeaseTable
-from models.proxy_port_lease import ProxyPortLeaseTable
 from models.task import Task, TaskPriority, TaskStatus
 from models.whitelist import WhitelistCategory, WhitelistRule
 
@@ -44,8 +42,6 @@ __all__ = [
     "MasterDomainTable",
     "ScreenshotTable",
     "AnalysisRunTable",
-    "EmulatorLeaseTable",
-    "ProxyPortLeaseTable",
     "WhitelistCategory",
     "WhitelistRule",
 ]

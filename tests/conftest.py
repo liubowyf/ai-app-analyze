@@ -1,7 +1,8 @@
 """Pytest configuration and fixtures."""
+from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
 
 
 @pytest.fixture

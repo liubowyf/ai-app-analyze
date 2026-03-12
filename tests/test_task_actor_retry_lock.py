@@ -87,3 +87,24 @@ def test_run_task_retry_restores_stage_status_after_dynamic_failure():
     assert task.status == TaskStatus.STATIC_ANALYZING
     assert task.error_message == "transient dynamic failure"
     send_with_options.assert_called_once_with(args=("task-dynamic-retry",), delay=10000)
+
+
+def test_run_task_reenqueues_only_after_lock_release():
+    task = SimpleNamespace(id="task-reenqueue", status=TaskStatus.QUEUED, error_message=None, retry_count=0)
+    db = _build_db_with_task(task)
+    events = []
+
+    def _release_lock(_key, _token):
+        events.append("release")
+
+    def _send(_task_id):
+        events.append("send")
+
+    with patch("workers.task_actor._acquire_task_lock", return_value=("lock:task:task-reenqueue", "token")), \
+         patch("workers.task_actor._release_task_lock", side_effect=_release_lock), \
+         patch("workers.task_actor.SessionLocal", return_value=db), \
+         patch("workers.task_actor.run_static_stage", return_value={"status": "success"}), \
+         patch.object(run_task, "send", side_effect=_send):
+        run_task("task-reenqueue")
+
+    assert events == ["release", "send"]

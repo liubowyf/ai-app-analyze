@@ -1,6 +1,6 @@
 """Tests for tasks router."""
 from datetime import datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -230,20 +230,28 @@ class TestTasksRouter:
         assert isinstance(data["timestamp"], str)
 
     def test_get_task_network_requests(self, client: TestClient):
-        """Test network requests query endpoint."""
+        """Compatibility route should now expose passive observation fields."""
         mock_task = create_mock_task(status=TaskStatus.COMPLETED)
         mock_request = MagicMock()
-        mock_request.id = "req-1"
-        mock_request.url = "https://api.demo.com/v1/home"
-        mock_request.method = "GET"
+        mock_request.id = "obs-1"
+        mock_request.url = None
+        mock_request.method = "UNKNOWN"
         mock_request.host = "api.demo.com"
-        mock_request.path = "/v1/home"
+        mock_request.path = None
         mock_request.ip = "1.1.1.1"
         mock_request.port = 443
         mock_request.scheme = "https"
-        mock_request.response_code = 200
-        mock_request.content_type = "application/json"
-        mock_request.request_time = datetime.utcnow()
+        mock_request.response_code = None
+        mock_request.content_type = None
+        mock_request.request_time = datetime(2026, 3, 6, 9, 0, 0)
+        mock_request.first_seen_at = datetime(2026, 3, 6, 9, 0, 0)
+        mock_request.last_seen_at = datetime(2026, 3, 6, 9, 0, 5)
+        mock_request.hit_count = 4
+        mock_request.source_type = "dns"
+        mock_request.transport = "udp"
+        mock_request.protocol = "dns"
+        mock_request.capture_mode = "redroid_zeek"
+        mock_request.attribution_tier = "primary"
 
         with patch("api.routers.tasks.SessionLocal") as mock_session_local:
             mock_db = MagicMock(spec=Session)
@@ -270,15 +278,132 @@ class TestTasksRouter:
             assert data["task_id"] == "test-task-id"
             assert data["total"] == 1
             assert len(data["items"]) == 1
+            assert data["items"][0]["domain"] == "api.demo.com"
             assert data["items"][0]["host"] == "api.demo.com"
+            assert data["items"][0]["hit_count"] == 4
+            assert data["items"][0]["source_type"] == "dns"
+            assert data["items"][0]["transport"] == "udp"
+            assert data["items"][0]["protocol"] == "dns"
+            assert data["items"][0]["capture_mode"] == "redroid_zeek"
+            assert data["items"][0]["attribution_tier"] == "primary"
+            assert data["items"][0]["first_seen_at"] == "2026-03-06T09:00:00"
+            assert data["items"][0]["last_seen_at"] == "2026-03-06T09:00:05"
+
+    def test_get_task_network_observations_alias(self, client: TestClient):
+        """Canonical observation route should expose the same payload contract."""
+        mock_task = create_mock_task(status=TaskStatus.COMPLETED)
+        mock_request = MagicMock()
+        mock_request.id = "obs-1"
+        mock_request.url = None
+        mock_request.method = "UNKNOWN"
+        mock_request.host = "api.demo.com"
+        mock_request.path = None
+        mock_request.ip = "1.1.1.1"
+        mock_request.port = 443
+        mock_request.scheme = "https"
+        mock_request.response_code = None
+        mock_request.content_type = None
+        mock_request.request_time = datetime(2026, 3, 6, 9, 0, 0)
+        mock_request.first_seen_at = datetime(2026, 3, 6, 9, 0, 0)
+        mock_request.last_seen_at = datetime(2026, 3, 6, 9, 0, 5)
+        mock_request.hit_count = 4
+        mock_request.source_type = "dns"
+        mock_request.transport = "udp"
+        mock_request.protocol = "dns"
+        mock_request.capture_mode = "redroid_zeek"
+        mock_request.attribution_tier = "primary"
+
+        with patch("api.routers.tasks.SessionLocal") as mock_session_local:
+            mock_db = MagicMock(spec=Session)
+            mock_session_local.return_value = mock_db
+
+            task_query = MagicMock()
+            network_query = MagicMock()
+            network_sorted = MagicMock()
+            network_paginated = MagicMock()
+
+            mock_db.query.side_effect = [task_query, network_query]
+            task_query.filter.return_value.first.return_value = mock_task
+
+            network_query.filter.return_value = network_query
+            network_query.count.return_value = 1
+            network_query.order_by.return_value = network_sorted
+            network_sorted.offset.return_value = network_paginated
+            network_paginated.limit.return_value.all.return_value = [mock_request]
+
+            response = client.get("/api/v1/tasks/test-task-id/network-observations")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["task_id"] == "test-task-id"
+            assert data["items"][0]["domain"] == "api.demo.com"
+            assert data["items"][0]["hit_count"] == 4
+
+    def test_get_task_network_requests_fallback_to_dynamic_result_preview(self, client: TestClient):
+        """Historical tasks should still expose observation previews from legacy JSON."""
+        mock_task = create_mock_task(status=TaskStatus.COMPLETED)
+        mock_task.dynamic_analysis_result = {
+            "capture_mode": "redroid_zeek",
+            "primary_observations_preview": [
+                {
+                    "id": "obs-preview-1",
+                    "domain": "api.demo.com",
+                    "host": "api.demo.com",
+                    "ip": "1.1.1.1",
+                    "hit_count": 3,
+                    "source_type": "dns",
+                    "transport": "udp",
+                    "protocol": "dns",
+                    "first_seen_at": "2026-03-06T09:00:00",
+                    "last_seen_at": "2026-03-06T09:00:05",
+                    "capture_mode": "redroid_zeek",
+                    "attribution_tier": "primary",
+                }
+            ],
+        }
+
+        with patch("api.routers.tasks.SessionLocal") as mock_session_local:
+            mock_db = MagicMock(spec=Session)
+            mock_session_local.return_value = mock_db
+
+            task_query = MagicMock()
+            network_query = MagicMock()
+            network_sorted = MagicMock()
+            network_paginated = MagicMock()
+
+            mock_db.query.side_effect = [task_query, network_query]
+            task_query.filter.return_value.first.return_value = mock_task
+            network_query.filter.return_value = network_query
+            network_query.count.return_value = 0
+            network_query.order_by.return_value = network_sorted
+            network_sorted.offset.return_value = network_paginated
+            network_paginated.limit.return_value.all.return_value = []
+
+            response = client.get("/api/v1/tasks/test-task-id/network-requests")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["total"] == 1
+            assert data["items"][0]["domain"] == "api.demo.com"
+            assert data["items"][0]["hit_count"] == 3
 
     def test_get_task_domains_fallback_to_json(self, client: TestClient):
-        """Test domains endpoint falls back to JSON payload when table empty."""
+        """Historical tasks should still expose passive master-domain summaries from JSON."""
         mock_task = create_mock_task(status=TaskStatus.COMPLETED)
         mock_task.dynamic_analysis_result = {
             "master_domains": {
                 "master_domains": [
-                    {"domain": "api.demo.com", "score": 66, "confidence": "high"}
+                    {
+                        "domain": "api.demo.com",
+                        "ip": "1.1.1.1",
+                        "score": 66,
+                        "confidence": "high",
+                        "hit_count": 7,
+                        "unique_ip_count": 2,
+                        "source_types": ["dns", "connect"],
+                        "first_seen_at": "2026-03-06T09:00:00",
+                        "last_seen_at": "2026-03-06T09:00:05",
+                    }
                 ]
             }
         }
@@ -301,6 +426,50 @@ class TestTasksRouter:
             assert data["task_id"] == "test-task-id"
             assert data["count"] == 1
             assert data["domains"][0]["domain"] == "api.demo.com"
+            assert data["domains"][0]["hit_count"] == 7
+            assert data["domains"][0]["unique_ip_count"] == 2
+            assert data["domains"][0]["source_types"] == ["dns", "connect"]
+
+    def test_get_task_domains_returns_passive_domain_evidence(self, client: TestClient):
+        """Domain route should return observation-driven evidence fields."""
+        mock_task = create_mock_task(status=TaskStatus.COMPLETED)
+        mock_domain = MagicMock()
+        mock_domain.domain = "api.demo.com"
+        mock_domain.ip = "1.1.1.1"
+        mock_domain.confidence_score = 92
+        mock_domain.confidence_level = "high"
+        mock_domain.request_count = 7
+        mock_domain.post_count = 0
+        mock_domain.evidence = ["top passive domain"]
+        mock_domain.first_seen_at = datetime(2026, 3, 6, 9, 0, 0)
+        mock_domain.last_seen_at = datetime(2026, 3, 6, 9, 0, 5)
+        mock_domain.unique_ip_count = 2
+        mock_domain.source_types_json = ["dns", "connect"]
+
+        with patch("api.routers.tasks.SessionLocal") as mock_session_local:
+            mock_db = MagicMock(spec=Session)
+            mock_session_local.return_value = mock_db
+
+            task_query = MagicMock()
+            domain_query = MagicMock()
+            ordered_query = MagicMock()
+
+            mock_db.query.side_effect = [task_query, domain_query]
+            task_query.filter.return_value.first.return_value = mock_task
+            domain_query.filter.return_value = domain_query
+            domain_query.order_by.return_value = ordered_query
+            ordered_query.all.return_value = [mock_domain]
+
+            response = client.get("/api/v1/tasks/test-task-id/domains")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["domains"][0]["domain"] == "api.demo.com"
+            assert data["domains"][0]["hit_count"] == 7
+            assert data["domains"][0]["unique_ip_count"] == 2
+            assert data["domains"][0]["source_types"] == ["dns", "connect"]
+            assert data["domains"][0]["first_seen_at"] == "2026-03-06T09:00:00"
+            assert data["domains"][0]["last_seen_at"] == "2026-03-06T09:00:05"
 
     def test_get_task_runs(self, client: TestClient):
         """Test stage run timeline endpoint."""

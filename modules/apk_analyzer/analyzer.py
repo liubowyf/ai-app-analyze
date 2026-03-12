@@ -1,8 +1,13 @@
 """APK static analyzer using androguard."""
 import hashlib
-from typing import Dict, List, Any, Optional
 import logging
+import os
+import re
+import shutil
+import subprocess
+import tempfile
 from functools import lru_cache
+from typing import Dict, List, Any, Optional
 
 from androguard.misc import AnalyzeAPK
 
@@ -15,6 +20,14 @@ from models.analysis_result import (
 from .risk_scorer import RiskScorer
 
 logger = logging.getLogger(__name__)
+
+_PACKAGE_RE = re.compile(r"package:\s+name='([^']+)'.*versionCode='([^']*)'.*versionName='([^']*)'")
+_SDK_RE = re.compile(r"sdkVersion:'([^']+)'")
+_TARGET_SDK_RE = re.compile(r"targetSdkVersion:'([^']+)'")
+_APP_LABEL_RE = re.compile(r"application-label:'([^']*)'")
+_PERMISSION_RE = re.compile(r"uses-permission:\s+name='([^']+)'")
+_LAUNCHABLE_ACTIVITY_RE = re.compile(r"launchable-activity:\s+name='([^']+)'")
+_NATIVE_CODE_RE = re.compile(r"'([^']+)'")
 
 
 @lru_cache(maxsize=100)
@@ -213,25 +226,146 @@ class ApkAnalyzer:
         Returns:
             StaticAnalysisResult object
         """
-        # Load APK
         if apk_path:
-            if not self.load_apk(apk_path):
-                raise ValueError(f"Failed to load APK from {apk_path}")
-        elif apk_content:
-            if not self.load_apk_from_bytes(apk_content):
-                raise ValueError("Failed to load APK from bytes")
-        else:
-            raise ValueError("Either apk_path or apk_content must be provided")
+            return self._analyze_path_with_fallback(
+                apk_path=apk_path,
+                file_size=file_size,
+                md5=md5,
+                sha256=sha256,
+            )
 
-        # Extract all information
-        basic_info = self.extract_basic_info(file_size, md5, sha256)
-        permissions = self.extract_permissions()
-        components = self.extract_components()
+        if apk_content:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".apk") as tmp:
+                tmp.write(apk_content)
+                tmp_path = tmp.name
+            try:
+                return self._analyze_path_with_fallback(
+                    apk_path=tmp_path,
+                    file_size=file_size,
+                    md5=md5,
+                    sha256=sha256,
+                )
+            finally:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+
+        raise ValueError("Either apk_path or apk_content must be provided")
+
+    def _analyze_path_with_fallback(
+        self,
+        apk_path: str,
+        file_size: int,
+        md5: str,
+        sha256: str,
+    ) -> StaticAnalysisResult:
+        try:
+            self.apk, self.analysis, _ = AnalyzeAPK(apk_path)
+            return StaticAnalysisResult(
+                basic_info=self.extract_basic_info(file_size, md5, sha256),
+                permissions=self.extract_permissions(),
+                components=self.extract_components(),
+            )
+        except Exception as exc:
+            logger.warning("AnalyzeAPK failed for %s, falling back to aapt: %s", apk_path, exc)
+            return self._analyze_with_aapt(
+                apk_path=apk_path,
+                file_size=file_size,
+                md5=md5,
+                sha256=sha256,
+            )
+
+    def _analyze_with_aapt(
+        self,
+        apk_path: str,
+        file_size: int,
+        md5: str,
+        sha256: str,
+    ) -> StaticAnalysisResult:
+        aapt_path = shutil.which("aapt")
+        if not aapt_path:
+            raise ValueError(f"Failed to load APK from {apk_path}")
+
+        proc = subprocess.run(
+            [aapt_path, "dump", "badging", apk_path],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        output = "\n".join(part for part in [proc.stdout, proc.stderr] if part)
+        if proc.returncode != 0 or "package: name='" not in output:
+            raise ValueError(f"Failed to load APK from {apk_path}")
+
+        package_match = _PACKAGE_RE.search(output)
+        if not package_match:
+            raise ValueError(f"Failed to load APK from {apk_path}")
+
+        sdk_match = _SDK_RE.search(output)
+        target_sdk_match = _TARGET_SDK_RE.search(output)
+        app_label_match = _APP_LABEL_RE.search(output)
+        permissions = list(dict.fromkeys(_PERMISSION_RE.findall(output)))
+        launchable_activity = _LAUNCHABLE_ACTIVITY_RE.search(output)
+        native_code_line = next(
+            (line for line in output.splitlines() if line.startswith("native-code:")),
+            "",
+        )
+
+        basic_info = ApkBasicInfo(
+            package_name=package_match.group(1),
+            app_name=app_label_match.group(1) if app_label_match else "",
+            version_name=package_match.group(3),
+            version_code=int(package_match.group(2) or 0),
+            min_sdk=int(sdk_match.group(1)) if sdk_match and sdk_match.group(1).isdigit() else None,
+            target_sdk=int(target_sdk_match.group(1)) if target_sdk_match and target_sdk_match.group(1).isdigit() else None,
+            file_size=file_size,
+            md5=md5,
+            sha256=sha256,
+            signature="",
+            is_debuggable=False,
+            is_packed=False,
+            packer_name=None,
+        )
+
+        permission_items = []
+        for permission in permissions:
+            if permission in DANGEROUS_PERMISSIONS:
+                risk_level, risk_reason = DANGEROUS_PERMISSIONS[permission]
+                protection_level = "dangerous" if risk_level in ("high", "critical") else "normal"
+            else:
+                risk_level = "low"
+                risk_reason = None
+                protection_level = "unknown"
+
+            permission_items.append(
+                PermissionInfo(
+                    name=permission,
+                    protection_level=protection_level,
+                    description=risk_reason,
+                    risk_level=risk_level,
+                    risk_reason=risk_reason,
+                )
+            )
+
+        components = []
+        if launchable_activity:
+            components.append(
+                ComponentInfo(
+                    component_type="activity",
+                    component_name=launchable_activity.group(1),
+                    is_exported=True,
+                    intent_filters=["android.intent.action.MAIN"],
+                    risk_level="medium",
+                )
+            )
+
+        native_libraries = _NATIVE_CODE_RE.findall(native_code_line)
+        self.apk = None
+        self.analysis = None
 
         return StaticAnalysisResult(
             basic_info=basic_info,
-            permissions=permissions,
+            permissions=permission_items,
             components=components,
+            native_libraries=native_libraries,
         )
 
     def extract_components(self) -> List[ComponentInfo]:

@@ -21,16 +21,10 @@ androguard==3.4.0a1
 # Machine Learning
 scikit-learn==1.8.0
 
-# Traffic Monitor
-mitmproxy==10.1.6
-
 # PDF Generation
 weasyprint==60.2
 pydyf==0.8.0
 jinja2==3.1.3
-
-# Docker
-docker==7.0.0
 
 # HTTP Client
 httpx==0.26.0
