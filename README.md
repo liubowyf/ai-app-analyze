@@ -2,9 +2,19 @@
 
 一个面向反诈场景的 Android App 自动化分析平台。
 
-当前主线方案基于 **FastAPI + Dramatiq + Next.js + Redroid + tcpdump + Zeek**，支持从页面上传 APK，自动完成静态分析、远端动态分析、网络行为观测、截图采集、结果落库和报告展示。
+它提供从 APK 上传、静态信息提取、远端 Android 动态分析、网络行为采集、截图与报告生成，到页面展示的完整闭环。当前动态分析主线基于 **Redroid + ADB + SSH + tcpdump + Zeek**。
 
-## 核心能力
+## Why This Project
+
+这个项目的核心目标不是做移动应用逆向取证平台，而是为反诈分析提供一条稳定、可批量、可页面化查看的分析流水线，重点产出：
+
+- App 基本信息
+- 声明权限与运行期权限申请情况
+- 动态运行过程截图
+- 域名、IP、命中次数、时间线等网络行为统计
+- 可直接查看的任务详情页与报告页
+
+## Core Features
 
 - APK 上传与批量任务创建
 - 轻量静态分析
@@ -15,73 +25,108 @@
   - 文件大小
   - 声明权限
   - 启动 Activity 线索
-- 基于 Redroid 的远端动态分析
+- 远端 Redroid 动态分析
   - 安装 APK
   - 启动 App
-  - AI 驱动页面点击、输入、导航和恢复
+  - AI 驱动页面点击、输入、导航与恢复
   - 截图采集
   - UI 结构导出
-- 网络观测
-  - tcpdump 抓包
-  - Zeek 解析
-  - 域名、IP、命中次数、时间线统计
-- 结果持久化
-  - MySQL：结构化分析结果
-  - MinIO：截图、报告、APK 文件
+- 网络行为采集
+  - 宿主机 tcpdump 抓包
+  - Zeek 解析连接与域名线索
+  - 域名 / IP / 命中次数 / 时间线聚合
+- 数据持久化
+  - MySQL 存结构化分析结果
+  - MinIO 存图标、截图、报告、原始 APK
 - 页面展示
   - 任务列表页
   - 任务详情页
   - 报告页
 
-## 当前主架构
+## Architecture
 
-```text
-Browser / Frontend (Next.js)
-        |
-        v
-FastAPI API
-        |
-        v
-Dramatiq Worker
-        |
-        v
-Redroid Remote Backend
-  |- ADB: install / launch / screencap / uiautomator
-  |- SSH: tcpdump / Zeek / artifacts
-        |
-        v
-MySQL + Redis + MinIO
+```mermaid
+flowchart TD
+    U[User / Browser] --> FE[Next.js Frontend]
+    FE --> API[FastAPI API]
+    API --> Q[Dramatiq + Redis]
+    Q --> W[Worker]
+    W --> SA[Static Analyzer]
+    W --> DA[Dynamic Analyzer]
+
+    DA --> RB[Redroid Remote Backend]
+    RB --> ADB[ADB Controller]
+    RB --> SSH[SSH Controller]
+
+    ADB --> RR[Redroid Instances]
+    SSH --> TCP[tcpdump]
+    SSH --> ZK[Zeek]
+
+    SA --> DB[(MySQL)]
+    DA --> DB
+    SA --> S3[(MinIO)]
+    DA --> S3
+
+    API --> DB
+    API --> S3
 ```
 
-## 当前技术栈
+## Runtime Flow
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant API
+    participant Worker
+    participant Static
+    participant Redroid
+    participant SSH
+    participant MySQL
+    participant MinIO
+
+    Browser->>API: Upload APK
+    API->>MySQL: Create task
+    API->>Worker: Enqueue analysis
+    Worker->>Static: Lightweight static analysis
+    Static->>MySQL: Save static result
+    Static->>MinIO: Upload icon / APK artifacts
+    Worker->>Redroid: Install + launch app
+    Worker->>SSH: Start tcpdump / run Zeek
+    Redroid->>Redroid: AI-driven exploration + screenshots
+    Worker->>MySQL: Save dynamic result / observations / domains
+    Worker->>MinIO: Upload screenshots / reports
+    Browser->>API: Query task detail / report
+```
+
+## Tech Stack
 
 - Frontend: Next.js
 - API: FastAPI
 - Queue: Dramatiq + Redis
-- DB: MySQL
+- Database: MySQL
 - Object Storage: MinIO
-- Dynamic Analysis Backend: Redroid Remote
-- Traffic Observation: tcpdump + Zeek
+- Dynamic Backend: Redroid Remote
+- Traffic Analysis: tcpdump + Zeek
 
-## 当前唯一有效方案
+## Current Supported Runtime Model
 
-本项目当前只保留以下动态分析主线：
+当前项目只保留这一条动态分析主线：
 
 - `redroid_remote`
+- `ADB + SSH`
 - `tcpdump + Zeek`
-- 远端 ADB + SSH
 
-以下方案已移除，不再作为当前架构的一部分：
+以下历史方案已废弃，不再是当前实现的一部分：
 
 - Android Docker
 - 本地 Android 模拟器池
 - MITM / no-mitm / internal proxy 旧链路
-- 宿主机 adb reverse 抓包链路
+- adb reverse 抓包链路
 - 后端 HTML 报告主入口
 
-## 快速开始
+## Quick Start
 
-### 1. 安装依赖
+### 1. Install Dependencies
 
 ```bash
 python -m venv venv
@@ -89,73 +134,73 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-前端依赖：
-
 ```bash
 cd frontend
 npm install
 cd ..
 ```
 
-### 2. 准备环境变量
+### 2. Configure Environment
 
 ```bash
 cp .env.example .env
 ```
 
-按当前实际环境填写：
+至少需要正确配置：
 
 - MySQL
 - Redis
 - MinIO
-- Redroid 节点
-- SSH 凭据
+- Redroid 节点 ADB/SSH 信息
 
-### 3. 启动服务
+### 3. Start Services
 
 ```bash
 ./scripts/start_services.sh
 ```
 
-重启：
+Restart:
 
 ```bash
 ./scripts/restart_services.sh
 ```
 
-停止：
+Stop:
 
 ```bash
 ./scripts/stop_services.sh
 ```
 
-### 4. 访问页面
+### 4. Open the App
 
 - Frontend: `http://127.0.0.1:3000`
 - API: `http://127.0.0.1:8000`
 
-## 运行流程
+## Configuration Highlights
 
-1. 页面上传 APK
-2. API 创建任务并入队
-3. Worker 执行轻量静态分析
-4. Worker 调用 `redroid_remote` 进行动态分析
-5. 远端 Redroid 完成：
-   - 安装
-   - 启动
-   - AI 探索
-   - 截图
-   - 抓包
-   - Zeek 解析
-6. 结果落库到 MySQL
-7. 截图和报告写入 MinIO
-8. 前端详情页和报告页展示结果
+关键环境变量示例：
 
-## 结果数据
+| Variable | Purpose |
+|---|---|
+| `ANALYSIS_BACKEND` | 动态分析后端，当前固定为 `redroid_remote` |
+| `MYSQL_URL` | MySQL 连接串 |
+| `REDIS_BROKER_URL` | Dramatiq Redis Broker |
+| `MINIO_ENDPOINT` | MinIO 地址 |
+| `REDROID_SSH_HOST` | Redroid 宿主机 SSH 地址 |
+| `REDROID_SSH_PORT` | Redroid 宿主机 SSH 端口 |
+| `REDROID_SSH_USER` | Redroid 宿主机 SSH 用户 |
+| `REDROID_SSH_PASSWORD` / `REDROID_SSH_KEY_PATH` | SSH 认证方式 |
+| `REDROID_SLOTS_JSON` | 可用的 Redroid 槽位定义 |
+| `ADB_INSTALL_TIMEOUT_SECONDS` | APK 安装超时 |
+| `APP_EXPLORATION_MAX_STEPS` | 单轮探索步数上限 |
+| `APP_EXPLORATION_TOTAL_ACTION_BUDGET` | 全局操作预算 |
+| `APP_EXPLORATION_TOTAL_SCREENSHOT_BUDGET` | 全局截图预算 |
+
+## What Gets Stored
 
 ### MySQL
 
-当前主要表：
+主要表：
 
 - `tasks`
 - `static_analysis`
@@ -167,34 +212,34 @@ cp .env.example .env
 
 ### MinIO
 
-当前主要对象：
+主要对象：
 
-- APK 原始文件
+- 原始 APK
 - 应用图标
 - 动态截图
 - `report.pdf`
 - `report_web.html`
 - `report_static.html`
 
-## 页面能力
+## Web UI
 
-### 任务列表页
+### Task List
 
-- 任务状态
+- 状态
 - 应用名 / 包名
 - APK 文件名
 - 风险等级
 - 时间信息
 
-### 任务详情页
+### Task Detail
 
 - 静态分析信息
 - 权限信息
-- 动态阶段运行记录
+- 阶段运行记录
 - 域名 / IP / 命中统计
 - 截图
 
-### 报告页
+### Report
 
 - App 基本信息
 - 权限概览
@@ -204,22 +249,9 @@ cp .env.example .env
 - 时间线
 - 截图索引
 
-## 配置重点
+## Verification
 
-当前关键配置包括：
-
-- `ANALYSIS_BACKEND=redroid_remote`
-- `REDROID_SSH_HOST`
-- `REDROID_SSH_PORT`
-- `REDROID_SSH_USER`
-- `REDROID_SSH_PASSWORD` 或 `REDROID_SSH_KEY_PATH`
-- `REDROID_SLOTS_JSON`
-- `ADB_INSTALL_TIMEOUT_SECONDS`
-- `APP_EXPLORATION_MAX_STEPS`
-- `APP_EXPLORATION_TOTAL_ACTION_BUDGET`
-- `APP_EXPLORATION_TOTAL_SCREENSHOT_BUDGET`
-
-## 最小检查命令
+健康检查：
 
 ```bash
 curl -s http://127.0.0.1:8000/health
@@ -227,12 +259,13 @@ curl -s 'http://127.0.0.1:8000/api/v1/frontend/tasks?page=1&page_size=20'
 PYTHONPATH=. ./venv/bin/python scripts/verify_collect_stability.py
 ```
 
-## 测试
-
 后端关键测试：
 
 ```bash
-pytest -q tests/test_redroid_remote_backend.py tests/test_redroid_traffic_collector.py tests/test_redroid_traffic_parser.py
+pytest -q \
+  tests/test_redroid_remote_backend.py \
+  tests/test_redroid_traffic_collector.py \
+  tests/test_redroid_traffic_parser.py
 ```
 
 前端测试：
@@ -243,53 +276,54 @@ npm test
 npm run build
 ```
 
-## 目录结构
+## Repository Layout
 
 ```text
 api/                FastAPI 入口、路由、Schema
 core/               配置、数据库、存储
 models/             SQLAlchemy 模型
-modules/            分析模块、redroid、流量采集、AI 探索
+modules/            分析模块、Redroid、流量采集、AI 探索
 workers/            Dramatiq worker 与任务执行
 frontend/           Next.js 前端
 tests/              pytest 测试
 templates/          报告模板
 scripts/            启停与校验脚本
-docs/               当前有效文档
 ```
 
-## 文档入口
+## Status
 
-优先阅读：
-
-1. [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md)
-2. [`docs/CONTEXT_INDEX.md`](docs/CONTEXT_INDEX.md)
-3. [`docs/SERVER_CONNECTION.md`](docs/SERVER_CONNECTION.md)
-
-## 当前边界
-
-本项目当前重点是：
-
-- App 自动化运行
-- 域名 / IP / 命中次数 / 时间线统计
-- 截图与报告展示
-
-当前不以以下目标为主：
-
-- HTTPS 明文正文
-- 完整请求体 / 响应体
-- 长期归档与冷存储
-
-## 当前状态
-
-项目当前已验证：
+当前项目已经验证：
 
 - 页面上传 APK
-- 静态分析
+- 轻量静态分析
 - Redroid 远端动态分析
 - tcpdump + Zeek 网络观测
-- 域名 / IP 落库
+- 域名 / IP 统计落库
 - 截图落库
 - 详情页与报告页展示
 
-如果接手本项目，先读 [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md)。
+## Limitations
+
+当前方案重点解决的是：
+
+- 动态运行
+- 域名 / IP / 命中次数 / 时间线统计
+- 截图与报告展示
+
+当前不以以下能力为目标：
+
+- HTTPS 明文正文
+- 完整请求体 / 响应体
+- 深度移动逆向取证能力
+
+## Contributing
+
+如果你要在当前主线上继续开发，先确认三点：
+
+1. 不要恢复 Android Docker / 本地模拟器池
+2. 不要恢复旧 MITM / no-mitm 运行链路
+3. 保持 `redroid_remote` 作为唯一动态分析后端
+
+## License
+
+当前仓库未附带独立开源许可证文件。如需公开发布，请补充明确的许可证类型。
