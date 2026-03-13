@@ -47,6 +47,14 @@ def _build_report_context_for_stage(db: Session, task_id: str) -> dict:
     if report_data is None:
         raise ValueError(f"Task {task_id} not found")
 
+    evidence_summary = report_data.get("evidence_summary")
+    if isinstance(evidence_summary, dict):
+        domains_count = int(evidence_summary.get("domains_count") or 0)
+        observation_hits = int(evidence_summary.get("observation_hits") or 0)
+        screenshots_count = int(evidence_summary.get("screenshots_count") or 0)
+        if domains_count <= 0 and observation_hits <= 0 and screenshots_count <= 0:
+            raise ValueError("Dynamic analysis evidence missing")
+
     screenshots = report_data.get("screenshots")
     if not isinstance(screenshots, list):
         return report_data
@@ -159,6 +167,8 @@ def _run_report_stage_impl(task_id: Any) -> dict:
         task.web_report_path = web_path
         task.static_report_path = static_path
         task.status = TaskStatus.COMPLETED
+        task.last_success_stage = "report"
+        task.failure_reason = None
         quality_gate = {}
         if isinstance(dynamic_result, dict):
             gate_raw = dynamic_result.get("quality_gate")
@@ -189,8 +199,9 @@ def _run_report_stage_impl(task_id: Any) -> dict:
     except Exception as e:
         logger.error(f"Report generation failed for task {task_id}: {e}")
         if task:
-            task.status = TaskStatus.FAILED
+            task.status = TaskStatus.DYNAMIC_FAILED
             task.error_message = str(e)
+            task.failure_reason = str(e)
             finish_stage_run(
                 db,
                 task_id=task_id,

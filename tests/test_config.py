@@ -1,4 +1,5 @@
 """Test configuration module."""
+import json
 import os
 import pytest
 from pydantic import ValidationError
@@ -103,3 +104,23 @@ def test_config_rejects_unknown_analysis_backend(monkeypatch):
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_config_parses_redroid_slots_json(monkeypatch):
+    monkeypatch.setenv(
+        "REDROID_SLOTS_JSON",
+        json.dumps(
+            [
+                {"name": "redroid-1", "adb_serial": "<host-agent-node>:16555", "container_name": "redroid-1"},
+                {"name": "redroid-2", "adb_serial": "<host-agent-node>:16556", "container_name": "redroid-2"},
+                {"name": "redroid-3", "adb_serial": "<host-agent-node>:16557", "container_name": "redroid-3"},
+            ]
+        ),
+    )
+
+    from core.config import Settings
+
+    settings = Settings(_env_file=None)
+
+    assert [slot["name"] for slot in settings.redroid_slots] == ["redroid-1", "redroid-2", "redroid-3"]
+    assert settings.redroid_slots[2]["adb_serial"] == "<host-agent-node>:16557"

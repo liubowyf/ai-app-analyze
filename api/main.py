@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from core.config import settings
-from core.database import ensure_schema_ready
+from core.database import Base, engine, ensure_schema_ready
 import models.analysis_tables  # noqa: F401
 
 

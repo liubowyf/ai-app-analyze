@@ -62,23 +62,24 @@ def _seed_failed_task_detail(db: Session) -> None:
     task_id = "task-detail-001"
     created_at = datetime(2026, 3, 6, 9, 0, 0)
 
-    db.add(
-        Task(
-            id=task_id,
-            apk_file_name="alpha-wallet.apk",
-            apk_file_size=5 * 1024 * 1024,
-            apk_md5="a" * 32,
-            apk_sha256="b" * 64,
-            apk_storage_path="/storage/apks/alpha-wallet.apk",
-            status=TaskStatus.FAILED,
-            priority=TaskPriority.NORMAL,
-            error_message="动态分析阶段失败：设备连接中断",
-            retry_count=1,
-            created_at=created_at,
-            started_at=datetime(2026, 3, 6, 9, 1, 0),
-            updated_at=datetime(2026, 3, 6, 9, 6, 0),
-        )
+    task = Task(
+        id=task_id,
+        apk_file_name="alpha-wallet.apk",
+        apk_file_size=5 * 1024 * 1024,
+        apk_md5="a" * 32,
+        apk_sha256="b" * 64,
+        apk_storage_path="/storage/apks/alpha-wallet.apk",
+        status=TaskStatus.DYNAMIC_FAILED,
+        priority=TaskPriority.NORMAL,
+        error_message="动态分析阶段失败：设备连接中断",
+        failure_reason="动态分析阶段失败：设备连接中断",
+        last_success_stage="static",
+        retry_count=1,
+        created_at=created_at,
+        started_at=datetime(2026, 3, 6, 9, 1, 0),
+        updated_at=datetime(2026, 3, 6, 9, 6, 0),
     )
+    db.add(task)
     db.add(
         StaticAnalysisTable(
             task_id=task_id,
@@ -87,6 +88,24 @@ def _seed_failed_task_detail(db: Session) -> None:
             risk_level="HIGH",
         )
     )
+    task.static_analysis_result = {
+        "basic_info": {
+            "app_name": "Alpha Wallet",
+            "package_name": "com.demo.alpha",
+            "version_name": "2.3.1",
+            "version_code": 231,
+            "file_size": 5 * 1024 * 1024,
+            "md5": "a" * 32,
+            "min_sdk": 21,
+            "target_sdk": 34,
+            "icon_storage_path": "icons/task-detail-001/app-icon.png",
+            "icon_content_type": "image/png",
+        },
+        "permissions": [
+            {"name": "android.permission.INTERNET"},
+            {"name": "android.permission.ACCESS_FINE_LOCATION"},
+        ],
+    }
     db.add(
         DynamicAnalysisTable(
             task_id=task_id,
@@ -129,6 +148,20 @@ def _seed_failed_task_detail(db: Session) -> None:
                 completed_at=datetime(2026, 3, 6, 9, 2, 45),
                 duration_seconds=45,
                 error_message="动态阶段超时",
+                details={
+                    "permission_summary": {
+                        "requested_permissions": [
+                            "android.permission.INTERNET",
+                            "android.permission.ACCESS_FINE_LOCATION",
+                        ],
+                        "granted_permissions": [
+                            "android.permission.INTERNET",
+                        ],
+                        "failed_permissions": [
+                            "android.permission.ACCESS_FINE_LOCATION",
+                        ],
+                    }
+                },
             ),
         ]
     )
@@ -289,10 +322,37 @@ class TestFrontendTaskDetailRouter:
         assert data["task"]["id"] == "task-detail-001"
         assert data["task"]["app_name"] == "Alpha Wallet"
         assert data["task"]["package_name"] == "com.demo.alpha"
-        assert data["task"]["status"] == "failed"
+        assert data["task"]["status"] == "dynamic_failed"
         assert data["task"]["risk_level"] == "high"
         assert data["task"]["error_message"] == "动态分析阶段失败：设备连接中断"
         assert data["task"]["retry_count"] == 1
+        assert data["static_info"] == {
+            "app_name": "Alpha Wallet",
+            "package_name": "com.demo.alpha",
+            "version_name": "2.3.1",
+            "version_code": 231,
+            "min_sdk": 21,
+            "target_sdk": 34,
+            "apk_file_size": 5242880,
+            "apk_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "declared_permissions": [
+                "android.permission.INTERNET",
+                "android.permission.ACCESS_FINE_LOCATION",
+            ],
+            "icon_url": "/api/v1/frontend/tasks/task-detail-001/icon",
+        }
+        assert data["permission_summary"] == {
+            "requested_permissions": [
+                "android.permission.ACCESS_FINE_LOCATION",
+                "android.permission.INTERNET",
+            ],
+            "granted_permissions": [
+                "android.permission.INTERNET",
+            ],
+            "failed_permissions": [
+                "android.permission.ACCESS_FINE_LOCATION",
+            ],
+        }
 
         assert data["retryable"] is True
         assert data["report_ready"] is False
@@ -378,7 +438,7 @@ class TestFrontendTaskDetailRouter:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["task"]["status"] == "queued"
+        assert data["task"]["status"] == "dynamic_analyzing"
         assert data["task"]["retry_count"] == 2
         assert data["task"]["error_message"] is None
         assert data["retryable"] is False
@@ -388,12 +448,34 @@ class TestFrontendTaskDetailRouter:
         try:
             task = db.query(Task).filter(Task.id == "task-detail-001").first()
             assert task is not None
-            assert task.status == TaskStatus.QUEUED
+            assert task.status == TaskStatus.DYNAMIC_ANALYZING
             assert task.retry_count == 2
             assert task.error_message is None
             assert task.error_stack is None
         finally:
             db.close()
+
+    def test_retry_task_resumes_dynamic_when_static_result_exists_but_last_success_stage_missing(
+        self,
+        frontend_client: tuple[TestClient, sessionmaker],
+    ):
+        """Retry should resume dynamic stage for legacy rows with static results already present."""
+        client, session_local = frontend_client
+        db = session_local()
+        try:
+            task = db.query(Task).filter(Task.id == "task-detail-001").first()
+            assert task is not None
+            task.last_success_stage = None
+            db.commit()
+        finally:
+            db.close()
+
+        with patch("api.routers.frontend.enqueue_task", return_value=True):
+            response = client.post("/api/v1/frontend/tasks/task-detail-001/retry")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["task"]["status"] == "dynamic_analyzing"
 
     def test_get_task_detail_falls_back_to_task_static_analysis_basic_info_when_normalized_rows_missing(
         self,
@@ -434,6 +516,8 @@ class TestFrontendTaskDetailRouter:
         data = response.json()
         assert data["task"]["app_name"] == "微信"
         assert data["task"]["package_name"] == "com.tencent.mm"
+        assert data["static_info"]["declared_permissions"] == []
+        assert data["static_info"]["icon_url"] is None
 
     def test_get_task_detail_falls_back_to_dynamic_result_observation_summary_when_normalized_rows_missing(
         self,
@@ -530,6 +614,56 @@ class TestFrontendTaskDetailRouter:
             response = client.get(
                 "/api/v1/frontend/tasks/task-detail-001/screenshots/shot-1"
             )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("image/png")
+        assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+    def test_get_task_detail_maps_known_raw_failure_messages_to_chinese_labels(
+        self,
+        frontend_client: tuple[TestClient, sessionmaker],
+    ):
+        """Detail payload should present raw infrastructure failures with Chinese labels."""
+        client, session_local = frontend_client
+        db = session_local()
+        try:
+            task = db.query(Task).filter(Task.id == "task-detail-001").first()
+            assert task is not None
+            task.error_message = "REDROID_SLOTS_JSON must be valid JSON"
+            task.failure_reason = "REDROID_SLOTS_JSON must be valid JSON"
+            dynamic_run = (
+                db.query(AnalysisRunTable)
+                .filter(
+                    AnalysisRunTable.task_id == "task-detail-001",
+                    AnalysisRunTable.stage == "dynamic",
+                )
+                .first()
+            )
+            assert dynamic_run is not None
+            dynamic_run.error_message = "REDROID_SLOTS_JSON must be valid JSON"
+            db.commit()
+        finally:
+            db.close()
+
+        response = client.get("/api/v1/frontend/tasks/task-detail-001")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["task"]["error_message"] == "环境配置错误：Redroid 设备槽位配置无效"
+        assert data["errors"][0]["message"] == "环境配置错误：Redroid 设备槽位配置无效"
+        assert data["runs_preview"][0]["error_message"] == "环境配置错误：Redroid 设备槽位配置无效"
+
+    def test_task_detail_icon_resource_is_served_via_url_reference(
+        self,
+        frontend_client: tuple[TestClient, sessionmaker],
+    ):
+        client, _ = frontend_client
+
+        with patch(
+            "api.routers.frontend.storage_client.download_file",
+            return_value=b"\x89PNG\r\n\x1a\nmock-task-icon",
+        ):
+            response = client.get("/api/v1/frontend/tasks/task-detail-001/icon")
 
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("image/png")

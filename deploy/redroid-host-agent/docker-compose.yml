@@ -1,0 +1,21 @@
+services:
+  redroid-host-agent:
+    image: redroid-host-agent:selfcontained
+    build:
+      context: ../..
+      dockerfile: host_agent/Dockerfile
+    container_name: redroid-host-agent
+    environment:
+      PYTHONPATH: /app
+      HOST_AGENT_PORT: ${REDROID_HOST_AGENT_PORT:-18080}
+      HOST_AGENT_CAPTURE_DIR: /var/lib/redroid-host-agent
+      REDROID_HOST_AGENT_TOKEN: ${REDROID_HOST_AGENT_TOKEN:?REDROID_HOST_AGENT_TOKEN is required}
+      REDROID_SLOTS_JSON: ${REDROID_SLOTS_JSON:-}
+    network_mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/redroid-host-agent:/var/lib/redroid-host-agent
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    restart: unless-stopped

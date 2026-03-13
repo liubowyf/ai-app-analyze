@@ -32,6 +32,15 @@ class FrontendReportScreenshotSource:
     content_type: str = "image/png"
 
 
+@dataclass
+class FrontendReportIconSource:
+    """Resolved icon source for a frontend report icon request."""
+
+    storage_path: str | None = None
+    image_base64: str | None = None
+    content_type: str = "image/png"
+
+
 def _status_value(status: object) -> str:
     return status.value if hasattr(status, "value") else str(status)
 
@@ -178,6 +187,59 @@ def _risk_label(level: str) -> str:
 
 def _legacy_static_result(task: Task) -> dict[str, Any]:
     return task.static_analysis_result if isinstance(task.static_analysis_result, dict) else {}
+
+
+def _declared_permissions(task: Task) -> list[str]:
+    static_result = _legacy_static_result(task)
+    permissions = static_result.get("permissions")
+    if not isinstance(permissions, list):
+        return []
+
+    names: list[str] = []
+    for item in permissions:
+        if isinstance(item, dict):
+            name = item.get("name")
+            if isinstance(name, str) and name:
+                names.append(name)
+        elif isinstance(item, str) and item:
+            names.append(item)
+    return names
+
+
+def _permission_summary(dynamic_row: DynamicAnalysisTable | None, legacy_dynamic: dict[str, Any]) -> dict[str, list[str]]:
+    summary = getattr(dynamic_row, "permission_summary", None)
+    if not isinstance(summary, dict):
+        summary = legacy_dynamic.get("permission_summary")
+    if not isinstance(summary, dict):
+        summary = {}
+    return {
+        "requested_permissions": sorted(str(item) for item in summary.get("requested_permissions") or [] if isinstance(item, str) and item),
+        "granted_permissions": sorted(str(item) for item in summary.get("granted_permissions") or [] if isinstance(item, str) and item),
+        "failed_permissions": sorted(str(item) for item in summary.get("failed_permissions") or [] if isinstance(item, str) and item),
+    }
+
+
+def _static_info(
+    task: Task,
+    static_row: StaticAnalysisTable | None,
+    dynamic_row: DynamicAnalysisTable | None,
+    legacy_static: dict[str, Any],
+) -> dict[str, Any]:
+    basic_info = legacy_static.get("basic_info") if isinstance(legacy_static.get("basic_info"), dict) else legacy_static
+    icon_path = basic_info.get("icon_storage_path")
+    icon_url = f"/api/v1/frontend/reports/{task.id}/icon" if isinstance(icon_path, str) and icon_path else None
+    return {
+        "app_name": _app_name(task, static_row, dynamic_row, legacy_static),
+        "package_name": _package_name(static_row, dynamic_row, legacy_static),
+        "version_name": basic_info.get("version_name"),
+        "version_code": basic_info.get("version_code"),
+        "min_sdk": basic_info.get("min_sdk"),
+        "target_sdk": basic_info.get("target_sdk"),
+        "apk_file_size": int(task.apk_file_size),
+        "apk_md5": task.apk_md5,
+        "declared_permissions": _declared_permissions(task),
+        "icon_url": icon_url,
+    }
 
 
 def _legacy_dynamic_result(task: Task) -> dict[str, Any]:
@@ -559,6 +621,8 @@ def build_frontend_report(
             "created_at": _isoformat(task.created_at),
             "completed_at": _isoformat(task.completed_at),
         },
+        "static_info": _static_info(task, static_row, dynamic_row, legacy_static),
+        "permission_summary": _permission_summary(dynamic_row, legacy_dynamic),
         "summary": {
             "risk_level": risk_level,
             "risk_label": risk_label,
@@ -672,5 +736,29 @@ def resolve_frontend_report_screenshot_source(
         return FrontendReportScreenshotSource(
             image_base64=image_base64,
             content_type=content_type,
+        )
+    return None
+
+
+def resolve_frontend_report_icon_source(
+    db: Session,
+    task_id: str,
+    *,
+    require_completed: bool = True,
+) -> FrontendReportIconSource | None:
+    """Resolve report icon source for frontend report icon requests."""
+    task = _task_or_404(db, task_id)
+    if not task:
+        return None
+    if require_completed:
+        _ensure_completed(task)
+
+    legacy_static = _legacy_static_result(task)
+    basic_info = legacy_static.get("basic_info") if isinstance(legacy_static.get("basic_info"), dict) else legacy_static
+    storage_path = basic_info.get("icon_storage_path")
+    if isinstance(storage_path, str) and storage_path:
+        return FrontendReportIconSource(
+            storage_path=storage_path,
+            content_type=str(basic_info.get("icon_content_type") or "image/png"),
         )
     return None

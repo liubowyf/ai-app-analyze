@@ -2,4 +2,5 @@
 
 ## Active
 - `docs/CURRENT_STATE.md`
-- `<ops-connection-doc>`
+- `docs/CONTEXT_INDEX.md`
+- `deploy/redroid-host-agent/docker-compose.yml`

@@ -1,7 +1,8 @@
 """Configuration management using Pydantic Settings."""
+import json
 from functools import lru_cache
 from urllib.parse import quote, urlparse, urlunsplit
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -54,8 +55,15 @@ class Settings(BaseSettings):
     REDROID_SSH_USER: str = ""
     REDROID_SSH_KEY_PATH: str = ""
     REDROID_SSH_PASSWORD: str = ""
+    REDROID_HOST_AGENT_BASE_URL: str = ""
+    REDROID_HOST_AGENT_TOKEN: str = ""
+    REDROID_HOST_AGENT_TIMEOUT_SECONDS: int = 15
     REDROID_CONTAINER_NAME: str = "redroid-1"
     REDROID_CAPTURE_SECONDS: int = 120
+    REDROID_SLOTS_JSON: str = ""
+    REDROID_LEASE_TTL_SECONDS: int = 1800
+    REDROID_LEASE_ACQUIRE_TIMEOUT_SECONDS: int = 300
+    REDROID_LEASE_POLL_INTERVAL_SECONDS: float = 2.0
 
     @model_validator(mode="after")
     def apply_redis_password(self) -> "Settings":
@@ -99,6 +107,44 @@ class Settings(BaseSettings):
             raise ValueError(f"ANALYSIS_BACKEND must be one of: {allowed}")
         self.ANALYSIS_BACKEND = backend
         return self
+
+    @property
+    def redroid_slots(self) -> list[dict[str, str]]:
+        """Return configured redroid execution slots."""
+        raw = (self.REDROID_SLOTS_JSON or "").strip()
+        if raw:
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError("REDROID_SLOTS_JSON must be valid JSON") from exc
+            if not isinstance(parsed, list) or not parsed:
+                raise ValueError("REDROID_SLOTS_JSON must be a non-empty list")
+
+            slots: list[dict[str, str]] = []
+            for index, item in enumerate(parsed, start=1):
+                if not isinstance(item, dict):
+                    raise ValueError("Each REDROID_SLOTS_JSON item must be an object")
+                adb_serial = str(item.get("adb_serial") or "").strip()
+                container_name = str(item.get("container_name") or "").strip()
+                name = str(item.get("name") or f"redroid-{index}").strip()
+                if not adb_serial or not container_name:
+                    raise ValueError("Each REDROID_SLOTS_JSON item requires adb_serial and container_name")
+                slots.append(
+                    {
+                        "name": name,
+                        "adb_serial": adb_serial,
+                        "container_name": container_name,
+                    }
+                )
+            return slots
+
+        return [
+            {
+                "name": self.REDROID_CONTAINER_NAME,
+                "adb_serial": self.REDROID_ADB_SERIAL,
+                "container_name": self.REDROID_CONTAINER_NAME,
+            }
+        ]
 
     @property
     def mysql_url(self) -> str:

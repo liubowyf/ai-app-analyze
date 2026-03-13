@@ -1,7 +1,7 @@
 """Tests for AppExplorer module."""
 import pytest
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 from modules.exploration_strategy.explorer import AppExplorer, ExplorationResult
 from modules.ai_driver import Operation, OperationType
 
@@ -161,6 +161,36 @@ def test_phase1_requires_target_app_foreground_after_launch():
                 apk_path="/tmp/app.apk",
                 package_name="com.example",
             )
+
+
+def test_phase1_retries_package_only_launch_when_activity_launch_does_not_foreground():
+    ai_driver = Mock()
+    android_runner = Mock()
+    screenshot_manager = Mock()
+    android_runner.connect_remote_emulator.return_value = True
+    android_runner.install_apk_remote.return_value = True
+    android_runner.get_current_package.side_effect = [
+        "com.android.launcher3",
+        "com.example",
+    ]
+    android_runner.get_current_activity.return_value = "com.example/.MainActivity"
+    screenshot_manager.capture.return_value = Mock()
+
+    explorer = AppExplorer(ai_driver, android_runner, screenshot_manager)
+
+    with patch("modules.exploration_strategy.explorer.time.sleep", return_value=None):
+        explorer.phase1_basic_setup(
+            host="127.0.0.1",
+            port=5555,
+            apk_path="/tmp/app.apk",
+            package_name="com.example",
+            activity_name="com.example.MainActivity",
+        )
+
+    assert android_runner.launch_app.call_args_list == [
+        call("127.0.0.1", 5555, "com.example", activity_name="com.example.MainActivity"),
+        call("127.0.0.1", 5555, "com.example", activity_name=None),
+    ]
 
 
 def test_phase1_fails_when_package_cannot_be_determined():
@@ -673,3 +703,54 @@ def test_decide_operation_with_timeout_returns_wait_fallback():
     assert op.type == OperationType.WAIT
     assert "timeout" in op.description.lower()
     assert elapsed < 1.8
+
+
+def test_phase1_collects_permission_summary_into_exploration_result():
+    ai_driver = Mock()
+    android_runner = Mock()
+    screenshot_manager = Mock()
+    android_runner.connect_remote_emulator.return_value = True
+    android_runner.install_apk_remote.return_value = True
+    android_runner.get_current_package.return_value = "com.example"
+    android_runner.get_current_activity.return_value = "com.example/.MainActivity"
+    android_runner.grant_all_permissions.return_value = {
+        "requested_permissions": [
+            "android.permission.INTERNET",
+            "android.permission.ACCESS_FINE_LOCATION",
+        ],
+        "granted_permissions": ["android.permission.INTERNET"],
+        "failed_permissions": ["android.permission.ACCESS_FINE_LOCATION"],
+    }
+    android_runner.execute_adb_remote.side_effect = [
+        "UI hierchary dumped to: /sdcard/window_dump.xml",
+        '<?xml version="1.0" encoding="UTF-8"?><hierarchy></hierarchy>',
+    ]
+    screenshot_manager.capture.return_value = Mock()
+
+    explorer = AppExplorer(ai_driver, android_runner, screenshot_manager)
+
+    with patch("modules.exploration_strategy.explorer.time.sleep", return_value=None):
+        explorer.phase1_basic_setup(
+            host="127.0.0.1",
+            port=5555,
+            apk_path="/tmp/app.apk",
+            package_name="com.example",
+        )
+
+    result = ExplorationResult(
+        total_steps=len(explorer.exploration_history),
+        screenshots=[],
+        network_requests=[],
+        activities_visited=[],
+        success=True,
+        permission_summary=dict(explorer._permission_summary),
+    )
+
+    assert result.permission_summary == {
+        "requested_permissions": [
+            "android.permission.INTERNET",
+            "android.permission.ACCESS_FINE_LOCATION",
+        ],
+        "granted_permissions": ["android.permission.INTERNET"],
+        "failed_permissions": ["android.permission.ACCESS_FINE_LOCATION"],
+    }

@@ -38,6 +38,7 @@ class ExplorationResult:
     error_message: Optional[str] = None
     phases_completed: List[str] = field(default_factory=list)
     history: List[Dict[str, Any]] = field(default_factory=list)
+    permission_summary: Dict[str, Any] = field(default_factory=dict)
 
 
 class AppExplorer:
@@ -70,6 +71,11 @@ class AppExplorer:
         self.screen_form_action_counts: Dict[str, int] = defaultdict(int)
         self._apk_path: Optional[str] = None
         self._captured_screenshot_count: int = 0
+        self._permission_summary: Dict[str, Any] = {
+            "requested_permissions": [],
+            "granted_permissions": [],
+            "failed_permissions": [],
+        }
         self.dialog_handler = DialogHandler()
         self.ui_explorer = UIExplorer(
             blacklist=self.policy.widget_blacklist,
@@ -108,7 +114,8 @@ class AppExplorer:
         attempts = max(1, retries)
         last_foreground = ""
         for attempt in range(1, attempts + 1):
-            self.android_runner.launch_app(host, port, package_name, activity_name=activity_name)
+            retry_activity = activity_name if attempt == 1 else None
+            self.android_runner.launch_app(host, port, package_name, activity_name=retry_activity)
             time.sleep(2)
             current_pkg = self._get_foreground_package(host, port)
             if current_pkg == package_name:
@@ -293,7 +300,8 @@ class AppExplorer:
             )
         else:
             logger.info(f"Granting permissions for {package_name}...")
-            self.android_runner.grant_all_permissions(host, port, package_name)
+            grant_summary = self.android_runner.grant_all_permissions(host, port, package_name)
+            self._merge_permission_summary(grant_summary)
 
         logger.info(f"Launching app {package_name}...")
         self._launch_target_with_verification(host, port, package_name, activity_name=activity_name)
@@ -1052,9 +1060,19 @@ class AppExplorer:
             if self._apk_path:
                 self.android_runner.install_apk_remote(host, port, self._apk_path)
                 if self.target_package:
-                    self.android_runner.grant_all_permissions(host, port, self.target_package)
+                    grant_summary = self.android_runner.grant_all_permissions(host, port, self.target_package)
+                    self._merge_permission_summary(grant_summary)
                     self.android_runner.launch_app(host, port, self.target_package)
             return
+
+    def _merge_permission_summary(self, summary: Optional[Dict[str, Any]]) -> None:
+        if not isinstance(summary, dict):
+            return
+        for key in ("requested_permissions", "granted_permissions", "failed_permissions"):
+            bucket = self._permission_summary.setdefault(key, [])
+            for item in summary.get(key, []) or []:
+                if item not in bucket:
+                    bucket.append(item)
 
     def phase4_scenario_test(
         self,
@@ -1751,4 +1769,5 @@ class AppExplorer:
             error_message=error_message,
             phases_completed=phases_completed,
             history=self.exploration_history[-1000:],
+            permission_summary=dict(self._permission_summary),
         )

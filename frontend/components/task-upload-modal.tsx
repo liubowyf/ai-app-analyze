@@ -4,7 +4,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Clock, File, UploadCloud, X } from 'lucide-react';
 
 import { uploadFrontendTaskFiles } from '@/lib/api';
-import type { FrontendTaskListItem, FrontendTaskUploadResponse } from '@/lib/types';
+import type {
+  FrontendTaskListItem,
+  FrontendTaskUploadResponse,
+  FrontendUploadProgress,
+} from '@/lib/types';
 
 interface TaskUploadModalProps {
   open: boolean;
@@ -14,6 +18,44 @@ interface TaskUploadModalProps {
 
 function formatFileSize(file: File): string {
   return `${(file.size / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function formatBytes(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) {
+    return '--';
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = Math.max(0, value);
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+
+  const fractionDigits = unitIndex === 0 ? 0 : unitIndex === 1 ? 1 : 2;
+  return `${size.toFixed(fractionDigits)} ${units[unitIndex]}`;
+}
+
+function formatDuration(seconds: number | null): string {
+  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) {
+    return '--';
+  }
+
+  const rounded = Math.max(1, Math.ceil(seconds));
+  if (rounded < 60) {
+    return `${rounded} 秒`;
+  }
+
+  const minutes = Math.floor(rounded / 60);
+  const restSeconds = rounded % 60;
+  if (minutes < 60) {
+    return restSeconds > 0 ? `${minutes} 分 ${restSeconds} 秒` : `${minutes} 分`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  return restMinutes > 0 ? `${hours} 小时 ${restMinutes} 分` : `${hours} 小时`;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -33,12 +75,14 @@ export default function TaskUploadModal({
   const [isUploading, setIsUploading] = useState(false);
   const [result, setResult] = useState<FrontendTaskUploadResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<FrontendUploadProgress | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const resetInternalState = () => {
     setSelectedFiles([]);
     setResult(null);
     setErrorMessage(null);
+    setUploadProgress(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -106,9 +150,19 @@ export default function TaskUploadModal({
 
     setIsUploading(true);
     setErrorMessage(null);
+    setUploadProgress({
+      loaded: 0,
+      total: selectedFiles.reduce((total, file) => total + file.size, 0),
+      percent: 0,
+      bytesPerSecond: null,
+      etaSeconds: null,
+      phase: 'uploading',
+    });
 
     try {
-      const uploadResult = await uploadFrontendTaskFiles(selectedFiles);
+      const uploadResult = await uploadFrontendTaskFiles(selectedFiles, (progress) => {
+        setUploadProgress(progress);
+      });
       onTasksCreated(uploadResult.created_tasks);
       onOpenChange(false);
       resetInternalState();
@@ -119,6 +173,12 @@ export default function TaskUploadModal({
       setIsUploading(false);
     }
   };
+
+  const progressPercent = Math.round(uploadProgress?.percent ?? 0);
+  const totalBytes =
+    uploadProgress?.total ??
+    selectedFiles.reduce((total, file) => total + file.size, 0);
+  const uploadPhase = uploadProgress?.phase ?? 'uploading';
 
   return (
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -160,6 +220,51 @@ export default function TaskUploadModal({
           {errorMessage && (
             <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {errorMessage}
+            </div>
+          )}
+
+          {isUploading && uploadProgress && (
+            <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-blue-900">
+                    {uploadPhase === 'processing' ? '上传完成，正在创建任务' : '正在上传文件'}
+                  </div>
+                  <div className="mt-1 text-xs text-blue-700">
+                    {uploadPhase === 'processing'
+                      ? '文件已全部传输，服务器正在上传到 MinIO、解压校验并创建分析任务。'
+                      : `已上传 ${formatBytes(uploadProgress.loaded)} / ${formatBytes(totalBytes)}`}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-lg font-bold text-blue-900">
+                    {uploadPhase === 'processing' ? '处理中' : `${progressPercent}%`}
+                  </div>
+                  <div className="text-xs text-blue-700">
+                    {uploadPhase === 'processing'
+                      ? '处理耗时取决于文件大小和解压结果'
+                      : `约 ${formatDuration(uploadProgress.etaSeconds)} 后完成上传`}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 h-3 overflow-hidden rounded-full bg-blue-100">
+                <div
+                  className={`h-full rounded-full bg-blue-600 transition-[width] duration-200 ${
+                    uploadPhase === 'processing' ? 'animate-pulse' : ''
+                  }`}
+                  style={{ width: `${uploadPhase === 'processing' ? 100 : progressPercent}%` }}
+                />
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-blue-800">
+                <span>文件数：{selectedFiles.length}</span>
+                <span>速度：{formatBytes(uploadProgress.bytesPerSecond)}/s</span>
+                <span>
+                  剩余时间：
+                  {uploadPhase === 'processing' ? ' 正在上传 MinIO 并创建任务' : ` ${formatDuration(uploadProgress.etaSeconds)}`}
+                </span>
+              </div>
             </div>
           )}
 
@@ -243,6 +348,7 @@ export default function TaskUploadModal({
         <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0">
           <button
             onClick={handleClose}
+            disabled={isUploading}
             className="px-5 py-2.5 text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl font-medium transition-colors"
           >
             取消
@@ -255,7 +361,7 @@ export default function TaskUploadModal({
             {isUploading ? (
               <>
                 <Clock className="w-4 h-4 animate-spin" />
-                正在创建任务...
+                {uploadPhase === 'processing' ? '服务器处理中...' : '正在上传...'}
               </>
             ) : (
               <>

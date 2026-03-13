@@ -25,7 +25,7 @@ export function TaskStatusBadge({
     );
   }
 
-  if (meta.tone === "failed") {
+  if (meta.tone === "static_failed" || meta.tone === "dynamic_failed") {
     return (
       <span className={cn(meta.className, className)}>
         <XCircle className={meta.iconClassName} />

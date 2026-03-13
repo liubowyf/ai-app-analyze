@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import TaskUploadModal from "@/components/task-upload-modal";
@@ -22,8 +22,12 @@ function makeCreatedTask(
     apk_file_name: "alpha.apk",
     apk_file_size: 1024,
     apk_md5: "a".repeat(32),
-    status: "pending",
+    status: "queued",
     risk_level: "unknown",
+    icon_url: null,
+    retryable: false,
+    deletable: true,
+    failure_reason: null,
     submitter: null,
     created_at: "2026-03-06T10:00:00",
     completed_at: null,
@@ -128,11 +132,13 @@ describe("TaskUploadModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认上传并分析" }));
 
     await waitFor(() => {
-      expect(mockedUploadFrontendTaskFiles).toHaveBeenCalledWith([
-        firstFile,
-        secondFile,
-      ]);
+      expect(mockedUploadFrontendTaskFiles).toHaveBeenCalledTimes(1);
     });
+    expect(mockedUploadFrontendTaskFiles.mock.calls[0]?.[0]).toEqual([
+      firstFile,
+      secondFile,
+    ]);
+    expect(typeof mockedUploadFrontendTaskFiles.mock.calls[0]?.[1]).toBe("function");
 
     expect(onTasksCreated).toHaveBeenCalledWith(response.created_tasks);
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -157,5 +163,118 @@ describe("TaskUploadModal", () => {
 
     expect(screen.queryByText("已创建任务 (2)")).not.toBeInTheDocument();
     expect(screen.queryByText("alpha.apk")).not.toBeInTheDocument();
+  });
+
+  it("renders upload progress, speed, and eta while the upload is in flight", async () => {
+    const onOpenChange = vi.fn();
+    const onTasksCreated = vi.fn();
+    const response = makeUploadResponse();
+    let resolveUpload: ((value: FrontendTaskUploadResponse) => void) | null = null;
+
+    mockedUploadFrontendTaskFiles.mockImplementationOnce((_files, onProgress) => {
+      onProgress?.({
+        loaded: 512 * 1024,
+        total: 1024 * 1024,
+        percent: 50,
+        bytesPerSecond: 256 * 1024,
+        etaSeconds: 2,
+        phase: "uploading",
+      });
+      return new Promise<FrontendTaskUploadResponse>((resolve) => {
+        resolveUpload = resolve;
+      });
+    });
+
+    const { container } = render(
+      <TaskUploadModal
+        open
+        onOpenChange={onOpenChange}
+        onTasksCreated={onTasksCreated}
+      />
+    );
+
+    const input = container.querySelector('input[type="file"]');
+    fireEvent.change(input as HTMLInputElement, {
+      target: {
+        files: [
+          new File(["alpha"], "alpha.apk", {
+            type: "application/vnd.android.package-archive",
+          }),
+        ],
+      },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "确认上传并分析" }));
+
+    expect(await screen.findByText("正在上传文件")).toBeInTheDocument();
+    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.getByText(/速度：256.0 KB\/s/)).toBeInTheDocument();
+    expect(screen.getAllByText(/2 秒/).length).toBeGreaterThan(0);
+
+    await act(async () => {
+      resolveUpload?.(response);
+      await Promise.resolve();
+    });
+  });
+
+  it("switches to server processing after browser upload completes", async () => {
+    const onOpenChange = vi.fn();
+    const onTasksCreated = vi.fn();
+    const response = makeUploadResponse();
+    let resolveUpload: ((value: FrontendTaskUploadResponse) => void) | null = null;
+
+    mockedUploadFrontendTaskFiles.mockImplementationOnce((_files, onProgress) => {
+      onProgress?.({
+        loaded: 1024 * 1024,
+        total: 1024 * 1024,
+        percent: 100,
+        bytesPerSecond: 512 * 1024,
+        etaSeconds: 0,
+        phase: "uploading",
+      });
+      onProgress?.({
+        loaded: 0,
+        total: null,
+        percent: 100,
+        bytesPerSecond: null,
+        etaSeconds: null,
+        phase: "processing",
+      });
+      return new Promise<FrontendTaskUploadResponse>((resolve) => {
+        resolveUpload = resolve;
+      });
+    });
+
+    const { container } = render(
+      <TaskUploadModal
+        open
+        onOpenChange={onOpenChange}
+        onTasksCreated={onTasksCreated}
+      />
+    );
+
+    const input = container.querySelector('input[type="file"]');
+    fireEvent.change(input as HTMLInputElement, {
+      target: {
+        files: [
+          new File(["alpha"], "alpha.apk", {
+            type: "application/vnd.android.package-archive",
+          }),
+        ],
+      },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "确认上传并分析" }));
+
+    expect(await screen.findByText("上传完成，正在创建任务")).toBeInTheDocument();
+    expect(
+      screen.getByText("文件已全部传输，服务器正在上传到 MinIO、解压校验并创建分析任务。")
+    ).toBeInTheDocument();
+    expect(screen.getByText(/正在上传 MinIO 并创建任务/)).toBeInTheDocument();
+
+    await act(async () => {
+      resolveUpload?.(response);
+      await Promise.resolve();
+    });
   });
 });

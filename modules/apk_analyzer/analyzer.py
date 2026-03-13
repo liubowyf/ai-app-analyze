@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import zipfile
 from functools import lru_cache
 from typing import Dict, List, Any, Optional
 
@@ -25,6 +26,7 @@ _PACKAGE_RE = re.compile(r"package:\s+name='([^']+)'.*versionCode='([^']*)'.*ver
 _SDK_RE = re.compile(r"sdkVersion:'([^']+)'")
 _TARGET_SDK_RE = re.compile(r"targetSdkVersion:'([^']+)'")
 _APP_LABEL_RE = re.compile(r"application-label:'([^']*)'")
+_APP_ICON_RE = re.compile(r"application-icon-(\d+):'([^']+)'")
 _PERMISSION_RE = re.compile(r"uses-permission:\s+name='([^']+)'")
 _LAUNCHABLE_ACTIVITY_RE = re.compile(r"launchable-activity:\s+name='([^']+)'")
 _NATIVE_CODE_RE = re.compile(r"'([^']+)'")
@@ -72,6 +74,8 @@ class ApkAnalyzer:
         """Initialize APK analyzer."""
         self.apk: Any = None  # androguard APK object
         self.analysis: Any = None
+        self.icon_bytes: Optional[bytes] = None
+        self.icon_content_type: Optional[str] = None
 
     def load_apk(self, apk_path: str) -> bool:
         """
@@ -258,6 +262,17 @@ class ApkAnalyzer:
         md5: str,
         sha256: str,
     ) -> StaticAnalysisResult:
+        self.icon_bytes = None
+        self.icon_content_type = None
+        try:
+            return self._analyze_with_aapt(
+                apk_path=apk_path,
+                file_size=file_size,
+                md5=md5,
+                sha256=sha256,
+            )
+        except Exception as exc:
+            logger.warning("aapt analysis failed for %s, falling back to AnalyzeAPK: %s", apk_path, exc)
         try:
             self.apk, self.analysis, _ = AnalyzeAPK(apk_path)
             return StaticAnalysisResult(
@@ -292,7 +307,7 @@ class ApkAnalyzer:
             timeout=20,
         )
         output = "\n".join(part for part in [proc.stdout, proc.stderr] if part)
-        if proc.returncode != 0 or "package: name='" not in output:
+        if "package: name='" not in output:
             raise ValueError(f"Failed to load APK from {apk_path}")
 
         package_match = _PACKAGE_RE.search(output)
@@ -302,12 +317,18 @@ class ApkAnalyzer:
         sdk_match = _SDK_RE.search(output)
         target_sdk_match = _TARGET_SDK_RE.search(output)
         app_label_match = _APP_LABEL_RE.search(output)
+        icon_matches = _APP_ICON_RE.findall(output)
         permissions = list(dict.fromkeys(_PERMISSION_RE.findall(output)))
         launchable_activity = _LAUNCHABLE_ACTIVITY_RE.search(output)
         native_code_line = next(
             (line for line in output.splitlines() if line.startswith("native-code:")),
             "",
         )
+        icon_resource_path = None
+        if icon_matches:
+            best_icon = max(icon_matches, key=lambda item: int(item[0] or 0))
+            icon_resource_path = best_icon[1]
+            self._extract_icon_bytes(apk_path, icon_resource_path)
 
         basic_info = ApkBasicInfo(
             package_name=package_match.group(1),
@@ -319,6 +340,8 @@ class ApkAnalyzer:
             file_size=file_size,
             md5=md5,
             sha256=sha256,
+            icon_resource_path=icon_resource_path,
+            icon_content_type=self.icon_content_type,
             signature="",
             is_debuggable=False,
             is_packed=False,
@@ -367,6 +390,25 @@ class ApkAnalyzer:
             components=components,
             native_libraries=native_libraries,
         )
+
+    def _extract_icon_bytes(self, apk_path: str, icon_resource_path: str) -> None:
+        try:
+            with zipfile.ZipFile(apk_path, "r") as apk_zip:
+                self.icon_bytes = apk_zip.read(icon_resource_path)
+                self.icon_content_type = self._guess_icon_content_type(icon_resource_path)
+        except Exception as exc:
+            logger.warning("Failed to extract icon %s from %s: %s", icon_resource_path, apk_path, exc)
+            self.icon_bytes = None
+            self.icon_content_type = None
+
+    @staticmethod
+    def _guess_icon_content_type(icon_resource_path: str) -> str:
+        lower = icon_resource_path.lower()
+        if lower.endswith(".webp"):
+            return "image/webp"
+        if lower.endswith((".jpg", ".jpeg")):
+            return "image/jpeg"
+        return "image/png"
 
     def extract_components(self) -> List[ComponentInfo]:
         """

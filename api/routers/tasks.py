@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from api.schemas.task import TaskCreateRequest, TaskListResponse, TaskResponse
 from core.database import SessionLocal
-from models.analysis_tables import AnalysisRunTable, MasterDomainTable, NetworkRequestTable
+from models.analysis_tables import AnalysisRunTable, MasterDomainTable, NetworkRequestTable, StaticAnalysisTable
 from models.task import Task, TaskStatus
 from modules.task_orchestration.queue_backend import enqueue_task, get_backend_runtime_diagnostics
 
@@ -45,6 +45,8 @@ def _to_task_response(task: Task) -> TaskResponse:
         error_message=task.error_message,
         error_stack=task.error_stack,
         retry_count=task.retry_count,
+        failure_reason=task.failure_reason,
+        last_success_stage=task.last_success_stage,
         created_at=task.created_at.isoformat() if task.created_at else None,
         started_at=task.started_at.isoformat() if task.started_at else None,
         completed_at=task.completed_at.isoformat() if task.completed_at else None,
@@ -80,6 +82,19 @@ def _parse_jsonish(value: Any) -> Any:
         except Exception:
             return value
     return value
+
+
+def _has_static_analysis_result(db: Session, task: Task) -> bool:
+    """Return whether the task already has reusable static-analysis output."""
+    static_result = getattr(task, "static_analysis_result", None)
+    if isinstance(static_result, dict) and static_result:
+        return True
+    return (
+        db.query(StaticAnalysisTable.id)
+        .filter(StaticAnalysisTable.task_id == task.id)
+        .first()
+        is not None
+    )
 
 
 def _serialize_network_observation(row: Any) -> Dict[str, Any]:
@@ -246,12 +261,12 @@ def create_task(request: TaskCreateRequest, db: Session = Depends(get_db)):
     """
     Start an analysis task and enqueue workflow.
 
-    Updates task status from PENDING to QUEUED.
+    Updates task status from queued to queued and enqueues workflow.
     """
     task = db.query(Task).filter(Task.id == request.task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.status != TaskStatus.PENDING:
+    if task.status != TaskStatus.QUEUED or task.started_at is not None:
         raise HTTPException(status_code=400, detail="Task already started or in progress")
 
     task.status = TaskStatus.QUEUED
@@ -493,13 +508,20 @@ def retry_task(task_id: str, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.status != TaskStatus.FAILED:
+    if task.status not in {TaskStatus.STATIC_FAILED, TaskStatus.DYNAMIC_FAILED}:
         raise HTTPException(status_code=400, detail="Only failed tasks can be retried")
 
-    task.status = TaskStatus.QUEUED
+    if task.status == TaskStatus.DYNAMIC_FAILED and (
+        str(task.last_success_stage or "").strip().lower() == "static"
+        or _has_static_analysis_result(db, task)
+    ):
+        task.status = TaskStatus.DYNAMIC_ANALYZING
+    else:
+        task.status = TaskStatus.QUEUED
     task.retry_count += 1
     task.error_message = None
     task.error_stack = None
+    task.failure_reason = None
     db.commit()
     db.refresh(task)
 

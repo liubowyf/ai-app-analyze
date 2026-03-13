@@ -9,15 +9,16 @@ import {
 
 import { cn } from "@/lib/utils";
 import { getRiskLevelMeta } from "@/lib/status";
-import type { BackendRiskLevel } from "@/lib/types";
+import type { BackendRiskLevel, BackendTaskStatus } from "@/lib/types";
 
 interface RiskBadgeProps {
   level?: BackendRiskLevel | string | null;
+  status?: BackendTaskStatus | string | null;
   className?: string;
 }
 
-export function RiskBadge({ level, className }: RiskBadgeProps) {
-  const meta = getRiskLevelMeta(level);
+export function RiskBadge({ level, status, className }: RiskBadgeProps) {
+  const meta = getRiskLevelMeta(level, status);
 
   if (meta.tone === "high") {
     return (

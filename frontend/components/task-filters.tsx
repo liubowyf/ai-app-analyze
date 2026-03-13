@@ -13,13 +13,13 @@ interface TaskFiltersProps {
 
 const STATUS_OPTIONS = [
   { value: "", label: "状态筛选" },
-  { value: "pending", label: "等待中" },
   { value: "queued", label: "排队中" },
   { value: "static_analyzing", label: "静态分析中" },
   { value: "dynamic_analyzing", label: "动态分析中" },
   { value: "report_generating", label: "报告生成中" },
   { value: "completed", label: "分析完成" },
-  { value: "failed", label: "分析失败" },
+  { value: "static_failed", label: "静态分析失败" },
+  { value: "dynamic_failed", label: "动态分析失败" },
 ];
 
 const RISK_OPTIONS = [

@@ -57,7 +57,7 @@ def test_run_task_marks_failed_after_retry_budget_exhausted():
          patch.object(run_task, "send_with_options") as send_with_options:
         run_task("task-fail")
 
-    assert task.status == TaskStatus.FAILED
+    assert task.status == TaskStatus.STATIC_FAILED
     assert task.error_message == "boom"
     send_with_options.assert_not_called()
 
@@ -84,7 +84,7 @@ def test_run_task_retry_restores_stage_status_after_dynamic_failure():
         run_task("task-dynamic-retry")
 
     assert task.retry_count == 1
-    assert task.status == TaskStatus.STATIC_ANALYZING
+    assert task.status == TaskStatus.DYNAMIC_ANALYZING
     assert task.error_message == "transient dynamic failure"
     send_with_options.assert_called_once_with(args=("task-dynamic-retry",), delay=10000)
 

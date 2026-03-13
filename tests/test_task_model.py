@@ -26,13 +26,13 @@ class TestTaskStatus:
 
     def test_status_values(self):
         """Test that TaskStatus has all required values."""
-        assert TaskStatus.PENDING == "pending"
         assert TaskStatus.QUEUED == "queued"
         assert TaskStatus.STATIC_ANALYZING == "static_analyzing"
         assert TaskStatus.DYNAMIC_ANALYZING == "dynamic_analyzing"
         assert TaskStatus.REPORT_GENERATING == "report_generating"
         assert TaskStatus.COMPLETED == "completed"
-        assert TaskStatus.FAILED == "failed"
+        assert TaskStatus.STATIC_FAILED == "static_failed"
+        assert TaskStatus.DYNAMIC_FAILED == "dynamic_failed"
 
 
 class TestTaskPriority:
@@ -63,9 +63,11 @@ class TestTaskModel:
         assert task.apk_file_name == "test.apk"
         assert task.apk_file_size == 1024
         assert task.apk_md5 == "abc123def456"
-        assert task.status == TaskStatus.PENDING
+        assert task.status == TaskStatus.QUEUED
         assert task.priority == TaskPriority.NORMAL
         assert task.retry_count == 0
+        assert task.last_success_stage is None
+        assert task.failure_reason is None
         assert task.created_at is not None
         assert task.updated_at is not None
 
@@ -83,6 +85,8 @@ class TestTaskModel:
             error_message="Test error",
             error_stack="Test stack trace",
             retry_count=2,
+            last_success_stage="static",
+            failure_reason="静态分析超时",
             static_analysis_result={"permissions": ["INTERNET"]},
             dynamic_analysis_result={"network_calls": 10},
             report_storage_path="/storage/reports/report_1.pdf",
@@ -97,6 +101,8 @@ class TestTaskModel:
         assert task.error_message == "Test error"
         assert task.error_stack == "Test stack trace"
         assert task.retry_count == 2
+        assert task.last_success_stage == "static"
+        assert task.failure_reason == "静态分析超时"
         assert task.static_analysis_result == {"permissions": ["INTERNET"]}
         assert task.dynamic_analysis_result == {"network_calls": 10}
         assert task.report_storage_path == "/storage/reports/report_1.pdf"
@@ -115,7 +121,7 @@ class TestTaskModel:
         assert "Task" in repr_str
         assert task.id in repr_str
         assert "repr_test.apk" in repr_str
-        assert "pending" in repr_str
+        assert "queued" in repr_str
 
     def test_task_to_dict(self, db_session):
         """Test converting task to dictionary."""
@@ -136,8 +142,10 @@ class TestTaskModel:
         assert task_dict["apk_file_name"] == "dict_test.apk"
         assert task_dict["apk_file_size"] == 3072
         assert task_dict["apk_md5"] == "dict_md5"
-        assert task_dict["status"] == "pending"
+        assert task_dict["status"] == "queued"
         assert task_dict["priority"] == "normal"
+        assert task_dict["last_success_stage"] is None
+        assert task_dict["failure_reason"] is None
         assert "created_at" in task_dict
         assert "updated_at" in task_dict
         # Check ISO format
@@ -165,12 +173,17 @@ class TestTaskModel:
     def test_task_status_index(self, db_session):
         """Test that status field is indexed."""
         # Create multiple tasks with different statuses
-        for i in range(3):
+        statuses = [
+            TaskStatus.QUEUED,
+            TaskStatus.STATIC_ANALYZING,
+            TaskStatus.STATIC_FAILED,
+        ]
+        for i, status in enumerate(statuses):
             task = Task(
                 apk_file_name=f"status_{i}.apk",
                 apk_file_size=1024,
                 apk_md5=f"status_md5_{i}",
-                status=TaskStatus.QUEUED if i == 0 else TaskStatus.PENDING,
+                status=status,
             )
             db_session.add(task)
         db_session.commit()

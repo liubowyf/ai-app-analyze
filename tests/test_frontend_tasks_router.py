@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from core.database import Base
-from models.analysis_tables import DynamicAnalysisTable, StaticAnalysisTable
+from models.analysis_tables import DynamicAnalysisTable, RedroidLeaseTable, StaticAnalysisTable
 from models.task import Task, TaskPriority, TaskStatus
 
 
@@ -127,7 +127,7 @@ class TestFrontendTasksRouter:
                 db,
                 task_id="task-beta-002",
                 created_at=datetime(2026, 3, 2, 10, 0, 0),
-                status=TaskStatus.FAILED,
+                status=TaskStatus.STATIC_FAILED,
                 apk_file_name="beta.apk",
                 app_name="Beta Chat",
                 package_name="com.demo.beta",
@@ -172,6 +172,9 @@ class TestFrontendTasksRouter:
         assert data["items"][0]["app_name"] == "Beta Chat"
         assert data["items"][0]["package_name"] == "com.demo.beta"
         assert data["items"][0]["risk_level"] == "low"
+        assert data["items"][0]["failure_reason"] is not None
+        assert data["items"][0]["retryable"] is True
+        assert data["items"][0]["deletable"] is True
         assert data["items"][0]["report_ready"] is False
         assert data["items"][0]["report_url"] is None
 
@@ -203,13 +206,194 @@ class TestFrontendTasksRouter:
         """Status filter should narrow the result set."""
         client, _ = frontend_client
 
-        response = client.get("/api/v1/frontend/tasks", params={"status": "failed"})
+        response = client.get("/api/v1/frontend/tasks", params={"status": "static_failed"})
 
         assert response.status_code == 200
         data = response.json()
         assert data["pagination"]["total"] == 1
         assert [item["id"] for item in data["items"]] == ["task-beta-002"]
-        assert data["items"][0]["status"] == "failed"
+        assert data["items"][0]["status"] == "static_failed"
+
+    def test_list_task_exposes_icon_failure_reason_and_retry_flags(
+        self,
+        frontend_client: tuple[TestClient, sessionmaker],
+    ):
+        """List rows should expose icon/action fields for failed tasks."""
+        client, session_local = frontend_client
+        db = session_local()
+        try:
+            task = db.query(Task).filter(Task.id == "task-beta-002").first()
+            assert task is not None
+            task.failure_reason = "静态分析阶段失败：APK 解析异常"
+            task.static_analysis_result = {
+                "basic_info": {
+                    "icon_storage_path": "icons/task-beta-002/icon.png",
+                    "icon_content_type": "image/png",
+                }
+            }
+            db.commit()
+        finally:
+            db.close()
+
+        response = client.get("/api/v1/frontend/tasks")
+
+        assert response.status_code == 200
+        item = next(item for item in response.json()["items"] if item["id"] == "task-beta-002")
+        assert item["icon_url"] == "/api/v1/frontend/tasks/task-beta-002/icon"
+        assert item["failure_reason"] == "静态分析阶段失败：APK 解析异常"
+        assert item["retryable"] is True
+        assert item["deletable"] is True
+
+    def test_list_task_maps_raw_failure_reason_to_chinese_category(
+        self,
+        frontend_client: tuple[TestClient, sessionmaker],
+    ):
+        """Known infrastructure errors should be exposed with Chinese labels."""
+        client, session_local = frontend_client
+        db = session_local()
+        try:
+            task = db.query(Task).filter(Task.id == "task-beta-002").first()
+            assert task is not None
+            task.failure_reason = "REDROID_SLOTS_JSON must be valid JSON"
+            db.commit()
+        finally:
+            db.close()
+
+        response = client.get("/api/v1/frontend/tasks")
+
+        assert response.status_code == 200
+        item = next(item for item in response.json()["items"] if item["id"] == "task-beta-002")
+        assert item["failure_reason"] == "环境配置错误：Redroid 设备槽位配置无效"
+
+    def test_list_task_hides_failure_reason_for_non_failed_status_even_if_value_exists(
+        self,
+        frontend_client: tuple[TestClient, sessionmaker],
+    ):
+        """Non-failed tasks should not render stale failure reasons in the list."""
+        client, session_local = frontend_client
+        db = session_local()
+        try:
+            task = db.query(Task).filter(Task.id == "task-gamma-003").first()
+            assert task is not None
+            task.failure_reason = "REDROID_SLOTS_JSON must be valid JSON"
+            db.commit()
+        finally:
+            db.close()
+
+        response = client.get("/api/v1/frontend/tasks")
+
+        assert response.status_code == 200
+        item = next(item for item in response.json()["items"] if item["id"] == "task-gamma-003")
+        assert item["status"] == "dynamic_analyzing"
+        assert item["failure_reason"] is None
+
+    def test_list_task_normalizes_legacy_failed_status_for_frontend(
+        self,
+        frontend_client: tuple[TestClient, sessionmaker],
+    ):
+        """Legacy failed rows should not be presented as queued in the frontend list."""
+        client, session_local = frontend_client
+        db = session_local()
+        try:
+            _seed_task(
+                db,
+                task_id="task-legacy-failed-004",
+                created_at=datetime(2026, 3, 4, 10, 0, 0),
+                status=TaskStatus.QUEUED,
+                apk_file_name="legacy-failed.apk",
+            )
+            db.commit()
+            task = db.query(Task).filter(Task.id == "task-legacy-failed-004").first()
+            assert task is not None
+            task.status = "failed"
+            task.last_success_stage = "static"
+            task.failure_reason = "REDROID_SLOTS_JSON must be valid JSON"
+            db.commit()
+        finally:
+            db.close()
+
+        response = client.get("/api/v1/frontend/tasks", params={"page_size": 10})
+
+        assert response.status_code == 200
+        data = response.json()
+        item = next(item for item in data["items"] if item["id"] == "task-legacy-failed-004")
+        assert item["status"] == "dynamic_failed"
+        assert item["failure_reason"] == "环境配置错误：Redroid 设备槽位配置无效"
+
+    def test_runtime_status_returns_slot_and_queue_summary(
+        self,
+        frontend_client: tuple[TestClient, sessionmaker],
+        monkeypatch,
+    ):
+        """Runtime status endpoint should aggregate queue and slot health for the frontend."""
+        client, session_local = frontend_client
+        db = session_local()
+        try:
+            db.add(
+                RedroidLeaseTable(
+                    slot_key="redroid-1",
+                    adb_serial="<host-agent-node>:16555",
+                    container_name="redroid-1",
+                    holder_task_id="task-gamma-003",
+                )
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        class FakeHostAgentClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def list_slots(self):
+                return [
+                    {
+                        "slot_name": "redroid-1",
+                        "container_name": "redroid-1",
+                        "healthy": True,
+                        "container_ip": "172.17.0.2",
+                        "detail": None,
+                    },
+                    {
+                        "slot_name": "redroid-2",
+                        "container_name": "redroid-2",
+                        "healthy": True,
+                        "container_ip": "172.17.0.3",
+                        "detail": None,
+                    },
+                ]
+
+        monkeypatch.setattr("api.routers.frontend.RedroidHostAgentClient", FakeHostAgentClient)
+        monkeypatch.setattr(
+            "api.routers.frontend.settings",
+            type(
+                "Settings",
+                (),
+                {
+                    "REDROID_HOST_AGENT_BASE_URL": "http://127.0.0.1:18080",
+                    "REDROID_HOST_AGENT_TOKEN": "",
+                    "REDROID_HOST_AGENT_TIMEOUT_SECONDS": 5,
+                    "redroid_slots": [
+                        {"name": "redroid-1", "adb_serial": "1", "container_name": "redroid-1"},
+                        {"name": "redroid-2", "adb_serial": "2", "container_name": "redroid-2"},
+                    ],
+                },
+            )(),
+        )
+        monkeypatch.setattr(
+            "api.routers.frontend.get_backend_runtime_diagnostics",
+            lambda: {"backend": "dramatiq", "dramatiq_ready": True},
+        )
+
+        response = client.get("/api/v1/frontend/runtime-status")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["worker_ready"] is True
+        assert data["tasks"]["queued_count"] >= 0
+        assert data["redroid"]["configured_slots"] == 2
+        assert data["redroid"]["healthy_slots"] == 2
+        assert data["redroid"]["busy_slots"] == 1
 
     def test_list_tasks_supports_risk_level_filter_with_stable_derivation(
         self,

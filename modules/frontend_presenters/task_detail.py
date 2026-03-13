@@ -17,6 +17,8 @@ from models.analysis_tables import (
     StaticAnalysisTable,
 )
 from models.task import Task, TaskStatus
+from modules.frontend_presenters.failure_reasons import present_failure_reason
+from modules.frontend_presenters.statuses import present_task_status
 
 
 RUN_PREVIEW_LIMIT = 5
@@ -29,6 +31,15 @@ SCREENSHOT_PREVIEW_LIMIT = 6
 @dataclass
 class FrontendTaskDetailScreenshotSource:
     """Resolved screenshot source for a frontend task detail image request."""
+
+    storage_path: str | None = None
+    image_base64: str | None = None
+    content_type: str = "image/png"
+
+
+@dataclass
+class FrontendTaskDetailIconSource:
+    """Resolved icon source for a frontend task detail icon request."""
 
     storage_path: str | None = None
     image_base64: str | None = None
@@ -361,7 +372,10 @@ def _report_ready(status: object) -> bool:
 
 
 def _retryable(status: object) -> bool:
-    return _status_value(status) == TaskStatus.FAILED.value
+    return _status_value(status) in {
+        TaskStatus.STATIC_FAILED.value,
+        TaskStatus.DYNAMIC_FAILED.value,
+    }
 
 
 def _legacy_basic_info(task: Task) -> dict[str, Any]:
@@ -370,6 +384,68 @@ def _legacy_basic_info(task: Task) -> dict[str, Any]:
     if isinstance(basic_info, dict):
         return basic_info
     return static_result
+
+
+def _declared_permissions(task: Task) -> list[str]:
+    static_result = task.static_analysis_result if isinstance(task.static_analysis_result, dict) else {}
+    permissions = static_result.get("permissions")
+    if not isinstance(permissions, list):
+        return []
+
+    names: list[str] = []
+    for item in permissions:
+        if isinstance(item, dict):
+            name = item.get("name")
+            if isinstance(name, str) and name:
+                names.append(name)
+        elif isinstance(item, str) and item:
+            names.append(item)
+    return names
+
+
+def _static_info(task: Task, static_row: StaticAnalysisTable | None, dynamic_row: DynamicAnalysisTable | None) -> dict[str, Any]:
+    basic_info = _legacy_basic_info(task)
+    icon_path = basic_info.get("icon_storage_path")
+    icon_url = f"/api/v1/frontend/tasks/{task.id}/icon" if isinstance(icon_path, str) and icon_path else None
+    return {
+        "app_name": _app_name(task, static_row, dynamic_row),
+        "package_name": _package_name(task, static_row, dynamic_row),
+        "version_name": basic_info.get("version_name"),
+        "version_code": basic_info.get("version_code"),
+        "min_sdk": basic_info.get("min_sdk"),
+        "target_sdk": basic_info.get("target_sdk"),
+        "apk_file_size": int(task.apk_file_size),
+        "apk_md5": task.apk_md5,
+        "declared_permissions": _declared_permissions(task),
+        "icon_url": icon_url,
+    }
+
+
+def _permission_summary(runs: list[AnalysisRunTable]) -> dict[str, list[str]]:
+    requested: set[str] = set()
+    granted: set[str] = set()
+    failed: set[str] = set()
+
+    for row in runs:
+        details = row.details if isinstance(row.details, dict) else {}
+        summary = details.get("permission_summary")
+        if not isinstance(summary, dict):
+            continue
+        for item in summary.get("requested_permissions") or []:
+            if isinstance(item, str) and item:
+                requested.add(item)
+        for item in summary.get("granted_permissions") or []:
+            if isinstance(item, str) and item:
+                granted.add(item)
+        for item in summary.get("failed_permissions") or []:
+            if isinstance(item, str) and item:
+                failed.add(item)
+
+    return {
+        "requested_permissions": sorted(requested),
+        "granted_permissions": sorted(granted),
+        "failed_permissions": sorted(failed),
+    }
 
 
 def _package_name(
@@ -516,7 +592,7 @@ def build_frontend_task_detail(db: Session, task_id: str) -> dict[str, Any] | No
             {
                 "source": "task",
                 "stage": None,
-                "message": task.error_message,
+                "message": present_failure_reason(task.error_message),
             }
         )
     for row in runs:
@@ -525,11 +601,11 @@ def build_frontend_task_detail(db: Session, task_id: str) -> dict[str, Any] | No
                 {
                     "source": "run",
                     "stage": row.stage,
-                    "message": row.error_message,
+                    "message": present_failure_reason(row.error_message),
                 }
             )
 
-    status = _status_value(task.status)
+    status = present_task_status(task.status, getattr(task, "last_success_stage", None))
     report_ready = _report_ready(status)
     observation_summary = (
         dynamic_result.get("network_observation_summary")
@@ -586,9 +662,11 @@ def build_frontend_task_detail(db: Session, task_id: str) -> dict[str, Any] | No
             "created_at": _isoformat(task.created_at),
             "started_at": _isoformat(task.started_at),
             "completed_at": _isoformat(task.completed_at),
-            "error_message": task.error_message,
+            "error_message": present_failure_reason(task.error_message),
             "retry_count": int(task.retry_count or 0),
         },
+        "static_info": _static_info(task, static_row, dynamic_row),
+        "permission_summary": _permission_summary(runs),
         "stage_summary": list(stage_summary_map.values()),
         "evidence_summary": {
             "runs_count": len(runs),
@@ -611,7 +689,7 @@ def build_frontend_task_detail(db: Session, task_id: str) -> dict[str, Any] | No
                 "started_at": _isoformat(row.started_at),
                 "completed_at": _isoformat(row.completed_at),
                 "duration_seconds": int(row.duration_seconds or 0),
-                "error_message": row.error_message,
+                "error_message": present_failure_reason(row.error_message),
             }
             for row in runs[:RUN_PREVIEW_LIMIT]
         ],
@@ -663,5 +741,25 @@ def resolve_frontend_task_detail_screenshot_source(
     )
     if row and row.storage_path:
         return FrontendTaskDetailScreenshotSource(storage_path=row.storage_path)
+
+    return None
+
+
+def resolve_frontend_task_icon_source(
+    db: Session,
+    task_id: str,
+) -> FrontendTaskDetailIconSource | None:
+    """Resolve task icon source for frontend task detail icon requests."""
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        return None
+
+    basic_info = _legacy_basic_info(task)
+    storage_path = basic_info.get("icon_storage_path")
+    if isinstance(storage_path, str) and storage_path:
+        return FrontendTaskDetailIconSource(
+            storage_path=storage_path,
+            content_type=str(basic_info.get("icon_content_type") or "image/png"),
+        )
 
     return None

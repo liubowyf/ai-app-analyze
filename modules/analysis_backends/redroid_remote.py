@@ -24,11 +24,12 @@ from modules.exploration_strategy.explorer import AppExplorer
 from modules.exploration_strategy.policy import ExplorationPolicy
 from modules.redroid_remote.adb_client import RedroidADBClient
 from modules.redroid_remote.device_controller import RedroidDeviceController
+from modules.redroid_remote.host_agent_client import RedroidHostAgentClient
+from modules.redroid_remote.lease_manager import RedroidLeaseManager
 from modules.redroid_remote.result_assembler import (
     REDROID_CAPTURE_MODE,
     assemble_redroid_observation_adapter,
 )
-from modules.redroid_remote.ssh_client import RedroidSSHClient
 from modules.redroid_remote.traffic_collector import RedroidTrafficCollector
 from modules.redroid_remote.traffic_parser import parse_zeek_outputs
 from modules.screenshot_manager.manager import ScreenshotManager
@@ -49,14 +50,14 @@ def _dynamic_helpers():
 
 
 def _fetch_optional_remote_file(
-    ssh_client: RedroidSSHClient,
-    remote_path: str,
+    host_agent_client: RedroidHostAgentClient,
+    capture_id: str,
+    name: str,
     local_path: str,
-    timeout: int = 30,
 ) -> str:
-    """Fetch an optional file from the redroid host."""
+    """Fetch an optional capture artifact from the host agent."""
     try:
-        return ssh_client.fetch_file(remote_path, local_path, timeout=timeout)
+        return host_agent_client.download_capture_file(capture_id, name, local_path)
     except Exception:
         return ""
 
@@ -157,8 +158,7 @@ def _resolve_activity_name(task: Task, apk_path: str) -> Optional[str]:
     return None
 
 
-def _resolve_redroid_host_port() -> tuple[str, int]:
-    serial = str(settings.REDROID_ADB_SERIAL or "").strip()
+def _resolve_redroid_host_port(serial: str) -> tuple[str, int]:
     if not serial or ":" not in serial:
         raise RuntimeError(f"Invalid REDROID_ADB_SERIAL: {serial!r}")
     host, port_raw = serial.rsplit(":", 1)
@@ -191,15 +191,27 @@ class RedroidRemoteDynamicBackend(DynamicAnalysisBackend):
         capture: Optional[dict[str, Any]] = None
         apk_temp_path: Optional[str] = None
         local_artifact_dir: Optional[Path] = None
+        slot_name: Optional[str] = None
 
         try:
             task = db.query(Task).filter(Task.id == task_id).first()
             if not task:
                 raise ValueError(f"Task {task_id} not found")
 
-            host, port = _resolve_redroid_host_port()
-            if not settings.REDROID_SSH_USER:
-                raise RuntimeError("REDROID_SSH_USER is required for ANALYSIS_BACKEND=redroid_remote")
+            if not settings.REDROID_HOST_AGENT_BASE_URL:
+                raise RuntimeError("REDROID_HOST_AGENT_BASE_URL is required for ANALYSIS_BACKEND=redroid_remote")
+
+            lease_manager = RedroidLeaseManager(
+                settings.redroid_slots,
+                ttl_seconds=settings.REDROID_LEASE_TTL_SECONDS,
+                acquire_timeout_seconds=settings.REDROID_LEASE_ACQUIRE_TIMEOUT_SECONDS,
+                poll_interval_seconds=settings.REDROID_LEASE_POLL_INTERVAL_SECONDS,
+            )
+            slot = lease_manager.acquire(task_id)
+            slot_name = slot["name"]
+            serial = slot["adb_serial"]
+            container_name = slot["container_name"]
+            host, port = _resolve_redroid_host_port(serial)
 
             task.status = TaskStatus.DYNAMIC_ANALYZING
             start_stage_run(
@@ -208,39 +220,40 @@ class RedroidRemoteDynamicBackend(DynamicAnalysisBackend):
                 stage="dynamic",
                 details={
                     "capture_mode": REDROID_CAPTURE_MODE,
-                    "lease_scope": "redroid_remote_singleton",
-                    "resource_wait": "redroid_remote",
+                    "lease_scope": "redroid_slot_lease",
+                    "resource_wait": "redroid_slot",
                     "analysis_backend": self.backend_name,
+                    "redroid_slot": slot_name,
                 },
             )
             helpers._commit_with_retry(db, context="set_redroid_dynamic_analyzing")
 
-            adb_client = RedroidADBClient(settings.REDROID_ADB_SERIAL)
+            adb_client = RedroidADBClient(serial)
             if not adb_client.connect():
-                raise RuntimeError(f"Failed to connect redroid ADB device {settings.REDROID_ADB_SERIAL}")
+                raise RuntimeError(f"Failed to connect redroid ADB device {serial}")
 
-            ssh_client = RedroidSSHClient(
-                host=settings.REDROID_SSH_HOST,
-                port=settings.REDROID_SSH_PORT,
-                user=settings.REDROID_SSH_USER,
-                key_path=settings.REDROID_SSH_KEY_PATH or None,
-                password=settings.REDROID_SSH_PASSWORD or None,
+            host_agent_client = RedroidHostAgentClient(
+                settings.REDROID_HOST_AGENT_BASE_URL,
+                token=settings.REDROID_HOST_AGENT_TOKEN or None,
+                timeout=settings.REDROID_HOST_AGENT_TIMEOUT_SECONDS,
             )
             traffic_collector = RedroidTrafficCollector(
-                ssh_client=ssh_client,
-                container_name=settings.REDROID_CONTAINER_NAME,
+                host_agent_client=host_agent_client,
+                slot_name=slot_name,
+                container_name=container_name,
             )
 
             update_stage_context(
                 db,
                 task_id=task_id,
                 stage="dynamic",
-                emulator=settings.REDROID_ADB_SERIAL,
+                emulator=serial,
                 details={
                     "analysis_backend": self.backend_name,
-                    "emulator_slot": settings.REDROID_ADB_SERIAL,
-                    "redroid_host": settings.REDROID_SSH_HOST,
-                    "redroid_container": settings.REDROID_CONTAINER_NAME,
+                    "emulator_slot": serial,
+                    "redroid_slot": slot_name,
+                    "redroid_host_agent": settings.REDROID_HOST_AGENT_BASE_URL,
+                    "redroid_container": container_name,
                 },
             )
 
@@ -313,31 +326,37 @@ class RedroidRemoteDynamicBackend(DynamicAnalysisBackend):
 
             traffic_collector.stop_capture(capture)
             zeek_result = traffic_collector.run_zeek(capture)
+            capture_id = str(capture.get("capture_id") or "").strip()
 
             tcpdump_text_local = _fetch_optional_remote_file(
-                ssh_client,
-                str(capture.get("text_path") or ""),
+                host_agent_client,
+                capture_id,
+                "tcpdump.log",
                 str(local_artifact_dir / "tcpdump.log"),
             )
 
             conn_local = _fetch_optional_remote_file(
-                ssh_client,
-                f"{zeek_result['zeek_dir']}/conn.log",
+                host_agent_client,
+                capture_id,
+                "conn.log",
                 str(local_artifact_dir / "conn.log"),
             )
             dns_local = _fetch_optional_remote_file(
-                ssh_client,
-                f"{zeek_result['zeek_dir']}/dns.log",
+                host_agent_client,
+                capture_id,
+                "dns.log",
                 str(local_artifact_dir / "dns.log"),
             )
             ssl_local = _fetch_optional_remote_file(
-                ssh_client,
-                f"{zeek_result['zeek_dir']}/ssl.log",
+                host_agent_client,
+                capture_id,
+                "ssl.log",
                 str(local_artifact_dir / "ssl.log"),
             )
             http_local = _fetch_optional_remote_file(
-                ssh_client,
-                f"{zeek_result['zeek_dir']}/http.log",
+                host_agent_client,
+                capture_id,
+                "http.log",
                 str(local_artifact_dir / "http.log"),
             )
 
@@ -362,6 +381,9 @@ class RedroidRemoteDynamicBackend(DynamicAnalysisBackend):
                 max_requests=helpers.MAX_DB_REQUESTS,
             )
             dynamic_result["redroid_artifacts"] = {
+                "capture_id": capture_id or None,
+                "slot_name": slot_name,
+                "host_agent_base_url": settings.REDROID_HOST_AGENT_BASE_URL,
                 "pcap_path": zeek_result["pcap_path"],
                 "zeek_dir": zeek_result["zeek_dir"],
                 "pcap_exists": zeek_result.get("pcap_exists", False),
@@ -381,12 +403,6 @@ class RedroidRemoteDynamicBackend(DynamicAnalysisBackend):
             )
             dynamic_result["quality_gate"] = quality_gate
 
-            task.dynamic_analysis_result = dynamic_result
-            task.error_message = (
-                f"degraded:{quality_gate['reason']}"
-                if quality_gate["degraded"]
-                else None
-            )
             helpers._persist_dynamic_normalized_tables(
                 db=db,
                 task_id=task_id,
@@ -395,6 +411,18 @@ class RedroidRemoteDynamicBackend(DynamicAnalysisBackend):
                 traffic_monitor=traffic_adapter,
                 domain_report=domain_report,
             )
+            # Persist child evidence rows before updating the parent task row.
+            # These normalized tables all reference tasks.id via FK; writing the
+            # parent row in one session while inserting children in another
+            # session can self-block under concurrent load.
+            task.dynamic_analysis_result = dynamic_result
+            task.last_success_stage = "dynamic"
+            task.failure_reason = None
+            task.error_message = (
+                f"degraded:{quality_gate['reason']}"
+                if quality_gate["degraded"]
+                else None
+            )
             finish_stage_run(
                 db,
                 task_id=task_id,
@@ -402,10 +430,11 @@ class RedroidRemoteDynamicBackend(DynamicAnalysisBackend):
                 success=True,
                 details=helpers._build_dynamic_stage_run_details(
                     emulator={
-                        "host": host,
-                        "port": port,
-                        "lease_backend": "redroid_remote",
-                    },
+                    "host": host,
+                    "port": port,
+                    "lease_backend": "redroid_remote",
+                    "slot_name": slot_name,
+                },
                     exploration_result=exploration_result,
                     primary_requests=network_requests,
                     candidate_requests=candidate_requests,
@@ -443,6 +472,16 @@ class RedroidRemoteDynamicBackend(DynamicAnalysisBackend):
                     traffic_collector.stop_capture(capture)
                 except Exception as exc:
                     logger.warning("Failed to stop redroid capture task=%s: %s", task_id, exc)
+            if slot_name:
+                try:
+                    RedroidLeaseManager(
+                        settings.redroid_slots,
+                        ttl_seconds=settings.REDROID_LEASE_TTL_SECONDS,
+                        acquire_timeout_seconds=settings.REDROID_LEASE_ACQUIRE_TIMEOUT_SECONDS,
+                        poll_interval_seconds=settings.REDROID_LEASE_POLL_INTERVAL_SECONDS,
+                    ).release(task_id, slot_name)
+                except Exception as exc:
+                    logger.warning("Failed to release redroid slot task=%s slot=%s: %s", task_id, slot_name, exc)
             if apk_temp_path and os.path.exists(apk_temp_path):
                 try:
                     os.unlink(apk_temp_path)

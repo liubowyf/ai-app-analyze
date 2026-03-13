@@ -27,6 +27,8 @@ class TaskResponse(BaseModel):
     error_message: Optional[str] = None
     error_stack: Optional[str] = None
     retry_count: int = 0
+    failure_reason: Optional[str] = None
+    last_success_stage: Optional[str] = None
     created_at: str
     started_at: Optional[str] = None
     completed_at: Optional[str] = None

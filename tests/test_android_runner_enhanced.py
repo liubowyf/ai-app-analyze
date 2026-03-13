@@ -178,6 +178,28 @@ def test_install_apk_remote_defaults_to_ten_minute_timeout(monkeypatch):
     assert runner.execute_adb_remote.call_args.kwargs["timeout_seconds"] == 600.0
 
 
+def test_grant_all_permissions_returns_requested_granted_and_failed(monkeypatch):
+    runner = AndroidRunner()
+    runner.execute_adb_remote = Mock(
+        side_effect=[
+            "requested permissions:\n  android.permission.INTERNET\n  android.permission.ACCESS_FINE_LOCATION\n",
+            "Success",
+            "Operation not allowed",
+        ]
+    )
+
+    summary = runner.grant_all_permissions("10.0.0.1", 5558, "com.example.demo")
+
+    assert summary == {
+        "requested_permissions": [
+            "android.permission.INTERNET",
+            "android.permission.ACCESS_FINE_LOCATION",
+        ],
+        "granted_permissions": ["android.permission.INTERNET"],
+        "failed_permissions": ["android.permission.ACCESS_FINE_LOCATION"],
+    }
+
+
 def test_launch_app_uses_configured_timeout(monkeypatch):
     """Launch command should use dedicated timeout to avoid hanging forever."""
     runner = AndroidRunner()
@@ -207,3 +229,25 @@ def test_launch_app_uses_explicit_activity_when_provided(monkeypatch):
         "shell am start -W -n com.example.demo/com.example.demo.MainActivity",
         timeout_seconds=12.0,
     )
+
+
+def test_launch_app_falls_back_to_monkey_when_explicit_activity_fails(monkeypatch):
+    runner = AndroidRunner()
+    monkeypatch.setenv("ADB_LAUNCH_TIMEOUT_SECONDS", "12")
+    runner.execute_adb_remote = Mock(side_effect=[RuntimeError("timeout"), "Events injected: 1"])
+
+    runner.launch_app("10.0.0.1", 5558, "com.example.demo", activity_name="com.example.demo.MainActivity")
+
+    assert runner.execute_adb_remote.call_count == 2
+    assert runner.execute_adb_remote.call_args_list[0].args == (
+        "10.0.0.1",
+        5558,
+        "shell am start -W -n com.example.demo/com.example.demo.MainActivity",
+    )
+    assert runner.execute_adb_remote.call_args_list[0].kwargs == {"timeout_seconds": 12.0}
+    assert runner.execute_adb_remote.call_args_list[1].args == (
+        "10.0.0.1",
+        5558,
+        "shell monkey -p com.example.demo -c android.intent.category.LAUNCHER 1",
+    )
+    assert runner.execute_adb_remote.call_args_list[1].kwargs == {"timeout_seconds": 12.0}

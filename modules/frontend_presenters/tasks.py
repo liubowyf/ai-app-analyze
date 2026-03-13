@@ -14,6 +14,8 @@ from api.schemas.frontend import (
     FrontendTaskListItem,
     FrontendTaskListResponse,
 )
+from modules.frontend_presenters.failure_reasons import present_failure_reason
+from modules.frontend_presenters.statuses import present_task_status
 from models.analysis_tables import DynamicAnalysisTable, StaticAnalysisTable
 from models.task import Task, TaskStatus
 
@@ -48,6 +50,13 @@ def _isoformat(value: object) -> Optional[str]:
 
 def _report_ready(status: object) -> bool:
     return _status_value(status) == TaskStatus.COMPLETED.value
+
+
+def _retryable(status: object) -> bool:
+    return _status_value(status) in {
+        TaskStatus.STATIC_FAILED.value,
+        TaskStatus.DYNAMIC_FAILED.value,
+    }
 
 
 def _legacy_basic_info(row: object) -> dict[str, Any]:
@@ -87,11 +96,24 @@ def _app_name(row: object) -> str:
     return apk_file_name.rsplit(".", 1)[0]
 
 
+def _icon_url(task_id: str, row: object) -> str | None:
+    icon_storage_path = _legacy_basic_info(row).get("icon_storage_path")
+    if isinstance(icon_storage_path, str) and icon_storage_path:
+        return f"/api/v1/frontend/tasks/{task_id}/icon"
+    return None
+
+
 def _to_frontend_task_item(row: object) -> FrontendTaskListItem:
     """Convert a lightweight query row into a frontend DTO."""
-    status = _status_value(getattr(row, "status"))
+    status = present_task_status(
+        getattr(row, "status"),
+        getattr(row, "last_success_stage", None),
+    )
     report_ready = _report_ready(status)
     task_id = getattr(row, "id")
+    failure_reason = getattr(row, "failure_reason", None)
+    retryable = _retryable(status)
+    presented_failure_reason = present_failure_reason(failure_reason)
 
     return FrontendTaskListItem(
         id=task_id,
@@ -102,6 +124,16 @@ def _to_frontend_task_item(row: object) -> FrontendTaskListItem:
         apk_md5=getattr(row, "apk_md5"),
         status=status,
         risk_level=FrontendRiskLevel(getattr(row, "risk_level") or FrontendRiskLevel.UNKNOWN.value),
+        icon_url=_icon_url(task_id, row),
+        retryable=retryable,
+        deletable=True,
+        failure_reason=(
+            presented_failure_reason
+            if retryable and presented_failure_reason
+            else "失败原因待补充"
+            if retryable
+            else None
+        ),
         created_at=_isoformat(getattr(row, "created_at")),
         completed_at=_isoformat(getattr(row, "completed_at")),
         report_ready=report_ready,
@@ -128,6 +160,8 @@ def build_frontend_task_list(
             Task.apk_file_size.label("apk_file_size"),
             Task.apk_md5.label("apk_md5"),
             Task.status.label("status"),
+            Task.last_success_stage.label("last_success_stage"),
+            Task.failure_reason.label("failure_reason"),
             Task.created_at.label("created_at"),
             Task.completed_at.label("completed_at"),
             Task.static_analysis_result.label("task_static_analysis_result"),

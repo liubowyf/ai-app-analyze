@@ -61,22 +61,21 @@ def _seed_completed_report_task(db: Session) -> None:
     task_id = "task-report-001"
     created_at = datetime(2026, 3, 6, 10, 0, 0)
 
-    db.add(
-        Task(
-            id=task_id,
-            apk_file_name="alpha-wallet.apk",
-            apk_file_size=5 * 1024 * 1024,
-            apk_md5="a" * 32,
-            apk_sha256="b" * 64,
-            apk_storage_path="apks/task-report-001/alpha-wallet.apk",
-            status=TaskStatus.COMPLETED,
-            priority=TaskPriority.NORMAL,
-            created_at=created_at,
-            started_at=datetime(2026, 3, 6, 10, 1, 0),
-            completed_at=datetime(2026, 3, 6, 10, 8, 0),
-            updated_at=datetime(2026, 3, 6, 10, 8, 0),
-        )
+    task = Task(
+        id=task_id,
+        apk_file_name="alpha-wallet.apk",
+        apk_file_size=5 * 1024 * 1024,
+        apk_md5="a" * 32,
+        apk_sha256="b" * 64,
+        apk_storage_path="apks/task-report-001/alpha-wallet.apk",
+        status=TaskStatus.COMPLETED,
+        priority=TaskPriority.NORMAL,
+        created_at=created_at,
+        started_at=datetime(2026, 3, 6, 10, 1, 0),
+        completed_at=datetime(2026, 3, 6, 10, 8, 0),
+        updated_at=datetime(2026, 3, 6, 10, 8, 0),
     )
+    db.add(task)
     db.add(
         StaticAnalysisTable(
             task_id=task_id,
@@ -86,6 +85,38 @@ def _seed_completed_report_task(db: Session) -> None:
             risk_level="HIGH",
         )
     )
+    task.static_analysis_result = {
+        "basic_info": {
+            "app_name": "Alpha Wallet",
+            "package_name": "com.demo.alpha",
+            "version_name": "2.3.1",
+            "version_code": 231,
+            "file_size": 5 * 1024 * 1024,
+            "md5": "a" * 32,
+            "min_sdk": 21,
+            "target_sdk": 34,
+            "icon_storage_path": "icons/task-report-001/app-icon.png",
+            "icon_content_type": "image/png",
+        },
+        "permissions": [
+            {"name": "android.permission.INTERNET"},
+            {"name": "android.permission.ACCESS_FINE_LOCATION"},
+        ],
+    }
+    task.dynamic_analysis_result = {
+        "permission_summary": {
+            "requested_permissions": [
+                "android.permission.INTERNET",
+                "android.permission.ACCESS_FINE_LOCATION",
+            ],
+            "granted_permissions": [
+                "android.permission.INTERNET",
+            ],
+            "failed_permissions": [
+                "android.permission.ACCESS_FINE_LOCATION",
+            ],
+        }
+    }
     db.add(
         DynamicAnalysisTable(
             task_id=task_id,
@@ -260,6 +291,33 @@ class TestFrontendReportRouter:
         assert data["task"]["id"] == "task-report-001"
         assert data["task"]["app_name"] == "Alpha Wallet"
         assert data["task"]["package_name"] == "com.demo.alpha"
+        assert data["static_info"] == {
+            "app_name": "Alpha Wallet",
+            "package_name": "com.demo.alpha",
+            "version_name": "2.3.1",
+            "version_code": 231,
+            "min_sdk": 21,
+            "target_sdk": 34,
+            "apk_file_size": 5242880,
+            "apk_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "declared_permissions": [
+                "android.permission.INTERNET",
+                "android.permission.ACCESS_FINE_LOCATION",
+            ],
+            "icon_url": "/api/v1/frontend/reports/task-report-001/icon",
+        }
+        assert data["permission_summary"] == {
+            "requested_permissions": [
+                "android.permission.ACCESS_FINE_LOCATION",
+                "android.permission.INTERNET",
+            ],
+            "granted_permissions": [
+                "android.permission.INTERNET",
+            ],
+            "failed_permissions": [
+                "android.permission.ACCESS_FINE_LOCATION",
+            ],
+        }
         assert data["summary"]["risk_level"] == "high"
         assert data["summary"]["risk_label"] == "高风险"
         assert data["evidence_summary"] == {
@@ -305,6 +363,22 @@ class TestFrontendReportRouter:
             response = client.get(
                 "/api/v1/frontend/reports/task-report-001/screenshots/shot-1"
             )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("image/png")
+        assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+    def test_report_icon_resource_is_served_via_url_reference(
+        self,
+        frontend_client: tuple[TestClient, sessionmaker],
+    ):
+        client, _ = frontend_client
+
+        with patch(
+            "api.routers.frontend.storage_client.download_file",
+            return_value=b"\x89PNG\r\n\x1a\nmock-report-icon",
+        ):
+            response = client.get("/api/v1/frontend/reports/task-report-001/icon")
 
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("image/png")

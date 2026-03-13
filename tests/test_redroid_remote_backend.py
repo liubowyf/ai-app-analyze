@@ -53,6 +53,8 @@ def test_redroid_remote_backend_runs_and_persists(monkeypatch, tmp_path):
         helper_calls.append(("commit", context))
 
     def fake_persist(**kwargs):
+        assert task.dynamic_analysis_result is None
+        assert getattr(task, "last_success_stage", None) is None
         helper_calls.append(("persist", kwargs["task_id"]))
 
     def fake_stage_details(**kwargs):
@@ -84,12 +86,14 @@ def test_redroid_remote_backend_runs_and_persists(monkeypatch, tmp_path):
             helper_calls.append(("adb_connect", self.serial))
             return True
 
-    class FakeSSHClient:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
+    class FakeHostAgentClient:
+        def __init__(self, base_url, token=None, timeout=15):
+            self.base_url = base_url
+            self.token = token
+            self.timeout = timeout
 
-        def fetch_file(self, remote_path, local_path, timeout=30):
-            if remote_path.endswith("tcpdump.log"):
+        def download_capture_file(self, capture_id, name, local_path):
+            if name == "tcpdump.log":
                 Path(local_path).write_text(
                     "12:00:00.000001 IP 172.17.0.2.54321 > 10.16.150.4.3128: Flags [P.], seq 1:10, ack 1, win 512, length 9\n"
                     "CONNECT example.com:443 HTTP/1.1\n"
@@ -105,20 +109,20 @@ def test_redroid_remote_backend_runs_and_persists(monkeypatch, tmp_path):
             return local_path
 
     class FakeCollector:
-        def __init__(self, ssh_client, container_name):
+        def __init__(self, host_agent_client, slot_name=None, container_name="redroid-1"):
             helper_calls.append(("collector_init", container_name))
 
         def start_capture(self, task_id):
             helper_calls.append(("capture_start", task_id))
             return {
+                "capture_id": "cap-1",
                 "pcap_path": "/tmp/demo.pcap",
                 "text_path": "/tmp/demo.log",
                 "zeek_dir": "/tmp/zeek-demo",
-                "pid": 123,
             }
 
         def stop_capture(self, capture):
-            helper_calls.append(("capture_stop", capture["pid"]))
+            helper_calls.append(("capture_stop", capture["capture_id"]))
 
         def run_zeek(self, capture):
             helper_calls.append(("run_zeek", capture["pcap_path"]))
@@ -184,22 +188,34 @@ def test_redroid_remote_backend_runs_and_persists(monkeypatch, tmp_path):
     monkeypatch.setattr(backend_module, "storage_client", SimpleNamespace(download_file=lambda path: b"apk-bytes"))
     monkeypatch.setattr(
         backend_module,
+        "RedroidLeaseManager",
+        lambda *args, **kwargs: SimpleNamespace(
+            acquire=lambda task_id: {
+                "name": "redroid-1",
+                "adb_serial": "<host-agent-node>:16555",
+                "container_name": "redroid-1",
+            },
+            release=lambda task_id, slot_name=None: helper_calls.append(("release_slot", slot_name)),
+        ),
+    )
+    monkeypatch.setattr(
+        backend_module,
         "settings",
         SimpleNamespace(
-            REDROID_ADB_SERIAL="<host-agent-node>:16555",
-            REDROID_SSH_HOST="<host-agent-node>",
-            REDROID_SSH_PORT=22,
-            REDROID_SSH_USER="tester",
-            REDROID_SSH_KEY_PATH="",
-            REDROID_SSH_PASSWORD="",
-            REDROID_CONTAINER_NAME="redroid-1",
+            REDROID_HOST_AGENT_BASE_URL="http://host-agent.local",
+            REDROID_HOST_AGENT_TOKEN="demo-token",
+            REDROID_HOST_AGENT_TIMEOUT_SECONDS=15,
+            REDROID_LEASE_TTL_SECONDS=1800,
+            REDROID_LEASE_ACQUIRE_TIMEOUT_SECONDS=60,
+            REDROID_LEASE_POLL_INTERVAL_SECONDS=1.0,
+            redroid_slots=[{"name": "redroid-1", "adb_serial": "<host-agent-node>:16555", "container_name": "redroid-1"}],
             AI_BASE_URL="http://ai.local/v1",
             AI_MODEL_NAME="demo-model",
             AI_API_KEY="EMPTY",
         ),
     )
     monkeypatch.setattr(backend_module, "RedroidADBClient", FakeADBClient)
-    monkeypatch.setattr(backend_module, "RedroidSSHClient", FakeSSHClient)
+    monkeypatch.setattr(backend_module, "RedroidHostAgentClient", FakeHostAgentClient)
     monkeypatch.setattr(backend_module, "RedroidTrafficCollector", FakeCollector)
     monkeypatch.setattr(backend_module, "RedroidDeviceController", FakeDeviceController)
     monkeypatch.setattr(backend_module, "ScreenshotManager", lambda task_id: SimpleNamespace(task_id=task_id))
@@ -229,6 +245,8 @@ def test_redroid_remote_backend_runs_and_persists(monkeypatch, tmp_path):
     assert result["backend"] == "redroid_remote"
     assert result["capture_mode"] == "redroid_zeek"
     assert result["network_requests"] == 1
+    assert task.dynamic_analysis_result["redroid_artifacts"]["capture_id"] == "cap-1"
+    assert task.dynamic_analysis_result["redroid_artifacts"]["slot_name"] == "redroid-1"
     assert task.dynamic_analysis_result["redroid_artifacts"]["pcap_path"] == "/tmp/demo.pcap"
     assert task.dynamic_analysis_result["redroid_artifacts"]["pcap_exists"] is False
     assert task.dynamic_analysis_result["redroid_artifacts"]["tcpdump_log_path"] is not None
@@ -236,10 +254,11 @@ def test_redroid_remote_backend_runs_and_persists(monkeypatch, tmp_path):
     assert ("run_zeek", "/tmp/demo.pcap") in helper_calls
     assert ("finish_stage", "task-redroid-1") in helper_calls
     assert ("explore", "<host-agent-node>", "com.demo.app", "com.demo.app.MainActivity") in helper_calls
+    assert ("release_slot", "redroid-1") in helper_calls
     assert fake_session.closed is True
 
 
-def test_redroid_remote_backend_requires_ssh_user(monkeypatch):
+def test_redroid_remote_backend_requires_host_agent_base_url(monkeypatch):
     from modules.analysis_backends import redroid_remote as backend_module
 
     task = SimpleNamespace(
@@ -264,13 +283,13 @@ def test_redroid_remote_backend_requires_ssh_user(monkeypatch):
         backend_module,
         "settings",
         SimpleNamespace(
-            REDROID_ADB_SERIAL="<host-agent-node>:16555",
-            REDROID_SSH_HOST="<host-agent-node>",
-            REDROID_SSH_PORT=22,
-            REDROID_SSH_USER="",
-            REDROID_SSH_KEY_PATH="",
-            REDROID_SSH_PASSWORD="",
-            REDROID_CONTAINER_NAME="redroid-1",
+            REDROID_HOST_AGENT_BASE_URL="",
+            REDROID_HOST_AGENT_TOKEN="",
+            REDROID_HOST_AGENT_TIMEOUT_SECONDS=15,
+            REDROID_LEASE_TTL_SECONDS=1800,
+            REDROID_LEASE_ACQUIRE_TIMEOUT_SECONDS=60,
+            REDROID_LEASE_POLL_INTERVAL_SECONDS=1.0,
+            redroid_slots=[{"name": "redroid-1", "adb_serial": "<host-agent-node>:16555", "container_name": "redroid-1"}],
             AI_BASE_URL="http://ai.local/v1",
             AI_MODEL_NAME="demo-model",
             AI_API_KEY="EMPTY",
@@ -278,7 +297,7 @@ def test_redroid_remote_backend_requires_ssh_user(monkeypatch):
     )
     monkeypatch.setattr(backend_module, "start_stage_run", lambda *args, **kwargs: None)
 
-    with pytest.raises(RuntimeError, match="REDROID_SSH_USER"):
+    with pytest.raises(RuntimeError, match="REDROID_HOST_AGENT_BASE_URL"):
         backend_module.RedroidRemoteDynamicBackend().run("task-redroid-2")
 
     assert failures
@@ -321,20 +340,20 @@ def test_redroid_remote_backend_marks_failure_when_exploration_fails(monkeypatch
         def connect(self):
             return True
 
-    class FakeSSHClient:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
+    class FakeHostAgentClient:
+        def __init__(self, base_url, token=None, timeout=15):
+            self.base_url = base_url
 
-        def fetch_file(self, remote_path, local_path, timeout=30):
+        def download_capture_file(self, capture_id, name, local_path):
             Path(local_path).write_text("", encoding="utf-8")
             return local_path
 
     class FakeCollector:
-        def __init__(self, ssh_client, container_name):
+        def __init__(self, host_agent_client, slot_name=None, container_name="redroid-1"):
             return None
 
         def start_capture(self, task_id):
-            return {"pcap_path": "/tmp/demo.pcap", "text_path": "/tmp/demo.log", "zeek_dir": "/tmp/zeek-demo", "pid": 123}
+            return {"capture_id": "cap-1", "pcap_path": "/tmp/demo.pcap", "text_path": "/tmp/demo.log", "zeek_dir": "/tmp/zeek-demo"}
 
         def stop_capture(self, capture):
             return None
@@ -371,22 +390,34 @@ def test_redroid_remote_backend_marks_failure_when_exploration_fails(monkeypatch
     monkeypatch.setattr(backend_module, "storage_client", SimpleNamespace(download_file=lambda path: b"apk-bytes"))
     monkeypatch.setattr(
         backend_module,
+        "RedroidLeaseManager",
+        lambda *args, **kwargs: SimpleNamespace(
+            acquire=lambda task_id: {
+                "name": "redroid-1",
+                "adb_serial": "<host-agent-node>:16555",
+                "container_name": "redroid-1",
+            },
+            release=lambda task_id, slot_name=None: None,
+        ),
+    )
+    monkeypatch.setattr(
+        backend_module,
         "settings",
         SimpleNamespace(
-            REDROID_ADB_SERIAL="<host-agent-node>:16555",
-            REDROID_SSH_HOST="<host-agent-node>",
-            REDROID_SSH_PORT=22,
-            REDROID_SSH_USER="tester",
-            REDROID_SSH_KEY_PATH="",
-            REDROID_SSH_PASSWORD="pw",
-            REDROID_CONTAINER_NAME="redroid-1",
+            REDROID_HOST_AGENT_BASE_URL="http://host-agent.local",
+            REDROID_HOST_AGENT_TOKEN="pw",
+            REDROID_HOST_AGENT_TIMEOUT_SECONDS=15,
+            REDROID_LEASE_TTL_SECONDS=1800,
+            REDROID_LEASE_ACQUIRE_TIMEOUT_SECONDS=60,
+            REDROID_LEASE_POLL_INTERVAL_SECONDS=1.0,
+            redroid_slots=[{"name": "redroid-1", "adb_serial": "<host-agent-node>:16555", "container_name": "redroid-1"}],
             AI_BASE_URL="http://ai.local/v1",
             AI_MODEL_NAME="demo-model",
             AI_API_KEY="EMPTY",
         ),
     )
     monkeypatch.setattr(backend_module, "RedroidADBClient", FakeADBClient)
-    monkeypatch.setattr(backend_module, "RedroidSSHClient", FakeSSHClient)
+    monkeypatch.setattr(backend_module, "RedroidHostAgentClient", FakeHostAgentClient)
     monkeypatch.setattr(backend_module, "RedroidTrafficCollector", FakeCollector)
     monkeypatch.setattr(backend_module, "RedroidDeviceController", FakeDeviceController)
     monkeypatch.setattr(backend_module, "ScreenshotManager", lambda task_id: SimpleNamespace(task_id=task_id))

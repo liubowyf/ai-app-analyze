@@ -2,7 +2,7 @@
 import ssl
 from typing import Generator
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -40,6 +40,24 @@ SCHEMA_LOCK_NAME = "app_analysis_schema_init"
 SCHEMA_LOCK_TIMEOUT_SECONDS = 120
 
 
+def _ensure_tasks_table_columns(connection) -> None:
+    """Add lightweight task columns required by the current status model."""
+    inspector = inspect(connection)
+    try:
+        columns = {column["name"] for column in inspector.get_columns("tasks")}
+    except Exception:
+        return
+
+    ddl_statements = []
+    if "failure_reason" not in columns:
+        ddl_statements.append("ALTER TABLE tasks ADD COLUMN failure_reason TEXT NULL")
+    if "last_success_stage" not in columns:
+        ddl_statements.append("ALTER TABLE tasks ADD COLUMN last_success_stage VARCHAR(32) NULL")
+
+    for ddl in ddl_statements:
+        connection.execute(text(ddl))
+
+
 def ensure_schema_ready() -> None:
     """Create tables under a MySQL advisory lock.
 
@@ -60,6 +78,7 @@ def ensure_schema_ready() -> None:
 
         try:
             Base.metadata.create_all(bind=connection)
+            _ensure_tasks_table_columns(connection)
             connection.commit()
         finally:
             connection.execute(unlock_sql, {"name": SCHEMA_LOCK_NAME})

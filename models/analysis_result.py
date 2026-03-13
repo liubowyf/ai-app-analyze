@@ -82,6 +82,9 @@ class ApkBasicInfo(BaseModel):
     sha256: str
     min_sdk: Optional[int] = None
     target_sdk: Optional[int] = None
+    icon_resource_path: Optional[str] = None
+    icon_storage_path: Optional[str] = None
+    icon_content_type: Optional[str] = None
     signature: Optional[str] = None
     is_debuggable: bool = False
     is_packed: bool = False

@@ -13,13 +13,14 @@ from core.database import Base
 class TaskStatus(str, Enum):
     """Task status enum."""
 
-    PENDING = "pending"
     QUEUED = "queued"
+    PENDING = "queued"
     STATIC_ANALYZING = "static_analyzing"
     DYNAMIC_ANALYZING = "dynamic_analyzing"
     REPORT_GENERATING = "report_generating"
     COMPLETED = "completed"
-    FAILED = "failed"
+    STATIC_FAILED = "static_failed"
+    DYNAMIC_FAILED = "dynamic_failed"
 
 
 class TaskPriority(str, Enum):
@@ -71,7 +72,7 @@ class Task(Base):
 
     # Task status and priority
     status: Mapped[TaskStatus] = Column(
-        String(20), default=TaskStatus.PENDING, index=True
+        String(20), default=TaskStatus.QUEUED, index=True
     )
     priority: Mapped[TaskPriority] = Column(String(20), default=TaskPriority.NORMAL)
 
@@ -79,6 +80,8 @@ class Task(Base):
     error_message: Mapped[Optional[str]] = Column(Text, nullable=True)
     error_stack: Mapped[Optional[str]] = Column(Text, nullable=True)
     retry_count: Mapped[int] = Column(Integer, default=0)
+    failure_reason: Mapped[Optional[str]] = Column(Text, nullable=True)
+    last_success_stage: Mapped[Optional[str]] = Column(String(32), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = Column(
@@ -156,6 +159,8 @@ class Task(Base):
             "error_message": self.error_message,
             "error_stack": self.error_stack,
             "retry_count": self.retry_count,
+            "failure_reason": self.failure_reason,
+            "last_success_stage": self.last_success_stage,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": (

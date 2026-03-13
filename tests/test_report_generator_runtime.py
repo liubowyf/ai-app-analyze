@@ -124,3 +124,33 @@ def test_build_report_context_for_stage_raises_when_task_missing(monkeypatch):
 
     with pytest.raises(ValueError):
         _build_report_context_for_stage(object(), "missing-task")
+
+
+def test_build_report_context_for_stage_raises_when_dynamic_evidence_missing(monkeypatch):
+    monkeypatch.setattr(
+        "workers.report_generator.build_frontend_report_download_context",
+        lambda db, task_id, require_completed=False: {
+            "task": {"id": task_id, "app_name": "仅静态任务"},
+            "summary": {
+                "risk_level": "unknown",
+                "risk_label": "待确认",
+                "conclusion": "仅静态信息",
+                "highlights": [],
+            },
+            "evidence_summary": {
+                "domains_count": 0,
+                "ips_count": 0,
+                "observation_hits": 0,
+                "capture_mode": None,
+                "screenshots_count": 0,
+                "source_breakdown": {},
+            },
+            "screenshots": [],
+            "top_domains": [],
+            "top_ips": [],
+            "timeline": [],
+        },
+    )
+
+    with pytest.raises(ValueError, match="Dynamic analysis evidence missing"):
+        _build_report_context_for_stage(object(), "task-static-only")

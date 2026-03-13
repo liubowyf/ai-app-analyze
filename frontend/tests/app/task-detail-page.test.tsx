@@ -61,6 +61,29 @@ const failedDetail = {
     error_message: "动态分析阶段失败：设备连接中断",
     retry_count: 1,
   },
+  static_info: {
+    app_name: "Alpha Wallet",
+    package_name: "com.demo.alpha",
+    version_name: "2.3.1",
+    version_code: 231,
+    min_sdk: 21,
+    target_sdk: 34,
+    apk_file_size: 5242880,
+    apk_md5: "a".repeat(32),
+    declared_permissions: [
+      "android.permission.INTERNET",
+      "android.permission.ACCESS_FINE_LOCATION",
+    ],
+    icon_url: "/api/v1/frontend/tasks/task-failed-001/icon",
+  },
+  permission_summary: {
+    requested_permissions: [
+      "android.permission.INTERNET",
+      "android.permission.ACCESS_FINE_LOCATION",
+    ],
+    granted_permissions: ["android.permission.INTERNET"],
+    failed_permissions: ["android.permission.ACCESS_FINE_LOCATION"],
+  },
   stage_summary: [
     {
       stage: "dynamic",
@@ -191,8 +214,9 @@ describe("Task detail page", () => {
     });
     render(ui);
 
-    expect(screen.getByText("Alpha Wallet")).toBeInTheDocument();
+    expect(screen.getAllByText("Alpha Wallet").length).toBeGreaterThan(0);
     expect(screen.getByText("基础信息")).toBeInTheDocument();
+    expect(screen.getByText("权限信息")).toBeInTheDocument();
     expect(screen.getByText("域名/IP 观察概览")).toBeInTheDocument();
     expect(screen.getByText("Top Domains")).toBeInTheDocument();
     expect(screen.getByText("Top IPs")).toBeInTheDocument();
@@ -201,6 +225,12 @@ describe("Task detail page", () => {
     expect(screen.getByText("阶段运行")).toBeInTheDocument();
     expect(screen.getByText("截图摘要")).toBeInTheDocument();
     expect(screen.getByText("动态分析阶段失败：设备连接中断")).toBeInTheDocument();
+    expect(screen.getByText("2.3.1 (231)")).toBeInTheDocument();
+    expect(screen.getAllByText("android.permission.ACCESS_FINE_LOCATION").length).toBeGreaterThan(0);
+    expect(screen.getByAltText("Alpha Wallet 图标")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:8000/api/v1/frontend/tasks/task-failed-001/icon"
+    );
     expect(screen.getByAltText("登录页")).toHaveAttribute(
       "src",
       "http://127.0.0.1:8000/api/v1/frontend/tasks/task-failed-001/screenshots/shot-2"
@@ -216,7 +246,7 @@ describe("Task detail page", () => {
     await waitFor(() => {
       expect(retryFrontendTaskMock).toHaveBeenCalledWith("task-failed-001");
     });
-    expect(await screen.findByText("正在分析")).toBeInTheDocument();
+    expect(await screen.findByText("排队中")).toBeInTheDocument();
   });
 
   it("renders a frontend report link for completed tasks", async () => {

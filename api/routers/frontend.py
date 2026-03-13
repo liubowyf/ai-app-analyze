@@ -6,28 +6,43 @@ import base64
 import binascii
 import logging
 import mimetypes
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from api.schemas.frontend import (
     FrontendRiskLevel,
+    FrontendRuntimeStatusResponse,
     FrontendTaskListResponse,
 )
+from core.config import settings
 from core.database import get_db
 from core.storage import storage_client
+from models.analysis_tables import (
+    AnalysisRunTable,
+    DynamicAnalysisTable,
+    MasterDomainTable,
+    NetworkRequestTable,
+    RedroidLeaseTable,
+    ScreenshotTable,
+    StaticAnalysisTable,
+)
 from models.task import Task, TaskPriority, TaskStatus
 from modules.frontend_presenters.report import (
     build_frontend_report,
+    resolve_frontend_report_icon_source,
     resolve_frontend_report_screenshot_source,
 )
 from modules.frontend_presenters.task_detail import (
     build_frontend_task_detail,
+    resolve_frontend_task_icon_source,
     resolve_frontend_task_detail_screenshot_source,
 )
 from modules.frontend_presenters.tasks import build_frontend_task_list
-from modules.task_orchestration.queue_backend import enqueue_task
+from modules.redroid_remote.host_agent_client import HostAgentError, RedroidHostAgentClient
+from modules.task_orchestration.queue_backend import enqueue_task, get_backend_runtime_diagnostics
 from modules.upload_batch.service import BatchUploadFile, BatchUploadService
 
 router = APIRouter()
@@ -36,6 +51,108 @@ logger = logging.getLogger(__name__)
 
 def _task_status_value(status: object) -> str:
     return status.value if hasattr(status, "value") else str(status)
+
+
+def _has_static_analysis_result(db: Session, task: Task) -> bool:
+    """Return whether the task already has reusable static-analysis output."""
+    static_result = getattr(task, "static_analysis_result", None)
+    if isinstance(static_result, dict) and static_result:
+        return True
+    return (
+        db.query(StaticAnalysisTable.id)
+        .filter(StaticAnalysisTable.task_id == task.id)
+        .first()
+        is not None
+    )
+
+
+def _build_frontend_runtime_status(db: Session) -> dict[str, object]:
+    diagnostics = get_backend_runtime_diagnostics()
+    rows = db.query(Task.status, func.count(Task.id)).group_by(Task.status).all()
+    by_status: dict[str, int] = {}
+    for status, count in rows:
+        by_status[_task_status_value(status)] = int(count)
+
+    active_leases = {
+        row.slot_key: row
+        for row in db.query(RedroidLeaseTable)
+        .filter(RedroidLeaseTable.holder_task_id.isnot(None))
+        .all()
+    }
+
+    slots_payload: list[dict[str, object]] = []
+    healthy_slots = 0
+    slots_by_name: dict[str, dict[str, object]] = {}
+    agent_error: str | None = None
+    if settings.REDROID_HOST_AGENT_BASE_URL:
+        try:
+            client = RedroidHostAgentClient(
+                settings.REDROID_HOST_AGENT_BASE_URL,
+                token=settings.REDROID_HOST_AGENT_TOKEN or None,
+                timeout=settings.REDROID_HOST_AGENT_TIMEOUT_SECONDS,
+            )
+            slots = client.list_slots()
+            for item in slots:
+                slot_name = str(item.get("slot_name") or "").strip()
+                if slot_name:
+                    slots_by_name[slot_name] = item
+        except HostAgentError as exc:
+            agent_error = str(exc)
+        except Exception as exc:
+            agent_error = str(exc)
+    else:
+        agent_error = "host_agent_unconfigured"
+
+    for slot in settings.redroid_slots:
+        slot_name = str(slot.get("name") or slot.get("adb_serial") or "unknown")
+        container_name = str(slot.get("container_name") or slot_name)
+        lease = active_leases.get(slot_name)
+        slot_runtime = slots_by_name.get(slot_name, {})
+        healthy = bool(slot_runtime.get("healthy", False))
+        detail = str(slot_runtime.get("detail") or "").strip() or None
+        if not slots_by_name:
+            healthy = False
+            detail = agent_error
+        elif not slot_runtime:
+            healthy = False
+            detail = "slot_not_reported_by_host_agent"
+
+        if healthy:
+            healthy_slots += 1
+
+        slots_payload.append(
+            {
+                "slot_name": slot_name,
+                "container_name": container_name,
+                "healthy": healthy,
+                "busy": lease is not None,
+                "holder_task_id": getattr(lease, "holder_task_id", None),
+                "detail": detail,
+            }
+        )
+
+    return {
+        "api_healthy": True,
+        "worker_ready": bool(diagnostics.get("dramatiq_ready", False)),
+        "queue_backend": str(diagnostics.get("backend", "dramatiq")),
+        "tasks": {
+            "queued_count": by_status.get("queued", 0),
+            "static_running_count": by_status.get("static_analyzing", 0),
+            "dynamic_running_count": by_status.get("dynamic_analyzing", 0),
+            "report_running_count": by_status.get("report_generating", 0),
+            "running_count": sum(
+                by_status.get(key, 0)
+                for key in ("static_analyzing", "dynamic_analyzing", "report_generating")
+            ),
+        },
+        "redroid": {
+            "configured_slots": len(settings.redroid_slots),
+            "healthy_slots": healthy_slots,
+            "busy_slots": sum(1 for item in slots_payload if item["busy"]),
+            "slots": slots_payload,
+        },
+        "checked_at": datetime.utcnow().isoformat(),
+    }
 
 
 def _build_created_task_item(task: Task) -> dict[str, object]:
@@ -48,6 +165,10 @@ def _build_created_task_item(task: Task) -> dict[str, object]:
         "apk_md5": task.apk_md5,
         "status": _task_status_value(task.status),
         "risk_level": FrontendRiskLevel.UNKNOWN.value,
+        "icon_url": None,
+        "retryable": False,
+        "deletable": True,
+        "failure_reason": None,
         "submitter": None,
         "created_at": task.created_at.isoformat() if task.created_at else None,
         "completed_at": task.completed_at.isoformat() if task.completed_at else None,
@@ -139,6 +260,12 @@ def list_frontend_tasks(
     )
 
 
+@router.get("/runtime-status", response_model=FrontendRuntimeStatusResponse)
+def get_frontend_runtime_status(db: Session = Depends(get_db)):
+    """Return a lightweight runtime health summary for the list page."""
+    return _build_frontend_runtime_status(db)
+
+
 @router.post("/tasks/upload")
 async def upload_frontend_tasks(
     files: list[UploadFile] = File(...),
@@ -167,7 +294,7 @@ async def upload_frontend_tasks(
             apk_file_size=task_input.apk_file_size,
             apk_md5=task_input.apk_md5,
             apk_storage_path=task_input.apk_storage_path,
-            status=TaskStatus.PENDING,
+            status=TaskStatus.QUEUED,
             priority=TaskPriority.BATCH,
         )
         db.add(task)
@@ -220,6 +347,18 @@ def get_frontend_task_detail_screenshot(
     return _build_frontend_image_response(source)
 
 
+@router.get("/tasks/{task_id}/icon")
+def get_frontend_task_icon(
+    task_id: str,
+    db: Session = Depends(get_db),
+):
+    """Serve task icon through URL-based resource references."""
+    source = resolve_frontend_task_icon_source(db, task_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Icon not found")
+    return _build_frontend_image_response(source)
+
+
 @router.get("/reports/{task_id}")
 def get_frontend_report(task_id: str, db: Session = Depends(get_db)):
     """Return a frontend-friendly aggregated report payload."""
@@ -251,19 +390,41 @@ def get_frontend_report_screenshot(
     return _build_frontend_image_response(source)
 
 
+@router.get("/reports/{task_id}/icon")
+def get_frontend_report_icon(
+    task_id: str,
+    db: Session = Depends(get_db),
+):
+    """Serve report icon through URL-based resource references."""
+    try:
+        source = resolve_frontend_report_icon_source(db, task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if source is None:
+        raise HTTPException(status_code=404, detail="Icon not found")
+    return _build_frontend_image_response(source)
+
+
 @router.post("/tasks/{task_id}/retry")
 def retry_frontend_task(task_id: str, db: Session = Depends(get_db)):
     """Retry a failed task and return the refreshed frontend detail payload."""
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.status != TaskStatus.FAILED:
+    if task.status not in {TaskStatus.STATIC_FAILED, TaskStatus.DYNAMIC_FAILED}:
         raise HTTPException(status_code=400, detail="Only failed tasks can be retried")
 
-    task.status = TaskStatus.QUEUED
+    if task.status == TaskStatus.DYNAMIC_FAILED and (
+        str(task.last_success_stage or "").strip().lower() == "static"
+        or _has_static_analysis_result(db, task)
+    ):
+        task.status = TaskStatus.DYNAMIC_ANALYZING
+    else:
+        task.status = TaskStatus.QUEUED
     task.retry_count += 1
     task.error_message = None
     task.error_stack = None
+    task.failure_reason = None
     task.completed_at = None
     db.commit()
     db.refresh(task)
@@ -276,3 +437,20 @@ def retry_frontend_task(task_id: str, db: Session = Depends(get_db)):
     if detail is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return detail
+
+
+@router.delete("/tasks/{task_id}")
+def delete_frontend_task(task_id: str, db: Session = Depends(get_db)):
+    """Delete task records from the database without deleting MinIO objects."""
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    db.query(AnalysisRunTable).filter(AnalysisRunTable.task_id == task_id).delete(synchronize_session=False)
+    db.query(NetworkRequestTable).filter(NetworkRequestTable.task_id == task_id).delete(synchronize_session=False)
+    db.query(MasterDomainTable).filter(MasterDomainTable.task_id == task_id).delete(synchronize_session=False)
+    db.query(ScreenshotTable).filter(ScreenshotTable.task_id == task_id).delete(synchronize_session=False)
+    db.query(DynamicAnalysisTable).filter(DynamicAnalysisTable.task_id == task_id).delete(synchronize_session=False)
+    db.query(StaticAnalysisTable).filter(StaticAnalysisTable.task_id == task_id).delete(synchronize_session=False)
+    db.delete(task)
+    db.commit()
+    return {"id": task_id, "deleted": True}

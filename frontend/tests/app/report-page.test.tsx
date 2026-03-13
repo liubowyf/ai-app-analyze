@@ -43,6 +43,29 @@ const reportPayload = {
     created_at: "2026-03-06T10:00:00",
     completed_at: "2026-03-06T10:08:00",
   },
+  static_info: {
+    app_name: "Alpha Wallet",
+    package_name: "com.demo.alpha",
+    version_name: "2.3.1",
+    version_code: 231,
+    min_sdk: 21,
+    target_sdk: 34,
+    apk_file_size: 5 * 1024 * 1024,
+    apk_md5: "a".repeat(32),
+    declared_permissions: [
+      "android.permission.INTERNET",
+      "android.permission.ACCESS_FINE_LOCATION",
+    ],
+    icon_url: "/api/v1/frontend/reports/task-report-001/icon",
+  },
+  permission_summary: {
+    requested_permissions: [
+      "android.permission.INTERNET",
+      "android.permission.ACCESS_FINE_LOCATION",
+    ],
+    granted_permissions: ["android.permission.INTERNET"],
+    failed_permissions: ["android.permission.ACCESS_FINE_LOCATION"],
+  },
   summary: {
     risk_level: "high",
     risk_label: "高风险",
@@ -136,8 +159,10 @@ describe("ReportPage", () => {
     });
     render(ui);
 
-    expect(screen.getByText("Alpha Wallet")).toBeInTheDocument();
+    expect(screen.getAllByText("Alpha Wallet").length).toBeGreaterThan(0);
     expect(screen.getByText("报告摘要")).toBeInTheDocument();
+    expect(screen.getByText("应用信息")).toBeInTheDocument();
+    expect(screen.getByText("权限概览")).toBeInTheDocument();
     expect(screen.getByText("Top Domains")).toBeInTheDocument();
     expect(screen.getByText("Top IPs")).toBeInTheDocument();
     expect(screen.getByText("观测来源拆分")).toBeInTheDocument();
@@ -145,6 +170,12 @@ describe("ReportPage", () => {
     expect(screen.getByText("关键截图")).toBeInTheDocument();
     expect(screen.getAllByText("api.alpha.example").length).toBeGreaterThan(0);
     expect(screen.queryByText("网络请求样本")).not.toBeInTheDocument();
+    expect(screen.getByText("2.3.1 (231)")).toBeInTheDocument();
+    expect(screen.getAllByText("android.permission.ACCESS_FINE_LOCATION").length).toBeGreaterThan(0);
+    expect(screen.getByAltText("Alpha Wallet 图标")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:8000/api/v1/frontend/reports/task-report-001/icon"
+    );
 
     const screenshot = screen.getByAltText("登录页");
     expect(screenshot).toHaveAttribute(

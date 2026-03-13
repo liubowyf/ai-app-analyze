@@ -17,7 +17,6 @@ from modules.task_orchestration.stage_services import (
 )
 from modules.task_orchestration.state_machine import (
     is_terminal_status,
-    next_stage,
     next_status_after_stage,
 )
 from workers.dramatiq_app import dramatiq
@@ -144,6 +143,48 @@ def _restore_task_status(task: Task, status_value: str) -> None:
         task.status = status_value
 
 
+def _running_status_for_stage(stage: str) -> TaskStatus:
+    if stage == "static":
+        return TaskStatus.STATIC_ANALYZING
+    if stage == "dynamic":
+        return TaskStatus.DYNAMIC_ANALYZING
+    if stage == "report":
+        return TaskStatus.REPORT_GENERATING
+    raise ValueError(f"Unsupported stage: {stage}")
+
+
+def _failed_status_for_stage(stage: str) -> TaskStatus:
+    if stage == "static":
+        return TaskStatus.STATIC_FAILED
+    return TaskStatus.DYNAMIC_FAILED
+
+
+def _retry_resume_status(task: Task) -> TaskStatus:
+    last_success_stage = str(getattr(task, "last_success_stage", "") or "").strip().lower()
+    if last_success_stage == "dynamic":
+        return TaskStatus.DYNAMIC_ANALYZING
+    if last_success_stage == "static":
+        return TaskStatus.DYNAMIC_ANALYZING
+    return TaskStatus.DYNAMIC_ANALYZING
+
+
+def _resolve_stage(task: Task, status_value: str) -> str | None:
+    normalized = str(status_value or "").strip().lower()
+    if normalized == TaskStatus.QUEUED.value:
+        return "static"
+    if normalized == TaskStatus.STATIC_ANALYZING.value:
+        return "dynamic"
+    if normalized == TaskStatus.REPORT_GENERATING.value:
+        return "report"
+    if normalized == TaskStatus.DYNAMIC_ANALYZING.value:
+        last_success_stage = str(getattr(task, "last_success_stage", "") or "").strip().lower()
+        dynamic_result = getattr(task, "dynamic_analysis_result", None)
+        if last_success_stage == "static" and not dynamic_result:
+            return "dynamic"
+        return "report"
+    return None
+
+
 @actor(queue_name="analysis")
 def run_task(task_id: str) -> None:
     """Execute one state-machine stage and re-enqueue until terminal."""
@@ -167,10 +208,16 @@ def run_task(task_id: str) -> None:
             logger.info("Task already terminal task_id=%s status=%s", task_id, status_value)
             return
 
-        stage = next_stage(status_value)
+        stage = _resolve_stage(task, status_value)
         if not stage:
             logger.warning("No stage mapping for task_id=%s status=%s", task_id, status_value)
             return
+
+        task.status = _running_status_for_stage(stage)
+        task.error_message = None
+        if hasattr(task, "failure_reason"):
+            task.failure_reason = None
+        db.commit()
 
         try:
             if stage == "static":
@@ -186,8 +233,10 @@ def run_task(task_id: str) -> None:
             retry_count = int(getattr(task, "retry_count", 0) or 0)
             if retry_count < len(delays):
                 task.retry_count = retry_count + 1
-                _restore_task_status(task, status_value)
+                _restore_task_status(task, _retry_resume_status(task).value if stage in {"dynamic", "report"} else status_value)
                 task.error_message = str(exc)
+                if hasattr(task, "failure_reason"):
+                    task.failure_reason = str(exc)
                 db.commit()
                 run_task.send_with_options(args=(task_id,), delay=delays[retry_count] * 1000)
                 to_status = task.status.value if hasattr(task.status, "value") else str(task.status)
@@ -207,8 +256,10 @@ def run_task(task_id: str) -> None:
                 )
                 return
 
-            task.status = TaskStatus.FAILED
+            task.status = _failed_status_for_stage(stage)
             task.error_message = str(exc)
+            if hasattr(task, "failure_reason"):
+                task.failure_reason = str(exc)
             db.commit()
             logger.error(
                 (
@@ -219,7 +270,7 @@ def run_task(task_id: str) -> None:
                 task_id,
                 stage,
                 status_value,
-                TaskStatus.FAILED.value,
+                task.status.value if hasattr(task.status, "value") else str(task.status),
                 int(getattr(task, "retry_count", 0) or 0),
                 0,
                 exc,
@@ -242,10 +293,16 @@ def run_task(task_id: str) -> None:
                 0,
             )
             task.status = TaskStatus(to_status)
+            if hasattr(task, "last_success_stage"):
+                task.last_success_stage = stage
             task.error_message = None
+            if hasattr(task, "failure_reason"):
+                task.failure_reason = None
             db.commit()
             reenqueue_task_id = task_id
         else:
+            if hasattr(task, "last_success_stage"):
+                task.last_success_stage = "report"
             db.commit()
 
     finally:

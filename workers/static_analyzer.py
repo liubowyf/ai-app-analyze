@@ -79,6 +79,17 @@ def _run_static_stage_impl(task_id: str) -> dict:
             file_size=task.apk_file_size,
             md5=task.apk_md5,
         )
+        if analyzer.icon_bytes:
+            content_type = analyzer.icon_content_type or "image/png"
+            extension = ".png"
+            if content_type == "image/webp":
+                extension = ".webp"
+            elif content_type == "image/jpeg":
+                extension = ".jpg"
+            icon_storage_path = f"icons/{task_id}/app-icon{extension}"
+            if storage_client.upload_file(icon_storage_path, analyzer.icon_bytes, content_type):
+                result.basic_info.icon_storage_path = icon_storage_path
+                result.basic_info.icon_content_type = content_type
 
         # Store results - convert datetime to string for JSON serialization
         result_dict = result.model_dump()
@@ -97,6 +108,9 @@ def _run_static_stage_impl(task_id: str) -> dict:
         result_dict = convert_datetime(result_dict)
 
         task.static_analysis_result = result_dict
+        task.last_success_stage = "static"
+        task.failure_reason = None
+        task.error_message = None
         finish_stage_run(
             db,
             task_id=task_id,
@@ -117,12 +131,14 @@ def _run_static_stage_impl(task_id: str) -> dict:
     except Exception as e:
         logger.error(f"Static analysis failed for task {task_id}: {e}")
         if task:
-            # 标记静态分析失败,但不影响后续动态分析
             task.static_analysis_result = {
                 "error": True,
-                "message": f"Static analysis failed: {str(e)}. Proceeding to dynamic analysis.",
+                "message": f"Static analysis failed: {str(e)}.",
                 "is_packed": "AndroidManifest.xml" in str(e) or "encrypted" in str(e).lower()
             }
+            task.status = TaskStatus.STATIC_FAILED
+            task.error_message = str(e)
+            task.failure_reason = str(e)
             finish_stage_run(
                 db,
                 task_id=task_id,
@@ -132,14 +148,7 @@ def _run_static_stage_impl(task_id: str) -> dict:
                 details={"status": "failed"},
             )
             db.commit()
-            logger.info(f"Static analysis failed but proceeding to dynamic analysis for task {task_id}")
-
-        # 返回跳过状态,不抛出异常
-        return {
-            "task_id": task_id,
-            "status": "failed",
-            "reason": str(e)
-        }
+        raise
     finally:
         db.close()
 

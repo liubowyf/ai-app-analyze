@@ -28,6 +28,10 @@ class FrontendTaskListItem(BaseModel):
     apk_md5: str
     status: str
     risk_level: FrontendRiskLevel
+    icon_url: Optional[str] = None
+    retryable: bool = False
+    deletable: bool = True
+    failure_reason: Optional[str] = None
     created_at: str
     completed_at: Optional[str] = None
     report_ready: bool
@@ -50,6 +54,39 @@ class FrontendTaskListResponse(BaseModel):
 
     items: List[FrontendTaskListItem]
     pagination: FrontendPagination
+
+
+class FrontendRuntimeStatusSlot(BaseModel):
+    slot_name: str
+    container_name: str
+    healthy: bool
+    busy: bool
+    holder_task_id: Optional[str] = None
+    detail: Optional[str] = None
+
+
+class FrontendRuntimeStatusTasks(BaseModel):
+    queued_count: int
+    static_running_count: int
+    dynamic_running_count: int
+    report_running_count: int
+    running_count: int
+
+
+class FrontendRuntimeStatusRedroid(BaseModel):
+    configured_slots: int
+    healthy_slots: int
+    busy_slots: int
+    slots: List[FrontendRuntimeStatusSlot]
+
+
+class FrontendRuntimeStatusResponse(BaseModel):
+    api_healthy: bool
+    worker_ready: bool
+    queue_backend: str
+    tasks: FrontendRuntimeStatusTasks
+    redroid: FrontendRuntimeStatusRedroid
+    checked_at: str
 
 
 class FrontendReportTask(BaseModel):

@@ -244,7 +244,7 @@ class AndroidRunner:
             logger.error(f"Failed to take screenshot: {e}")
             return b""
 
-    def grant_all_permissions(self, host: str, port: int, package: str) -> None:
+    def grant_all_permissions(self, host: str, port: int, package: str) -> Dict[str, List[str]]:
         """
         Grant all runtime permissions to an app.
 
@@ -253,6 +253,9 @@ class AndroidRunner:
             port: ADB port
             package: Package name
         """
+        requested_permissions: List[str] = []
+        granted_permissions: List[str] = []
+        failed_permissions: List[str] = []
         try:
             # Get all permissions
             output = self.execute_adb_remote(
@@ -264,14 +267,33 @@ class AndroidRunner:
             for line in output.split('\n'):
                 if 'android.permission' in line:
                     perm = line.strip().split(':')[-1].strip()
-                    self.execute_adb_remote(
+                    requested_permissions.append(perm)
+                    result = self.execute_adb_remote(
                         host, port,
                         f"shell pm grant {package} {perm}"
                     )
+                    if isinstance(result, str) and any(
+                        token in result
+                        for token in (
+                            "Unknown package",
+                            "Operation not allowed",
+                            "SecurityException",
+                            "not a changeable permission type",
+                            "Exception",
+                        )
+                    ):
+                        failed_permissions.append(perm)
+                    else:
+                        granted_permissions.append(perm)
 
             logger.info(f"Granted all permissions to {package}")
         except Exception as e:
             logger.warning(f"Failed to grant permissions: {e}")
+        return {
+            "requested_permissions": requested_permissions,
+            "granted_permissions": granted_permissions,
+            "failed_permissions": failed_permissions,
+        }
 
     def launch_app(
         self,
@@ -298,12 +320,25 @@ class AndroidRunner:
 
             if activity_name:
                 component = f"{package}/{activity_name}"
-                self.execute_adb_remote(
-                    host,
-                    port,
-                    f"shell am start -W -n {component}",
-                    timeout_seconds=launch_timeout,
-                )
+                try:
+                    self.execute_adb_remote(
+                        host,
+                        port,
+                        f"shell am start -W -n {component}",
+                        timeout_seconds=launch_timeout,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Explicit activity launch failed for %s, falling back to package launcher: %s",
+                        component,
+                        exc,
+                    )
+                    self.execute_adb_remote(
+                        host,
+                        port,
+                        f"shell monkey -p {package} -c android.intent.category.LAUNCHER 1",
+                        timeout_seconds=launch_timeout,
+                    )
             else:
                 self.execute_adb_remote(
                     host, port,

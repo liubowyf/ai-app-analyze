@@ -7,10 +7,12 @@ from typing import Iterable, Optional
 from models.task import TaskStatus
 
 _STAGE_BY_STATUS = {
-    TaskStatus.PENDING.value: "static",
     TaskStatus.QUEUED.value: "static",
     TaskStatus.STATIC_ANALYZING.value: "dynamic",
     TaskStatus.DYNAMIC_ANALYZING.value: "report",
+    TaskStatus.REPORT_GENERATING.value: "report",
+    TaskStatus.STATIC_FAILED.value: "static",
+    TaskStatus.DYNAMIC_FAILED.value: "dynamic",
 }
 
 _NEXT_STATUS_BY_STAGE = {
@@ -21,7 +23,8 @@ _NEXT_STATUS_BY_STAGE = {
 
 _TERMINAL_STATUSES = {
     TaskStatus.COMPLETED.value,
-    TaskStatus.FAILED.value,
+    TaskStatus.STATIC_FAILED.value,
+    TaskStatus.DYNAMIC_FAILED.value,
 }
 
 

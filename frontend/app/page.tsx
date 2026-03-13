@@ -3,11 +3,17 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, ShieldAlert } from 'lucide-react';
 
+import { RuntimeStatusPanel } from '@/components/runtime-status-panel';
 import { TaskFilters } from '@/components/task-filters';
 import { TaskTable } from '@/components/task-table';
 import TaskUploadModal from '@/components/task-upload-modal';
-import { fetchFrontendTasks } from '@/lib/api';
-import type { FrontendTaskListItem, Pagination } from '@/lib/types';
+import {
+  deleteFrontendTask,
+  fetchFrontendRuntimeStatus,
+  fetchFrontendTasks,
+  retryFrontendTask,
+} from '@/lib/api';
+import type { FrontendRuntimeStatus, FrontendTaskListItem, Pagination } from '@/lib/types';
 
 const PAGE_SIZE = 20;
 
@@ -29,7 +35,11 @@ export default function TaskList() {
   const [page, setPage] = useState(1);
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  
+  const [actionTaskId, setActionTaskId] = useState<string | null>(null);
+  const [runtimeStatus, setRuntimeStatus] = useState<FrontendRuntimeStatus | null>(null);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [isLoadingRuntimeStatus, setIsLoadingRuntimeStatus] = useState(true);
+
   // Upload Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -80,6 +90,40 @@ export default function TaskList() {
     };
   }, [page, riskLevelFilter, searchTerm, statusFilter]);
 
+  useEffect(() => {
+    let isActive = true;
+
+    const loadRuntimeStatus = async () => {
+      try {
+        const response = await fetchFrontendRuntimeStatus();
+        if (!isActive) {
+          return;
+        }
+        setRuntimeStatus(response);
+        setRuntimeError(null);
+      } catch {
+        if (!isActive) {
+          return;
+        }
+        setRuntimeError('获取运行状态失败');
+      } finally {
+        if (isActive) {
+          setIsLoadingRuntimeStatus(false);
+        }
+      }
+    };
+
+    void loadRuntimeStatus();
+    const timer = window.setInterval(() => {
+      void loadRuntimeStatus();
+    }, 15000);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
   const handleTasksCreated = (createdTasks: FrontendTaskListItem[]) => {
     if (createdTasks.length === 0) {
       return;
@@ -95,6 +139,56 @@ export default function TaskList() {
       has_next: prev.total + createdTasks.length > PAGE_SIZE,
     }));
     setPage(1);
+  };
+
+  const handleRetryTask = async (taskId: string) => {
+    setActionTaskId(taskId);
+    try {
+      const detail = await retryFrontendTask(taskId);
+      setTasks((current) =>
+        current.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                status: detail.task.status,
+                risk_level: detail.task.risk_level,
+                retryable: detail.retryable,
+                failure_reason: null,
+                report_ready: detail.report_ready,
+                report_url: detail.report_url,
+                completed_at: detail.task.completed_at,
+              }
+            : task
+        )
+      );
+    } catch {
+      setLoadError('任务重试失败，请稍后重试');
+    } finally {
+      setActionTaskId(null);
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    setActionTaskId(taskId);
+    try {
+      await deleteFrontendTask(taskId);
+      setTasks((current) => current.filter((task) => task.id !== taskId));
+      setPagination((current) => {
+        const total = Math.max(0, current.total - 1);
+        const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+        return {
+          ...current,
+          total,
+          total_pages: totalPages,
+          has_next: current.page < totalPages,
+          has_prev: current.page > 1,
+        };
+      });
+    } catch {
+      setLoadError('任务删除失败，请稍后重试');
+    } finally {
+      setActionTaskId(null);
+    }
   };
 
   return (
@@ -143,11 +237,20 @@ export default function TaskList() {
           }}
         />
 
+        <RuntimeStatusPanel
+          status={runtimeStatus}
+          isLoading={isLoadingRuntimeStatus}
+          error={runtimeError}
+        />
+
         <TaskTable
           tasks={tasks}
           pagination={pagination}
           isLoading={isLoadingTasks}
           error={loadError}
+          actionTaskId={actionTaskId}
+          onRetryTask={handleRetryTask}
+          onDeleteTask={handleDeleteTask}
           onPreviousPage={() => setPage((current) => Math.max(1, current - 1))}
           onNextPage={() =>
             setPage((current) =>

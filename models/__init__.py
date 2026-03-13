@@ -16,6 +16,7 @@ from models.analysis_tables import (
     DynamicAnalysisTable,
     MasterDomainTable,
     NetworkRequestTable,
+    RedroidLeaseTable,
     ScreenshotTable,
     StaticAnalysisTable,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "DynamicAnalysisTable",
     "NetworkRequestTable",
     "MasterDomainTable",
+    "RedroidLeaseTable",
     "ScreenshotTable",
     "AnalysisRunTable",
     "WhitelistCategory",

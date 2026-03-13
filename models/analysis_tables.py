@@ -232,6 +232,19 @@ class ScreenshotTable(Base):
     task = relationship("Task", back_populates="screenshots_table")
 
 
+class RedroidLeaseTable(Base):
+    """Lease one redroid slot to one dynamic task at a time."""
+
+    __tablename__ = "redroid_leases"
+
+    slot_key: Mapped[str] = Column(String(64), primary_key=True)
+    adb_serial: Mapped[str] = Column(String(128), nullable=False)
+    container_name: Mapped[str] = Column(String(128), nullable=False)
+    holder_task_id: Mapped[Optional[str]] = Column(String(36), nullable=True, index=True)
+    acquired_at: Mapped[Optional[datetime]] = Column(DateTime, nullable=True)
+    expires_at: Mapped[Optional[datetime]] = Column(DateTime, nullable=True, index=True)
+
+
 class AnalysisRunTable(Base):
     """
     Per-stage execution run records for one task.

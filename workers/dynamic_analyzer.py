@@ -34,6 +34,7 @@ MAX_DB_SCREENSHOTS = 25
 MAX_DB_REQUESTS = 1000
 MAX_SCREENSHOT_DESCRIPTION_LENGTH = 255
 DEFAULT_CAPTURE_MODE = "redroid_zeek"
+_RETRYABLE_DB_ERROR_CODES = {"1205", "1213"}
 
 
 def _commit_with_retry(db: Session, retries: int = 2, delay: float = 1.0, context: str = "") -> None:
@@ -56,6 +57,24 @@ def _commit_with_retry(db: Session, retries: int = 2, delay: float = 1.0, contex
             time.sleep(delay)
 
 
+def _is_retryable_operational_error(exc: OperationalError) -> bool:
+    """Return whether the DB error should rebuild and retry the whole transaction."""
+    message = str(exc).lower()
+    if "deadlock" in message or "lock wait timeout" in message:
+        return True
+
+    original = getattr(exc, "orig", None)
+    if original is None:
+        return False
+
+    for attr in ("args",):
+        values = getattr(original, attr, ())
+        for value in values:
+            if str(value) in _RETRYABLE_DB_ERROR_CODES:
+                return True
+    return False
+
+
 def _mark_task_failed(task_id: str, error_message: str) -> None:
     """Best-effort persist failed status in a fresh DB session."""
     fail_db: Session = SessionLocal()
@@ -63,8 +82,9 @@ def _mark_task_failed(task_id: str, error_message: str) -> None:
         failed_task = fail_db.query(Task).filter(Task.id == task_id).first()
         if not failed_task:
             return
-        failed_task.status = TaskStatus.FAILED
+        failed_task.status = TaskStatus.DYNAMIC_FAILED
         failed_task.error_message = error_message
+        failed_task.failure_reason = error_message
         finish_stage_run(
             fail_db,
             task_id=task_id,
@@ -262,6 +282,7 @@ def _build_dynamic_stage_run_details(
         "master_domains": len(master_domains or []),
         "degraded": bool(quality_gate.get("degraded")),
         "degraded_reason": quality_gate.get("reason"),
+        "permission_summary": getattr(exploration_result, "permission_summary", {}) or {},
     }
 
 
@@ -272,185 +293,208 @@ def _persist_dynamic_normalized_tables(
     exploration_result: Any,
     traffic_monitor: Any,
     domain_report: Dict[str, Any],
+    retries: int = 2,
+    retry_delay: float = 1.0,
 ) -> None:
     """
     Persist dynamic outputs into normalized tables for downstream API queries.
 
     Any persistence issue is downgraded to warning and should not fail the task.
     """
-    try:
-        # Lightweight guard for deployments that have not run migrations yet.
-        from core.database import Base, engine
+    # Lightweight guard for deployments that have not run migrations yet.
+    from core.database import Base, engine
 
-        Base.metadata.create_all(
-            bind=engine,
-            tables=[
-                DynamicAnalysisTable.__table__,
-                NetworkRequestTable.__table__,
-                MasterDomainTable.__table__,
-                ScreenshotTable.__table__,
-            ],
-        )
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[
+            DynamicAnalysisTable.__table__,
+            NetworkRequestTable.__table__,
+            MasterDomainTable.__table__,
+            ScreenshotTable.__table__,
+        ],
+    )
 
-        primary_requests = traffic_monitor.get_requests_as_dict()
-        candidate_requests = traffic_monitor.get_candidate_requests_as_dict()
-        all_requests = primary_requests + candidate_requests
-        network_analysis = getattr(traffic_monitor, "analyze_traffic", lambda: {})()
-        source_breakdown = {}
-        if isinstance(network_analysis, dict):
-            breakdown_raw = network_analysis.get("source_breakdown")
-            if isinstance(breakdown_raw, dict):
-                source_breakdown = {
-                    str(key): int(value or 0)
-                    for key, value in breakdown_raw.items()
-                }
-        capture_mode = str(network_analysis.get("capture_mode") or DEFAULT_CAPTURE_MODE)
+    primary_requests = traffic_monitor.get_requests_as_dict()
+    candidate_requests = traffic_monitor.get_candidate_requests_as_dict()
+    all_requests = primary_requests + candidate_requests
+    network_analysis = getattr(traffic_monitor, "analyze_traffic", lambda: {})()
+    source_breakdown = {}
+    if isinstance(network_analysis, dict):
+        breakdown_raw = network_analysis.get("source_breakdown")
+        if isinstance(breakdown_raw, dict):
+            source_breakdown = {
+                str(key): int(value or 0)
+                for key, value in breakdown_raw.items()
+            }
+    capture_mode = str(network_analysis.get("capture_mode") or DEFAULT_CAPTURE_MODE)
 
-        def _sum_hits(rows: list[dict[str, Any]]) -> int:
-            total = 0
-            for row in rows:
-                try:
-                    total += max(1, int(row.get("hit_count") or row.get("count") or 1))
-                except Exception:
-                    total += 1
-            return total
+    def _sum_hits(rows: list[dict[str, Any]]) -> int:
+        total = 0
+        for row in rows:
+            try:
+                total += max(1, int(row.get("hit_count") or row.get("count") or 1))
+            except Exception:
+                total += 1
+        return total
 
-        total_observation_hits = _sum_hits(all_requests)
-        primary_observation_hits = _sum_hits(primary_requests)
-        candidate_observation_hits = _sum_hits(candidate_requests)
-        unique_domains = {
-            (item.get("host") or item.get("domain") or "").strip().lower()
-            for item in all_requests
-            if item.get("host") or item.get("domain")
-        }
-        unique_ips = {
-            (item.get("ip") or "").strip()
-            for item in all_requests
-            if item.get("ip")
-        }
-        domain_stats_rows = getattr(traffic_monitor, "get_domain_stats", lambda: [])()
-        domain_stats_index = {
-            str(item.get("domain")).strip().lower(): item
-            for item in domain_stats_rows
-            if isinstance(item, dict) and item.get("domain")
-        }
+    total_observation_hits = _sum_hits(all_requests)
+    primary_observation_hits = _sum_hits(primary_requests)
+    candidate_observation_hits = _sum_hits(candidate_requests)
+    unique_domains = {
+        (item.get("host") or item.get("domain") or "").strip().lower()
+        for item in all_requests
+        if item.get("host") or item.get("domain")
+    }
+    unique_ips = {
+        (item.get("ip") or "").strip()
+        for item in all_requests
+        if item.get("ip")
+    }
+    domain_stats_rows = getattr(traffic_monitor, "get_domain_stats", lambda: [])()
+    domain_stats_index = {
+        str(item.get("domain")).strip().lower(): item
+        for item in domain_stats_rows
+        if isinstance(item, dict) and item.get("domain")
+    }
 
-        # Ensure idempotency for retries.
-        db.query(NetworkRequestTable).filter(NetworkRequestTable.task_id == task_id).delete(synchronize_session=False)
-        db.query(MasterDomainTable).filter(MasterDomainTable.task_id == task_id).delete(synchronize_session=False)
-        db.query(ScreenshotTable).filter(ScreenshotTable.task_id == task_id).delete(synchronize_session=False)
-        db.query(DynamicAnalysisTable).filter(DynamicAnalysisTable.task_id == task_id).delete(synchronize_session=False)
+    for attempt in range(retries + 1):
+        persist_db: Session = SessionLocal()
+        try:
+            persist_db.query(NetworkRequestTable).filter(NetworkRequestTable.task_id == task_id).delete(synchronize_session=False)
+            persist_db.query(MasterDomainTable).filter(MasterDomainTable.task_id == task_id).delete(synchronize_session=False)
+            persist_db.query(ScreenshotTable).filter(ScreenshotTable.task_id == task_id).delete(synchronize_session=False)
+            persist_db.query(DynamicAnalysisTable).filter(DynamicAnalysisTable.task_id == task_id).delete(synchronize_session=False)
 
-        dynamic_row = DynamicAnalysisTable(
-            task_id=task_id,
-            total_steps=int(getattr(exploration_result, "total_steps", 0) or 0),
-            phases_completed=",".join(getattr(exploration_result, "phases_completed", []) or []),
-            unique_activities=len(set(getattr(exploration_result, "activities_visited", []) or [])),
-            activities_list=json.dumps(getattr(exploration_result, "activities_visited", []) or [], ensure_ascii=False),
-            total_screenshots=len(getattr(exploration_result, "screenshots", []) or []),
-            total_requests=len(all_requests),
-            total_observations=total_observation_hits,
-            unique_domains=len(unique_domains),
-            unique_ips=len(unique_ips),
-            master_domains=len((domain_report or {}).get("master_domains", []) or []),
-            primary_observations=primary_observation_hits,
-            candidate_observations=candidate_observation_hits,
-            capture_mode=capture_mode,
-            source_breakdown=source_breakdown or None,
-            success=1 if getattr(exploration_result, "success", False) else 0,
-            error_message=getattr(exploration_result, "error_message", None),
-            detected_package=package_name,
-            started_at=None,
-            completed_at=datetime.utcnow(),
-            duration_seconds=0,
-        )
-        db.add(dynamic_row)
-
-        for item in (primary_requests + candidate_requests)[:3000]:
-            db.add(
-                NetworkRequestTable(
-                    task_id=task_id,
-                    url=item.get("url"),
-                    method=item.get("method"),
-                    host=item.get("host") or item.get("domain"),
-                    path=item.get("path"),
-                    ip=item.get("ip"),
-                    port=int(item.get("port") or 80),
-                    scheme=item.get("scheme"),
-                    response_code=item.get("response_code"),
-                    content_type=item.get("content_type"),
-                    request_size=0,
-                    response_size=0,
-                    request_time=_safe_parse_datetime(item.get("request_time") or item.get("first_seen_at")),
-                    first_seen_at=_safe_parse_datetime(item.get("first_seen_at") or item.get("request_time")),
-                    last_seen_at=_safe_parse_datetime(item.get("last_seen_at") or item.get("request_time")),
-                    hit_count=max(1, int(item.get("hit_count") or item.get("count") or 1)),
-                    source_type=item.get("source_type") or item.get("source") or "unknown",
-                    transport=item.get("transport"),
-                    protocol=item.get("protocol"),
-                    capture_mode=item.get("capture_mode") or capture_mode,
-                    attribution_tier=item.get("attribution_tier") or "primary",
-                    package_name=item.get("package_name"),
-                    uid=item.get("uid"),
-                    process_name=item.get("process_name"),
-                    attribution_confidence=item.get("attribution_confidence"),
-                    has_sensitive_data=0,
-                    sensitive_types=None,
-                )
+            dynamic_row = DynamicAnalysisTable(
+                task_id=task_id,
+                total_steps=int(getattr(exploration_result, "total_steps", 0) or 0),
+                phases_completed=",".join(getattr(exploration_result, "phases_completed", []) or []),
+                unique_activities=len(set(getattr(exploration_result, "activities_visited", []) or [])),
+                activities_list=json.dumps(getattr(exploration_result, "activities_visited", []) or [], ensure_ascii=False),
+                total_screenshots=len(getattr(exploration_result, "screenshots", []) or []),
+                total_requests=len(all_requests),
+                total_observations=total_observation_hits,
+                unique_domains=len(unique_domains),
+                unique_ips=len(unique_ips),
+                master_domains=len((domain_report or {}).get("master_domains", []) or []),
+                primary_observations=primary_observation_hits,
+                candidate_observations=candidate_observation_hits,
+                capture_mode=capture_mode,
+                source_breakdown=source_breakdown or None,
+                success=1 if getattr(exploration_result, "success", False) else 0,
+                error_message=getattr(exploration_result, "error_message", None),
+                detected_package=package_name,
+                started_at=None,
+                completed_at=datetime.utcnow(),
+                duration_seconds=0,
             )
+            persist_db.add(dynamic_row)
 
-        for row in (domain_report or {}).get("master_domains", []) or []:
-            evidence = row.get("evidence")
-            evidence_text = json.dumps(evidence, ensure_ascii=False) if evidence is not None else None
-            stats_row = domain_stats_index.get(str(row.get("domain") or "").strip().lower(), {})
-            db.add(
-                MasterDomainTable(
-                    task_id=task_id,
-                    domain=row.get("domain"),
-                    ip=row.get("ip"),
-                    confidence_score=int(row.get("score", 0) or 0),
-                    confidence_level=row.get("confidence"),
-                    evidence=evidence_text,
-                    request_count=int(
-                        row.get("hit_count")
-                        or row.get("request_count", 0)
-                        or stats_row.get("hit_count", 0)
-                        or 0
-                    ),
-                    post_count=int(row.get("post_count", 0) or 0),
-                    first_seen_at=_safe_parse_datetime(row.get("first_seen_at") or stats_row.get("first_seen_at")),
-                    last_seen_at=_safe_parse_datetime(row.get("last_seen_at") or stats_row.get("last_seen_at")),
-                    unique_ip_count=int(
-                        row.get("unique_ip_count", 0)
-                        or stats_row.get("unique_ip_count", 0)
-                        or 0
-                    ),
-                    source_types_json=(
-                        row.get("source_types")
-                        or row.get("source_types_json")
-                        or stats_row.get("source_types")
-                    ),
-                    capture_mode=row.get("capture_mode") or stats_row.get("capture_mode") or capture_mode,
+            for item in (primary_requests + candidate_requests)[:3000]:
+                persist_db.add(
+                    NetworkRequestTable(
+                        task_id=task_id,
+                        url=item.get("url"),
+                        method=item.get("method"),
+                        host=item.get("host") or item.get("domain"),
+                        path=item.get("path"),
+                        ip=item.get("ip"),
+                        port=int(item.get("port") or 80),
+                        scheme=item.get("scheme"),
+                        response_code=item.get("response_code"),
+                        content_type=item.get("content_type"),
+                        request_size=0,
+                        response_size=0,
+                        request_time=_safe_parse_datetime(item.get("request_time") or item.get("first_seen_at")),
+                        first_seen_at=_safe_parse_datetime(item.get("first_seen_at") or item.get("request_time")),
+                        last_seen_at=_safe_parse_datetime(item.get("last_seen_at") or item.get("request_time")),
+                        hit_count=max(1, int(item.get("hit_count") or item.get("count") or 1)),
+                        source_type=item.get("source_type") or item.get("source") or "unknown",
+                        transport=item.get("transport"),
+                        protocol=item.get("protocol"),
+                        capture_mode=item.get("capture_mode") or capture_mode,
+                        attribution_tier=item.get("attribution_tier") or "primary",
+                        package_name=item.get("package_name"),
+                        uid=item.get("uid"),
+                        process_name=item.get("process_name"),
+                        attribution_confidence=item.get("attribution_confidence"),
+                        has_sensitive_data=0,
+                        sensitive_types=None,
+                    )
                 )
-            )
 
-        for shot in (getattr(exploration_result, "screenshots", []) or [])[:300]:
-            storage_path = shot.get("storage_path")
-            stage = shot.get("stage")
-            description = _truncate_screenshot_description(shot.get("description"))
-            captured_at = _safe_parse_datetime(shot.get("timestamp")) or datetime.utcnow()
-            db.add(
-                ScreenshotTable(
-                    task_id=task_id,
-                    storage_path=storage_path,
-                    file_size=0,
-                    stage=stage,
-                    description=description,
-                    captured_at=captured_at,
+            for row in (domain_report or {}).get("master_domains", []) or []:
+                evidence = row.get("evidence")
+                evidence_text = json.dumps(evidence, ensure_ascii=False) if evidence is not None else None
+                stats_row = domain_stats_index.get(str(row.get("domain") or "").strip().lower(), {})
+                persist_db.add(
+                    MasterDomainTable(
+                        task_id=task_id,
+                        domain=row.get("domain"),
+                        ip=row.get("ip"),
+                        confidence_score=int(row.get("score", 0) or 0),
+                        confidence_level=row.get("confidence"),
+                        evidence=evidence_text,
+                        request_count=int(
+                            row.get("hit_count")
+                            or row.get("request_count", 0)
+                            or stats_row.get("hit_count", 0)
+                            or 0
+                        ),
+                        post_count=int(row.get("post_count", 0) or 0),
+                        first_seen_at=_safe_parse_datetime(row.get("first_seen_at") or stats_row.get("first_seen_at")),
+                        last_seen_at=_safe_parse_datetime(row.get("last_seen_at") or stats_row.get("last_seen_at")),
+                        unique_ip_count=int(
+                            row.get("unique_ip_count", 0)
+                            or stats_row.get("unique_ip_count", 0)
+                            or 0
+                        ),
+                        source_types_json=(
+                            row.get("source_types")
+                            or row.get("source_types_json")
+                            or stats_row.get("source_types")
+                        ),
+                        capture_mode=row.get("capture_mode") or stats_row.get("capture_mode") or capture_mode,
+                    )
                 )
+
+            for shot in (getattr(exploration_result, "screenshots", []) or [])[:300]:
+                storage_path = shot.get("storage_path")
+                stage = shot.get("stage")
+                description = _truncate_screenshot_description(shot.get("description"))
+                captured_at = _safe_parse_datetime(shot.get("timestamp")) or datetime.utcnow()
+                persist_db.add(
+                    ScreenshotTable(
+                        task_id=task_id,
+                        storage_path=storage_path,
+                        file_size=0,
+                        stage=stage,
+                        description=description,
+                        captured_at=captured_at,
+                    )
+                )
+
+            persist_db.commit()
+            return
+        except OperationalError as exc:
+            persist_db.rollback()
+            if attempt >= retries or not _is_retryable_operational_error(exc):
+                logger.warning("Persist normalized dynamic tables failed task=%s: %s", task_id, exc)
+                raise
+            logger.warning(
+                "Persist normalized dynamic tables retry task=%s attempt=%s/%s error=%s",
+                task_id,
+                attempt + 1,
+                retries,
+                exc,
             )
-    except Exception as exc:
-        logger.warning("Persist normalized dynamic tables failed task=%s: %s", task_id, exc)
+            time.sleep(retry_delay)
+        except Exception as exc:
+            persist_db.rollback()
+            logger.warning("Persist normalized dynamic tables failed task=%s: %s", task_id, exc)
+            raise
+        finally:
+            persist_db.close()
 
 
 
@@ -537,4 +581,3 @@ def _run_dynamic_stage_impl(
     """Dynamic stage dispatcher."""
     backend = _build_dynamic_backend(settings.ANALYSIS_BACKEND)
     return backend.run(task_id, retry_context=retry_context)
-

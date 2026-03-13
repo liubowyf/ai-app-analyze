@@ -60,6 +60,28 @@ def test_run_task_executes_dynamic_stage_for_static_analyzing_status():
     send.assert_called_once_with("task-dynamic")
 
 
+def test_run_task_executes_dynamic_stage_for_dynamic_retry_resume_status():
+    task = SimpleNamespace(
+        id="task-dynamic-resume",
+        status=TaskStatus.DYNAMIC_ANALYZING,
+        error_message=None,
+        retry_count=1,
+        last_success_stage="static",
+        dynamic_analysis_result=None,
+    )
+    db = _build_db_with_task(task)
+
+    with patch("workers.task_actor.SessionLocal", return_value=db), \
+         patch("workers.task_actor.run_dynamic_stage", return_value={"status": "success"}) as run_dynamic, \
+         patch("workers.task_actor.run_report_stage") as run_report, \
+         patch.object(run_task, "send") as send:
+        run_task("task-dynamic-resume")
+
+    run_dynamic.assert_called_once_with("task-dynamic-resume", retry_context=None)
+    run_report.assert_not_called()
+    send.assert_called_once_with("task-dynamic-resume")
+
+
 def test_run_task_marks_failed_when_stage_raises():
     task = SimpleNamespace(id="task-2", status=TaskStatus.QUEUED, error_message=None, retry_count=10)
     db = _build_db_with_task(task)
@@ -71,9 +93,32 @@ def test_run_task_marks_failed_when_stage_raises():
          patch.object(run_task, "send") as send:
         run_task("task-2")
 
-    assert task.status == TaskStatus.FAILED
+    assert task.status == TaskStatus.STATIC_FAILED
     assert task.error_message == "boom"
     assert db.commit.call_count >= 1
+    send_with_options.assert_not_called()
+    send.assert_not_called()
+
+
+def test_run_task_marks_dynamic_failed_when_dynamic_stage_raises():
+    task = SimpleNamespace(
+        id="task-dynamic-fail",
+        status=TaskStatus.STATIC_ANALYZING,
+        error_message=None,
+        retry_count=10,
+        last_success_stage="static",
+    )
+    db = _build_db_with_task(task)
+
+    with patch("workers.task_actor.SessionLocal", return_value=db), \
+         patch("workers.task_actor.run_dynamic_stage", side_effect=RuntimeError("dynamic boom")), \
+         patch("workers.task_actor._get_retry_delays", return_value=[10, 30, 60]), \
+         patch.object(run_task, "send_with_options") as send_with_options, \
+         patch.object(run_task, "send") as send:
+        run_task("task-dynamic-fail")
+
+    assert task.status == TaskStatus.DYNAMIC_FAILED
+    assert task.error_message == "dynamic boom"
     send_with_options.assert_not_called()
     send.assert_not_called()
 

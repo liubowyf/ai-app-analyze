@@ -8,7 +8,13 @@ from sqlalchemy.orm import Session
 from models.task import Task, TaskStatus, TaskPriority
 
 
-def create_mock_task(task_id="test-task-id", status=TaskStatus.PENDING, retry_count=0):
+def create_mock_task(
+    task_id="test-task-id",
+    status=TaskStatus.QUEUED,
+    retry_count=0,
+    last_success_stage=None,
+    started_at=None,
+):
     """Helper function to create a mock task with all required fields."""
     return Task(
         id=task_id,
@@ -21,9 +27,10 @@ def create_mock_task(task_id="test-task-id", status=TaskStatus.PENDING, retry_co
         priority=TaskPriority.NORMAL,
         retry_count=retry_count,
         created_at=datetime.utcnow(),
-        started_at=datetime.utcnow() if status != TaskStatus.PENDING else None,
+        started_at=started_at,
         completed_at=datetime.utcnow() if status == TaskStatus.COMPLETED else None,
         updated_at=datetime.utcnow(),
+        last_success_stage=last_success_stage,
     )
 
 
@@ -32,7 +39,7 @@ class TestTasksRouter:
 
     def test_create_task_success(self, client: TestClient):
         """Test successful task creation."""
-        mock_task = create_mock_task(status=TaskStatus.PENDING)
+        mock_task = create_mock_task(status=TaskStatus.QUEUED, started_at=None)
 
         with patch("api.routers.tasks.SessionLocal") as mock_session_local, \
              patch("api.routers.tasks.enqueue_task", return_value=True) as mock_enqueue:
@@ -68,7 +75,7 @@ class TestTasksRouter:
 
     def test_create_task_already_started(self, client: TestClient):
         """Test task creation when task is already in progress."""
-        mock_task = create_mock_task(status=TaskStatus.QUEUED)
+        mock_task = create_mock_task(status=TaskStatus.STATIC_ANALYZING, started_at=datetime.utcnow())
 
         with patch("api.routers.tasks.SessionLocal") as mock_session_local:
             mock_db = MagicMock(spec=Session)
@@ -149,7 +156,11 @@ class TestTasksRouter:
 
     def test_retry_task_success(self, client: TestClient):
         """Test successful task retry."""
-        mock_task = create_mock_task(status=TaskStatus.FAILED, retry_count=1)
+        mock_task = create_mock_task(
+            status=TaskStatus.DYNAMIC_FAILED,
+            retry_count=1,
+            last_success_stage="static",
+        )
 
         with patch("api.routers.tasks.SessionLocal") as mock_session_local, \
              patch("api.routers.tasks.enqueue_task", return_value=True) as mock_enqueue:
@@ -162,9 +173,49 @@ class TestTasksRouter:
 
             assert response.status_code == 200
             data = response.json()
-            assert data["status"] == "queued"
+            assert data["status"] == "dynamic_analyzing"
             assert data["retry_count"] == 2
             mock_enqueue.assert_called_once_with("test-task-id", priority=TaskPriority.NORMAL)
+
+    def test_retry_task_from_static_failed_restarts_from_queue(self, client: TestClient):
+        """Static failure retry should restart from queue/full flow."""
+        mock_task = create_mock_task(
+            status=TaskStatus.STATIC_FAILED,
+            retry_count=0,
+        )
+
+        with patch("api.routers.tasks.SessionLocal") as mock_session_local, \
+             patch("api.routers.tasks.enqueue_task", return_value=True):
+            mock_db = MagicMock(spec=Session)
+            mock_session_local.return_value = mock_db
+            mock_db.query.return_value.filter.return_value.first.return_value = mock_task
+            mock_db.refresh.side_effect = lambda obj: None
+
+            response = client.post("/api/v1/tasks/test-task-id/retry")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "queued"
+
+    def test_retry_task_uses_existing_static_result_when_last_success_stage_missing(self, client: TestClient):
+        """Dynamic retry should resume from dynamic when static output already exists."""
+        mock_task = create_mock_task(
+            status=TaskStatus.DYNAMIC_FAILED,
+            retry_count=2,
+            last_success_stage=None,
+        )
+        mock_task.static_analysis_result = {"basic_info": {"package_name": "com.demo.app"}}
+
+        with patch("api.routers.tasks.SessionLocal") as mock_session_local, \
+             patch("api.routers.tasks.enqueue_task", return_value=True):
+            mock_db = MagicMock(spec=Session)
+            mock_session_local.return_value = mock_db
+            mock_db.query.return_value.filter.return_value.first.return_value = mock_task
+            mock_db.refresh.side_effect = lambda obj: None
+
+            response = client.post("/api/v1/tasks/test-task-id/retry")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "dynamic_analyzing"
 
     def test_retry_task_not_failed(self, client: TestClient):
         """Test retry on non-failed task."""
