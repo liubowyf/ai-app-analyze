@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ (task.app_name if task is defined and task and task.app_name else app_name or package_name or "未知应用") }} - 域名/IP 观察报告</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f4f7fb;
+            color: #122033;
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        .hero {
+            background: linear-gradient(135deg, #13213a 0%, #284b63 100%);
+            color: #fff;
+            border-radius: 24px;
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+        .hero h1, .hero h2, .hero p {
+            margin: 0;
+        }
+        .hero h1 {
+            font-size: 30px;
+            margin-top: 8px;
+        }
+        .hero-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 16px;
+            font-size: 14px;
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.14);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+        }
+        .grid {
+            display: grid;
+            gap: 20px;
+        }
+        .grid-two {
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        }
+        .grid-four {
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        }
+        .card {
+            background: #fff;
+            border: 1px solid #d9e1ec;
+            border-radius: 22px;
+            padding: 22px;
+            box-sizing: border-box;
+        }
+        .card h3 {
+            margin: 0 0 16px;
+            font-size: 20px;
+        }
+        .summary-card {
+            background: #f7f9fc;
+            border: 1px solid #d9e1ec;
+            border-radius: 18px;
+            padding: 16px;
+        }
+        .summary-label {
+            color: #58708a;
+            font-size: 13px;
+        }
+        .summary-value {
+            margin-top: 10px;
+            font-size: 28px;
+            font-weight: 700;
+            color: #122033;
+        }
+        .muted {
+            color: #58708a;
+            font-size: 13px;
+        }
+        .pill-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: #eef3f8;
+            color: #27425d;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .entity-list {
+            display: grid;
+            gap: 14px;
+        }
+        .entity-item {
+            border: 1px solid #d9e1ec;
+            border-radius: 18px;
+            padding: 16px;
+            background: #f9fbfd;
+        }
+        .entity-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+        }
+        .entity-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #122033;
+        }
+        .entity-meta {
+            margin-top: 6px;
+            color: #58708a;
+            font-size: 13px;
+        }
+        .entity-stats {
+            text-align: right;
+            font-size: 13px;
+            color: #58708a;
+        }
+        .timeline-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        .timeline-table th,
+        .timeline-table td {
+            text-align: left;
+            padding: 12px 8px;
+            border-bottom: 1px solid #e6edf5;
+            vertical-align: top;
+        }
+        .timeline-table th {
+            color: #58708a;
+            font-weight: 600;
+        }
+        .source-row {
+            display: grid;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+        .source-bar {
+            height: 8px;
+            border-radius: 999px;
+            background: #e7edf5;
+            overflow: hidden;
+        }
+        .source-bar > span {
+            display: block;
+            height: 8px;
+            background: #13213a;
+            border-radius: 999px;
+        }
+        .shots {
+            display: grid;
+            gap: 14px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        }
+        .shot {
+            border: 1px solid #d9e1ec;
+            border-radius: 18px;
+            overflow: hidden;
+            background: #f9fbfd;
+        }
+        .shot-image,
+        .shot-placeholder {
+            width: 100%;
+            aspect-ratio: 9 / 16;
+            object-fit: contain;
+            background: #e9eff6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #58708a;
+            font-size: 13px;
+        }
+        .shot-body {
+            padding: 14px;
+        }
+        .shot-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #122033;
+        }
+        .shot-meta {
+            margin-top: 8px;
+            color: #58708a;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .warning {
+            border: 1px solid #f0c5c5;
+            background: #fff1f1;
+            color: #8b2b2b;
+            border-radius: 16px;
+            padding: 16px;
+            margin-top: 16px;
+            font-size: 14px;
+        }
+        ul {
+            margin: 0;
+            padding-left: 18px;
+        }
+        li + li {
+            margin-top: 6px;
+        }
+    </style>
+</head>
+<body>
+    {% set task_info = task if task is defined and task else {} %}
+    {% set summary_info = summary if summary is defined and summary else {} %}
+    {% set evidence = evidence_summary if evidence_summary is defined and evidence_summary else {} %}
+    {% set domain_rows = top_domains if top_domains is defined and top_domains else (master_domains if master_domains is defined else []) %}
+    {% set ip_rows = top_ips if top_ips is defined and top_ips else [] %}
+    {% set timeline_rows = timeline if timeline is defined and timeline else [] %}
+    {% set screenshot_rows = screenshots if screenshots is defined and screenshots else [] %}
+    {% set risk_value = summary_info.get('risk_level') or risk_level or task_info.get('risk_level') or 'unknown' %}
+    {% set risk_text = summary_info.get('risk_label') or risk_label or risk_value %}
+    {% set title_name = task_info.get('app_name') or app_name or package_name or '未知应用' %}
+    {% set analysis_time = analysis_date or task_info.get('completed_at') or task_info.get('created_at') %}
+    {% set domain_count = evidence.get('domains_count') or domain_rows|length %}
+    {% set ip_count = evidence.get('ips_count') or ip_rows|length %}
+    {% set observation_hits = evidence.get('observation_hits') or evidence.get('network_requests_count') or network_requests_count or 0 %}
+    {% set screenshot_count = evidence.get('screenshots_count') or screenshot_rows|length %}
+    {% set source_breakdown_map = evidence.get('source_breakdown') if evidence.get('source_breakdown') else {} %}
+
+    <div class="container">
+        <header class="hero">
+            <p>网络反诈中心</p>
+            <h1>{{ title_name }}</h1>
+            <p style="margin-top: 12px; max-width: 760px; line-height: 1.7;">
+                {{ summary_info.get('conclusion') or '本报告已切换为域名/IP 统计优先视图，聚焦被动网络观测中的主通信端点。' }}
+            </p>
+            <div class="hero-meta">
+                <span class="badge">风险结论 {{ risk_text }}</span>
+                <span class="badge">任务 ID {{ task_info.get('id') or task_id or '-' }}</span>
+                <span class="badge">采集模式 {{ evidence.get('capture_mode') or 'redroid_zeek' }}</span>
+                <span class="badge">分析时间 {{ analysis_time or '-' }}</span>
+            </div>
+        </header>
+
+        {% if evidence_quality and evidence_quality.degraded %}
+        <section class="warning">
+            <strong>动态证据质量告警：</strong>
+            原因 {{ evidence_quality.reason }}，
+            domains={{ evidence_quality.domains_count or domain_count }}，
+            observations={{ evidence_quality.network_count or observation_hits }}，
+            screenshots={{ evidence_quality.screenshots_count or screenshot_count }}。
+        </section>
+        {% endif %}
+
+        <section class="grid grid-four" style="margin-top: 24px;">
+            <div class="summary-card">
+                <div class="summary-label">Top Domains</div>
+                <div class="summary-value">{{ domain_count }}</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Top IPs</div>
+                <div class="summary-value">{{ ip_count }}</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Observation Hits</div>
+                <div class="summary-value">{{ observation_hits }}</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Screenshots</div>
+                <div class="summary-value">{{ screenshot_count }}</div>
+            </div>
+        </section>
+
+        <section class="grid grid-two" style="margin-top: 24px;">
+            <div class="card">
+                <h3>Top Domains</h3>
+                {% if domain_rows %}
+                <div class="entity-list">
+                    {% for domain in domain_rows[:10] %}
+                    <article class="entity-item">
+                        <div class="entity-header">
+                            <div>
+                                <div class="entity-title">{{ domain.domain or '未知域名' }}</div>
+                                <div class="entity-meta">
+                                    IP {{ domain.ip or '暂无' }} · 置信度 {{ domain.confidence or 'unknown' }}
+                                </div>
+                            </div>
+                            <div class="entity-stats">
+                                <div>命中 {{ domain.hit_count or domain.request_count or 0 }}</div>
+                                <div>IP 数 {{ domain.unique_ip_count or 0 }}</div>
+                            </div>
+                        </div>
+                        {% if domain.source_types %}
+                        <div class="pill-list">
+                            {% for source in domain.source_types %}
+                            <span class="pill">{{ source }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        <div class="entity-meta">
+                            {{ domain.first_seen_at or '-' }} 至 {{ domain.last_seen_at or '-' }}
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="muted">暂无域名线索。</div>
+                {% endif %}
+            </div>
+
+            <div class="card">
+                <h3>Top IPs</h3>
+                {% if ip_rows %}
+                <div class="entity-list">
+                    {% for ip in ip_rows[:10] %}
+                    <article class="entity-item">
+                        <div class="entity-header">
+                            <div>
+                                <div class="entity-title">{{ ip.ip or '未知 IP' }}</div>
+                                <div class="entity-meta">
+                                    主域名 {{ ip.primary_domain or '暂无' }}
+                                </div>
+                            </div>
+                            <div class="entity-stats">
+                                <div>命中 {{ ip.hit_count or 0 }}</div>
+                                <div>域名数 {{ ip.domain_count or 0 }}</div>
+                            </div>
+                        </div>
+                        {% if ip.source_types %}
+                        <div class="pill-list">
+                            {% for source in ip.source_types %}
+                            <span class="pill">{{ source }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        <div class="entity-meta">
+                            {{ ip.first_seen_at or '-' }} 至 {{ ip.last_seen_at or '-' }}
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="muted">暂无关键 IP。</div>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="grid grid-two" style="margin-top: 24px;">
+            <div class="card">
+                <h3>观测来源拆分</h3>
+                {% if source_breakdown_map %}
+                    {% set source_total = source_breakdown_map.values() | sum %}
+                    {% for source, count in source_breakdown_map.items() %}
+                    <div class="source-row">
+                        <div class="entity-header">
+                            <div class="entity-title" style="font-size: 14px;">{{ source }}</div>
+                            <div class="entity-stats">{{ count }} 次</div>
+                        </div>
+                        <div class="source-bar">
+                            <span style="width: {{ ((count / source_total) * 100) if source_total else 0 }}%;"></span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                <div class="muted">暂无来源拆分。</div>
+                {% endif %}
+            </div>
+
+            <div class="card">
+                <h3>观测时间线</h3>
+                {% if timeline_rows %}
+                <table class="timeline-table">
+                    <thead>
+                        <tr>
+                            <th>来源</th>
+                            <th>域名</th>
+                            <th>IP</th>
+                            <th>协议</th>
+                            <th>命中</th>
+                            <th>时间窗</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in timeline_rows[:12] %}
+                        <tr>
+                            <td>{{ row.source_type or row.source or 'unknown' }}</td>
+                            <td>{{ row.domain or row.host or '暂无' }}</td>
+                            <td>{{ row.ip or '暂无' }}</td>
+                            <td>{{ row.protocol or '-' }} / {{ row.transport or '-' }}</td>
+                            <td>{{ row.hit_count or row.count or 0 }}</td>
+                            <td>{{ row.first_seen_at or row.request_time or '-' }} 至 {{ row.last_seen_at or row.request_time or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="muted">暂无观测时间线。</div>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="grid grid-two" style="margin-top: 24px;">
+            <div class="card">
+                <h3>应用信息</h3>
+                <div class="entity-list">
+                    <article class="entity-item">
+                        <div class="entity-title">APK 文件</div>
+                        <div class="entity-meta">{{ apk_file_name or task_info.get('apk_file_name') or '-' }}</div>
+                    </article>
+                    <article class="entity-item">
+                        <div class="entity-title">包名</div>
+                        <div class="entity-meta">{{ package_name or task_info.get('package_name') or '-' }}</div>
+                    </article>
+                    <article class="entity-item">
+                        <div class="entity-title">MD5</div>
+                        <div class="entity-meta">{{ apk_md5 or task_info.get('apk_md5') or '-' }}</div>
+                    </article>
+                    <article class="entity-item">
+                        <div class="entity-title">高亮结论</div>
+                        {% if summary_info.get('highlights') %}
+                        <ul class="muted">
+                            {% for item in summary_info.get('highlights') %}
+                            <li>{{ item }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <div class="entity-meta">暂无附加高亮。</div>
+                        {% endif %}
+                    </article>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>关键截图</h3>
+                {% if screenshot_rows %}
+                <div class="shots">
+                    {% for screenshot in screenshot_rows[:10] %}
+                    <article class="shot">
+                        {% if screenshot.image_base64 %}
+                        <img class="shot-image" src="data:image/png;base64,{{ screenshot.image_base64 }}" alt="{{ screenshot.description or '截图' }}">
+                        {% else %}
+                        <div class="shot-placeholder">截图预览不可用</div>
+                        {% endif %}
+                        <div class="shot-body">
+                            <div class="shot-title">{{ screenshot.description or '未命名截图' }}</div>
+                            <div class="shot-meta">
+                                阶段 {{ screenshot.stage or '未知' }}<br>
+                                时间 {{ screenshot.captured_at or '-' }}
+                            </div>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="muted">暂无截图。</div>
+                {% endif %}
+            </div>
+        </section>
+    </div>
+</body>
+</html>

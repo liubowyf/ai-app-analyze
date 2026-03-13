@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+.bg-tech {
+  background-image: 
+    radial-gradient(circle at 15% 50%, rgba(2, 132, 199, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(56, 189, 248, 0.08) 0%, transparent 50%);
+  background-attachment: fixed;
+}
+
+.glass-card {
+  @apply bg-white/70 backdrop-blur-xl border border-white/50 rounded-2xl shadow-xl relative overflow-hidden;
+}
+
+.glass-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.8), transparent);
+}
+
+@media print {
+  @page {
+    margin: 10mm;
+    size: A4;
+  }
+  body { 
+    background: white !important; 
+    color: black !important; 
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .bg-tech { background-image: none !important; }
+  .no-print { display: none !important; }
+  .glass-card {
+    background: white !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: none !important;
+    color: black !important;
+    break-inside: avoid;
+    margin-bottom: 1.5rem !important;
+    padding: 1.5rem !important;
+  }
+  .glass-card::before { display: none; }
+  input, textarea {
+    border: none !important;
+    background: transparent !important;
+    color: black !important;
+    resize: none;
+  }
+  .clue-item {
+    break-inside: avoid;
+  }
+}
