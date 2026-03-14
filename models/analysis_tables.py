@@ -133,6 +133,7 @@ class NetworkRequestTable(Base):
 
     # Network info
     ip: Mapped[Optional[str]] = Column(String(50), nullable=True, index=True)
+    ip_location: Mapped[Optional[str]] = Column(String(255), nullable=True)
     port: Mapped[int] = Column(Integer, default=80)
     scheme: Mapped[Optional[str]] = Column(String(10), nullable=True)
 
@@ -184,6 +185,7 @@ class MasterDomainTable(Base):
     # Domain
     domain: Mapped[Optional[str]] = Column(String(255), nullable=True, index=True)
     ip: Mapped[Optional[str]] = Column(String(50), nullable=True)
+    ip_location: Mapped[Optional[str]] = Column(String(255), nullable=True)
 
     # Confidence
     confidence_score: Mapped[int] = Column(Integer, default=0)
@@ -241,6 +243,21 @@ class AndroidPermissionCatalogTable(Base):
     description_en: Mapped[Optional[str]] = Column(Text, nullable=True)
     description_zh: Mapped[Optional[str]] = Column(Text, nullable=True)
     source_url: Mapped[Optional[str]] = Column(String(500), nullable=True)
+    updated_at: Mapped[datetime] = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class CommonNetworkIndicatorTable(Base):
+    """Common infrastructure and SDK indicators used to demote or exclude noise."""
+
+    __tablename__ = "common_network_indicators"
+
+    id: Mapped[str] = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    pattern: Mapped[str] = Column(String(255), nullable=False, index=True)
+    match_type: Mapped[str] = Column(String(32), nullable=False)
+    category: Mapped[Optional[str]] = Column(String(64), nullable=True, index=True)
+    vendor: Mapped[Optional[str]] = Column(String(128), nullable=True)
+    action: Mapped[str] = Column(String(16), nullable=False, default="demote")
+    description: Mapped[Optional[str]] = Column(Text, nullable=True)
     updated_at: Mapped[datetime] = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 

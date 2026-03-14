@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import logging
 import mimetypes
 from datetime import datetime
@@ -236,7 +237,16 @@ def _build_frontend_image_response(source: object) -> Response:
     if not data:
         raise HTTPException(status_code=404, detail="Screenshot not found")
 
-    return Response(content=data, media_type=content_type)
+    etag = hashlib.md5(data).hexdigest()
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Content-Length": str(len(data)),
+            "ETag": etag,
+        },
+    )
 
 
 @router.get("/tasks", response_model=FrontendTaskListResponse)

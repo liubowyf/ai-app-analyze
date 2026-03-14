@@ -59,6 +59,20 @@ class Settings(BaseSettings):
     REDROID_LEASE_TTL_SECONDS: int = 1800
     REDROID_LEASE_ACQUIRE_TIMEOUT_SECONDS: int = 300
     REDROID_LEASE_POLL_INTERVAL_SECONDS: float = 2.0
+    ALIYUN_IP_GEO_ENABLED: bool = False
+    ALIYUN_IP_GEO_BASE_URL: str = "https://dm-81.data.aliyun.com"
+    ALIYUN_IP_GEO_APPCODE: str = ""
+    ALIYUN_IP_GEO_APPKEY: str = ""
+    ALIYUN_IP_GEO_APPSECRET: str = ""
+    ALIYUN_IP_GEO_TIMEOUT_SECONDS: int = 8
+    ALIYUN_IP_GEO_MAX_CONCURRENCY: int = 10
+    ALIYUN_IP_GEO_ENABLED: bool = False
+    ALIYUN_IP_GEO_BASE_URL: str = "http://10.16.135.135:9093/openapi/ip/location"
+    ALIYUN_IP_GEO_APPCODE: str = ""
+    ALIYUN_IP_GEO_APPKEY: str = ""
+    ALIYUN_IP_GEO_APPSECRET: str = ""
+    ALIYUN_IP_GEO_TIMEOUT_SECONDS: int = 10
+    ALIYUN_IP_GEO_MAX_CONCURRENCY: int = 10
 
     @model_validator(mode="after")
     def apply_redis_password(self) -> "Settings":
@@ -101,6 +115,22 @@ class Settings(BaseSettings):
             allowed = ", ".join(sorted(self.ANALYSIS_BACKEND_ALLOWED))
             raise ValueError(f"ANALYSIS_BACKEND must be one of: {allowed}")
         self.ANALYSIS_BACKEND = backend
+        return self
+
+    @model_validator(mode="after")
+    def validate_ip_geo_limits(self) -> "Settings":
+        self.ALIYUN_IP_GEO_MAX_CONCURRENCY = max(1, min(int(self.ALIYUN_IP_GEO_MAX_CONCURRENCY), 30))
+        self.ALIYUN_IP_GEO_TIMEOUT_SECONDS = max(1, int(self.ALIYUN_IP_GEO_TIMEOUT_SECONDS))
+        return self
+
+    @model_validator(mode="after")
+    def clamp_ip_geo_concurrency(self) -> "Settings":
+        """Keep third-party geo lookups within provider concurrency limits."""
+        self.ALIYUN_IP_GEO_MAX_CONCURRENCY = max(
+            1,
+            min(int(self.ALIYUN_IP_GEO_MAX_CONCURRENCY or 1), 30),
+        )
+        self.ALIYUN_IP_GEO_TIMEOUT_SECONDS = max(1, int(self.ALIYUN_IP_GEO_TIMEOUT_SECONDS or 1))
         return self
 
     @property

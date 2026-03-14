@@ -299,7 +299,6 @@ export interface FrontendReportEvidenceSummary {
   domains_count: number;
   ips_count: number;
   observation_hits: number;
-  source_breakdown: Record<string, number>;
   capture_mode: string | null;
   screenshots_count: number;
 }
@@ -308,6 +307,7 @@ export interface FrontendReportDomainItem {
   id: string;
   domain: string | null;
   ip: string | null;
+  ip_location?: string | null;
   score: number;
   confidence: string | null;
   hit_count: number;
@@ -317,32 +317,27 @@ export interface FrontendReportDomainItem {
   source_types: string[];
   first_seen_at: string | null;
   last_seen_at: string | null;
+  relevance_score?: number;
+  relevance_level?: "high" | "medium" | "low" | null;
+  reasons?: string[];
+  is_common_infra?: boolean;
+  infra_category?: string | null;
 }
 
 export interface FrontendReportIpItem {
   ip: string;
+  ip_location?: string | null;
   hit_count: number;
   domain_count: number;
   primary_domain: string | null;
   source_types: string[];
   first_seen_at: string | null;
   last_seen_at: string | null;
-}
-
-export interface FrontendReportTimelineItem {
-  id: string;
-  domain: string | null;
-  host: string | null;
-  ip: string | null;
-  port?: number | null;
-  source_type: string;
-  transport: string;
-  protocol: string;
-  hit_count: number;
-  first_seen_at: string | null;
-  last_seen_at: string | null;
-  capture_mode?: string | null;
-  attribution_tier?: string | null;
+  relevance_score?: number;
+  relevance_level?: "high" | "medium" | "low" | null;
+  reasons?: string[];
+  is_common_infra?: boolean;
+  infra_category?: string | null;
 }
 
 export interface FrontendReportScreenshotItem {
@@ -363,7 +358,8 @@ export interface FrontendReportResponse {
   evidence_summary: FrontendReportEvidenceSummary;
   top_domains: FrontendReportDomainItem[];
   top_ips: FrontendReportIpItem[];
-  timeline: FrontendReportTimelineItem[];
+  public_domains: FrontendReportDomainItem[];
+  public_ips: FrontendReportIpItem[];
   screenshots: FrontendReportScreenshotItem[];
   download_url: string | null;
 }

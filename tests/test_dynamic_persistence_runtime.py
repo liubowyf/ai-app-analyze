@@ -183,3 +183,63 @@ def test_persist_dynamic_normalized_tables_sanitizes_non_ip_master_domain_values
     assert len(domain_rows) == 1
     assert domain_rows[0].domain == "staevent.xyz"
     assert domain_rows[0].ip is None
+
+
+def test_persist_dynamic_normalized_tables_persists_ip_locations(monkeypatch):
+    from workers import dynamic_analyzer
+    from core import database as database_module
+    from models.analysis_tables import MasterDomainTable, NetworkRequestTable
+
+    session = _FakePersistSession()
+    monkeypatch.setattr(dynamic_analyzer, "SessionLocal", lambda: session)
+    monkeypatch.setattr(database_module.Base.metadata, "create_all", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dynamic_analyzer.time, "sleep", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        dynamic_analyzer,
+        "resolve_ip_locations",
+        lambda ips: {"1.1.1.1": "中国 上海", "3.3.3.3": "美国 加利福尼亚"},
+    )
+
+    exploration_result = SimpleNamespace(
+        total_steps=1,
+        phases_completed=["explore"],
+        activities_visited=[],
+        screenshots=[],
+        success=True,
+        error_message=None,
+    )
+
+    dynamic_analyzer._persist_dynamic_normalized_tables(
+        db=None,
+        task_id="task-ip-geo-1",
+        package_name="com.demo.app",
+        exploration_result=exploration_result,
+        traffic_monitor=_FakeTrafficMonitor(),
+        domain_report={
+            "master_domains": [
+                {
+                    "domain": "example.com",
+                    "ip": "1.1.1.1",
+                    "score": 2,
+                    "confidence": "observed",
+                    "request_count": 2,
+                },
+                {
+                    "domain": "sdk.example",
+                    "ip": "3.3.3.3",
+                    "score": 1,
+                    "confidence": "observed",
+                    "request_count": 1,
+                },
+            ]
+        },
+        retries=0,
+        retry_delay=0,
+    )
+
+    request_rows = [row for row in session.added if isinstance(row, NetworkRequestTable)]
+    domain_rows = [row for row in session.added if isinstance(row, MasterDomainTable)]
+
+    assert any(row.ip == "1.1.1.1" and row.ip_location == "中国 上海" for row in request_rows)
+    assert any(row.ip == "1.1.1.1" and row.ip_location == "中国 上海" for row in domain_rows)
+    assert any(row.ip == "3.3.3.3" and row.ip_location == "美国 加利福尼亚" for row in domain_rows)

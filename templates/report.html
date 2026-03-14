@@ -581,16 +581,24 @@
                     </div>
                 </div>
 
-                <h3 class="subsection-title">4.1 主控域名识别 (TOP 5)</h3>
+                <h3 class="subsection-title">4.1 疑似主控域名识别</h3>
                 {% if dynamic_analysis and dynamic_analysis.master_domains and dynamic_analysis.master_domains.top_domains %}
                 <div class="domain-analysis">
-                    {% for domain in dynamic_analysis.master_domains.top_domains[:5] %}
+                    {% for domain in dynamic_analysis.master_domains.top_domains %}
                     <div class="domain-item">
                         <div>
                             <div class="domain-name">{{ domain.domain or domain.name }}</div>
                             <div style="font-size: 12px; color: #7f8c8d; margin-top: 5px;">
                                 综合得分: {{ domain.score or 'N/A' }}
                             </div>
+                            {% if domain.reasons %}
+                            <div style="font-size: 12px; color: #7f8c8d; margin-top: 5px;">
+                                判定依据:
+                                {% for reason in domain.reasons %}
+                                    {{ reason }}{% if not loop.last %}；{% endif %}
+                                {% endfor %}
+                            </div>
+                            {% endif %}
                         </div>
                         <div class="domain-count">{{ domain.request_count or domain.count }} 次</div>
                     </div>
@@ -604,7 +612,7 @@
                 {% set sorted_domains = domain_count.items()|sort(attribute='1', reverse=True) %}
                 {% if sorted_domains|length > 0 %}
                 <div class="domain-analysis">
-                    {% for domain, count in sorted_domains[:5] %}
+                    {% for domain, count in sorted_domains %}
                     <div class="domain-item">
                         <div>
                             <div class="domain-name">{{ domain }}</div>

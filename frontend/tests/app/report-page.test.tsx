@@ -96,11 +96,6 @@ const reportPayload = {
     domains_count: 2,
     ips_count: 2,
     observation_hits: 6,
-    source_breakdown: {
-      dns: 3,
-      connect: 2,
-      unknown: 1,
-    },
     capture_mode: "redroid_zeek",
     screenshots_count: 2,
   },
@@ -118,30 +113,66 @@ const reportPayload = {
       source_types: ["dns", "connect"],
       first_seen_at: "2026-03-06T10:03:05",
       last_seen_at: "2026-03-06T10:03:30",
+      relevance_score: 85,
+      relevance_level: "high",
+      reasons: ["命中应用标识词", "多来源交叉出现"],
+      is_common_infra: false,
+      infra_category: null,
     },
   ],
   top_ips: [
     {
       ip: "1.1.1.1",
+      ip_location: "中国 上海",
       hit_count: 5,
       domain_count: 1,
       primary_domain: "api.alpha.example",
       source_types: ["connect", "dns"],
       first_seen_at: "2026-03-06T10:03:05",
       last_seen_at: "2026-03-06T10:03:30",
+      relevance_score: 82,
+      relevance_level: "high",
+      reasons: ["关联高置信主域名"],
+      is_common_infra: false,
+      infra_category: null,
     },
   ],
-  timeline: [
+  public_domains: [
     {
-      id: "obs-1",
-      domain: "api.alpha.example",
-      ip: "1.1.1.1",
-      source_type: "connect",
-      transport: "tcp",
-      protocol: "https_tunnel",
+      id: "public-domain-1",
+      domain: "stat2-zdd4r1.openinstall.com",
+      ip: "123.56.28.231",
+      score: 14,
+      confidence: "observed",
+      hit_count: 14,
+      request_count: 14,
+      post_count: 0,
+      unique_ip_count: 2,
+      source_types: ["dns", "ssl"],
+      first_seen_at: "2026-03-06T10:03:05",
+      last_seen_at: "2026-03-06T10:03:55",
+      relevance_score: 0,
+      relevance_level: "low",
+      reasons: ["命中公共基础设施规则，已降级"],
+      is_common_infra: true,
+      infra_category: "analytics",
+    },
+  ],
+  public_ips: [
+    {
+      ip: "123.56.28.231",
+      ip_location: "中国 北京",
       hit_count: 2,
-      first_seen_at: "2026-03-06T10:03:21",
-      last_seen_at: "2026-03-06T10:03:30",
+      domain_count: 1,
+      primary_domain: "stat2-zdd4r1.openinstall.com",
+      source_types: ["ssl"],
+      first_seen_at: "2026-03-06T10:03:08",
+      last_seen_at: "2026-03-06T10:03:48",
+      relevance_score: 0,
+      relevance_level: "low",
+      reasons: ["命中公共基础设施规则，已降级"],
+      is_common_infra: true,
+      infra_category: "analytics",
     },
   ],
   screenshots: [
@@ -175,7 +206,7 @@ describe("ReportPage", () => {
     vi.unstubAllEnvs();
   });
 
-  it("renders domain/ip summaries, source breakdown, timeline, and screenshots from the frontend report DTO", async () => {
+  it("renders suspected domain/ip summaries and screenshots from the frontend report DTO", async () => {
     fetchFrontendReportMock.mockResolvedValueOnce(reportPayload);
 
     const ui = await ReportPage({
@@ -188,13 +219,43 @@ describe("ReportPage", () => {
     expect(screen.getByText("应用信息")).toBeInTheDocument();
     expect(screen.getByText("权限概览")).toBeInTheDocument();
     expect(screen.getByText("应用信息")).toBeInTheDocument();
-    expect(screen.getByText("Top Domains")).toBeInTheDocument();
-    expect(screen.getByText("Top IPs")).toBeInTheDocument();
-    expect(screen.getByText("观测来源拆分")).toBeInTheDocument();
-    expect(screen.getByText("观测时间线")).toBeInTheDocument();
+    expect(screen.getByText("运行期间疑似主控域名")).toBeInTheDocument();
+    expect(screen.getByText("运行期间疑似主控 IP")).toBeInTheDocument();
+    expect(screen.getByText("第三方 SDK / 公共服务域名")).toBeInTheDocument();
+    expect(screen.getByText("第三方 SDK / 公共服务 IP")).toBeInTheDocument();
     expect(screen.getByText("关键截图")).toBeInTheDocument();
     expect(screen.getAllByText("api.alpha.example").length).toBeGreaterThan(0);
+    expect(screen.getByText("命中应用标识词")).toBeInTheDocument();
+    expect(screen.getByText("关联高置信主域名")).toBeInTheDocument();
+    const shanghaiBadge = screen.getByText(
+      (_content, element) =>
+        element?.textContent === "中国 上海" &&
+        element.classList.contains("border-cyan-200")
+    );
+    expect(shanghaiBadge).toHaveClass(
+      "inline-flex",
+      "rounded-full",
+      "border",
+      "border-cyan-200",
+      "bg-cyan-50"
+    );
+    const beijingBadge = screen.getByText(
+      (_content, element) =>
+        element?.textContent === "中国 北京" &&
+        element.classList.contains("border-cyan-200")
+    );
+    expect(beijingBadge).toHaveClass(
+      "inline-flex",
+      "rounded-full",
+      "border",
+      "border-cyan-200",
+      "bg-cyan-50"
+    );
+    expect(screen.getAllByText("命中公共基础设施规则，已降级").length).toBeGreaterThan(0);
+    expect(screen.getByText("stat2-zdd4r1.openinstall.com")).toBeInTheDocument();
     expect(screen.queryByText("网络请求样本")).not.toBeInTheDocument();
+    expect(screen.queryByText("观测来源拆分")).not.toBeInTheDocument();
+    expect(screen.queryByText("观测时间线")).not.toBeInTheDocument();
     expect(screen.getByText("2.3.1 (231)")).toBeInTheDocument();
     expect(screen.getAllByText("android.permission.ACCESS_FINE_LOCATION").length).toBeGreaterThan(0);
     expect(screen.getByText("声明权限")).toBeInTheDocument();

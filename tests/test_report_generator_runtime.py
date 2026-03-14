@@ -90,12 +90,10 @@ def test_build_report_context_for_stage_uses_frontend_report_contract(monkeypatc
                 "observation_hits": 3,
                 "capture_mode": "redroid_zeek",
                 "screenshots_count": 1,
-                "source_breakdown": {"connect": 3},
             },
             "screenshots": [{"id": "shot-1"}],
             "top_domains": [],
             "top_ips": [],
-            "timeline": [],
         },
     )
     monkeypatch.setattr(
@@ -143,14 +141,113 @@ def test_build_report_context_for_stage_raises_when_dynamic_evidence_missing(mon
                 "observation_hits": 0,
                 "capture_mode": None,
                 "screenshots_count": 0,
-                "source_breakdown": {},
             },
             "screenshots": [],
             "top_domains": [],
             "top_ips": [],
-            "timeline": [],
         },
     )
 
     with pytest.raises(ValueError, match="Dynamic analysis evidence missing"):
         _build_report_context_for_stage(object(), "task-static-only")
+
+
+def test_web_report_hides_source_breakdown_and_timeline_and_renders_all_suspected_rows():
+    generator = HTMLReportGenerator()
+    html = generator.generate_web_report(
+        {
+            "task": {"id": "task-2", "app_name": "Demo App"},
+            "summary": {
+                "risk_level": "medium",
+                "risk_label": "中风险",
+                "conclusion": "测试结论",
+                "highlights": [],
+            },
+            "evidence_summary": {
+                "domains_count": 2,
+                "ips_count": 2,
+                "observation_hits": 4,
+                "capture_mode": "redroid_zeek",
+                "screenshots_count": 0,
+            },
+            "top_domains": [
+                {
+                    "domain": "api.demo.example",
+                    "ip": "1.1.1.1",
+                    "confidence": "high",
+                    "hit_count": 3,
+                    "unique_ip_count": 1,
+                    "source_types": ["dns", "ssl"],
+                    "first_seen_at": "2026-03-14T10:00:00+00:00",
+                    "last_seen_at": "2026-03-14T10:01:00+00:00",
+                    "reasons": ["命中包名词元", "多来源交叉出现"],
+                },
+                {
+                    "domain": "sdk.cdn.example",
+                    "ip": "2.2.2.2",
+                    "confidence": "low",
+                    "hit_count": 1,
+                    "unique_ip_count": 1,
+                    "source_types": ["ssl"],
+                    "first_seen_at": "2026-03-14T10:02:00+00:00",
+                    "last_seen_at": "2026-03-14T10:03:00+00:00",
+                    "reasons": ["命中公共基础设施规则，已降级"],
+                },
+            ],
+            "top_ips": [
+                {
+                    "ip": "1.1.1.1",
+                    "primary_domain": "api.demo.example",
+                    "hit_count": 3,
+                    "domain_count": 1,
+                    "source_types": ["dns", "ssl"],
+                    "first_seen_at": "2026-03-14T10:00:00+00:00",
+                    "last_seen_at": "2026-03-14T10:01:00+00:00",
+                    "reasons": ["关联高置信业务域名"],
+                },
+                {
+                    "ip": "2.2.2.2",
+                    "primary_domain": "sdk.cdn.example",
+                    "hit_count": 1,
+                    "domain_count": 1,
+                    "source_types": ["ssl"],
+                    "first_seen_at": "2026-03-14T10:02:00+00:00",
+                    "last_seen_at": "2026-03-14T10:03:00+00:00",
+                    "reasons": ["疑似 SDK 依赖，低置信保留"],
+                },
+            ],
+            "public_domains": [
+                {
+                    "domain": "stat2-zdd4r1.openinstall.com",
+                    "ip": "123.56.28.231",
+                    "hit_count": 2,
+                    "request_count": 2,
+                    "unique_ip_count": 1,
+                    "infra_category": "analytics",
+                    "reasons": ["命中公共基础设施规则，已降级"],
+                }
+            ],
+            "public_ips": [
+                {
+                    "ip": "123.56.28.231",
+                    "primary_domain": "stat2-zdd4r1.openinstall.com",
+                    "hit_count": 2,
+                    "domain_count": 1,
+                    "infra_category": "analytics",
+                    "reasons": ["命中公共基础设施规则，已降级"],
+                }
+            ],
+            "screenshots": [],
+        }
+    )
+
+    assert "观测来源拆分" not in html
+    assert "观测时间线" not in html
+    assert "运行期间疑似主控域名" in html
+    assert "运行期间疑似主控 IP" in html
+    assert "第三方 SDK / 公共服务域名" in html
+    assert "第三方 SDK / 公共服务 IP" in html
+    assert "api.demo.example" in html
+    assert "sdk.cdn.example" in html
+    assert "关联高置信业务域名" in html
+    assert "stat2-zdd4r1.openinstall.com" in html

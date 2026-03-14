@@ -191,7 +191,8 @@
     {% set evidence = evidence_summary if evidence_summary is defined and evidence_summary else {} %}
     {% set domain_rows = top_domains if top_domains is defined and top_domains else (master_domains if master_domains is defined else []) %}
     {% set ip_rows = top_ips if top_ips is defined and top_ips else [] %}
-    {% set timeline_rows = timeline if timeline is defined and timeline else [] %}
+    {% set public_domain_rows = public_domains if public_domains is defined and public_domains else [] %}
+    {% set public_ip_rows = public_ips if public_ips is defined and public_ips else [] %}
     {% set screenshot_rows = screenshots if screenshots is defined and screenshots else [] %}
     {% set risk_value = summary_info.get('risk_level') or risk_level or task_info.get('risk_level') or 'unknown' %}
     {% set risk_text = summary_info.get('risk_label') or risk_label or risk_value %}
@@ -201,7 +202,6 @@
     {% set ip_count = evidence.get('ips_count') or ip_rows|length %}
     {% set observation_hits = evidence.get('observation_hits') or evidence.get('network_requests_count') or network_requests_count or 0 %}
     {% set screenshot_count = evidence.get('screenshots_count') or screenshot_rows|length %}
-    {% set source_breakdown_map = evidence.get('source_breakdown') if evidence.get('source_breakdown') else {} %}
 
     <div class="container">
         <header class="hero">
@@ -230,11 +230,11 @@
 
         <section class="grid grid-four" style="margin-top: 24px;">
             <div class="summary-card">
-                <div class="summary-label">Top Domains</div>
+                <div class="summary-label">疑似主控域名</div>
                 <div class="summary-value">{{ domain_count }}</div>
             </div>
             <div class="summary-card">
-                <div class="summary-label">Top IPs</div>
+                <div class="summary-label">疑似主控 IP</div>
                 <div class="summary-value">{{ ip_count }}</div>
             </div>
             <div class="summary-card">
@@ -249,17 +249,25 @@
 
         <section class="grid grid-two" style="margin-top: 24px;">
             <div class="card">
-                <h3>Top Domains</h3>
+                <h3>运行期间疑似主控域名</h3>
                 {% if domain_rows %}
                 <div class="entity-list">
-                    {% for domain in domain_rows[:10] %}
+                    {% for domain in domain_rows %}
                     <article class="entity-item">
                         <div class="entity-header">
                             <div>
                                 <div class="entity-title">{{ domain.domain or '未知域名' }}</div>
                                 <div class="entity-meta">
-                                    IP {{ domain.ip or '暂无' }} · 置信度 {{ domain.confidence or 'unknown' }}
+                                    IP {{ domain.ip or '暂无' }} · 归属地 {{ domain.ip_location or '待补充' }} · 置信度 {{ domain.confidence or 'unknown' }}
                                 </div>
+                                {% if domain.reasons %}
+                                <div class="entity-meta">
+                                    判定依据：
+                                    {% for reason in domain.reasons %}
+                                        {{ reason }}{% if not loop.last %}；{% endif %}
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
                             </div>
                             <div class="entity-stats">
                                 <div>命中 {{ domain.hit_count or domain.request_count or 0 }}</div>
@@ -285,17 +293,25 @@
             </div>
 
             <div class="card">
-                <h3>Top IPs</h3>
+                <h3>运行期间疑似主控 IP</h3>
                 {% if ip_rows %}
                 <div class="entity-list">
-                    {% for ip in ip_rows[:10] %}
+                    {% for ip in ip_rows %}
                     <article class="entity-item">
                         <div class="entity-header">
                             <div>
                                 <div class="entity-title">{{ ip.ip or '未知 IP' }}</div>
                                 <div class="entity-meta">
-                                    主域名 {{ ip.primary_domain or '暂无' }}
+                                    主域名 {{ ip.primary_domain or '暂无' }} · 归属地 {{ ip.ip_location or '待补充' }}
                                 </div>
+                                {% if ip.reasons %}
+                                <div class="entity-meta">
+                                    判定依据：
+                                    {% for reason in ip.reasons %}
+                                        {{ reason }}{% if not loop.last %}；{% endif %}
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
                             </div>
                             <div class="entity-stats">
                                 <div>命中 {{ ip.hit_count or 0 }}</div>
@@ -323,54 +339,70 @@
 
         <section class="grid grid-two" style="margin-top: 24px;">
             <div class="card">
-                <h3>观测来源拆分</h3>
-                {% if source_breakdown_map %}
-                    {% set source_total = source_breakdown_map.values() | sum %}
-                    {% for source, count in source_breakdown_map.items() %}
-                    <div class="source-row">
+                <h3>第三方 SDK / 公共服务域名</h3>
+                {% if public_domain_rows %}
+                <div class="entity-list">
+                    {% for domain in public_domain_rows %}
+                    <article class="entity-item">
                         <div class="entity-header">
-                            <div class="entity-title" style="font-size: 14px;">{{ source }}</div>
-                            <div class="entity-stats">{{ count }} 次</div>
+                            <div>
+                                <div class="entity-title">{{ domain.domain or '暂无' }}</div>
+                                <div class="entity-meta">
+                                    IP {{ domain.ip or '暂无' }} · 归属地 {{ domain.ip_location or '待补充' }} · 类别 {{ domain.infra_category or '公共服务' }}
+                                </div>
+                                {% if domain.reasons %}
+                                <div class="entity-meta">
+                                    判定依据：
+                                    {% for reason in domain.reasons %}
+                                        {{ reason }}{% if not loop.last %}；{% endif %}
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="entity-stats">
+                                <div>命中 {{ domain.hit_count or domain.request_count or 0 }}</div>
+                                <div>IP 数 {{ domain.unique_ip_count or 0 }}</div>
+                            </div>
                         </div>
-                        <div class="source-bar">
-                            <span style="width: {{ ((count / source_total) * 100) if source_total else 0 }}%;"></span>
-                        </div>
-                    </div>
+                    </article>
                     {% endfor %}
+                </div>
                 {% else %}
-                <div class="muted">暂无来源拆分。</div>
+                <div class="muted">暂无第三方 SDK / 公共服务域名。</div>
                 {% endif %}
             </div>
 
             <div class="card">
-                <h3>观测时间线</h3>
-                {% if timeline_rows %}
-                <table class="timeline-table">
-                    <thead>
-                        <tr>
-                            <th>来源</th>
-                            <th>域名</th>
-                            <th>IP</th>
-                            <th>协议</th>
-                            <th>命中</th>
-                            <th>时间窗</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in timeline_rows[:12] %}
-                        <tr>
-                            <td>{{ row.source_type or row.source or 'unknown' }}</td>
-                            <td>{{ row.domain or row.host or '暂无' }}</td>
-                            <td>{{ row.ip or '暂无' }}</td>
-                            <td>{{ row.protocol or '-' }} / {{ row.transport or '-' }}</td>
-                            <td>{{ row.hit_count or row.count or 0 }}</td>
-                            <td>{{ row.first_seen_at or row.request_time or '-' }} 至 {{ row.last_seen_at or row.request_time or '-' }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <h3>第三方 SDK / 公共服务 IP</h3>
+                {% if public_ip_rows %}
+                <div class="entity-list">
+                    {% for ip in public_ip_rows %}
+                    <article class="entity-item">
+                        <div class="entity-header">
+                            <div>
+                                <div class="entity-title">{{ ip.ip }}</div>
+                                <div class="entity-meta">
+                                    主域名 {{ ip.primary_domain or '暂无' }} · 归属地 {{ ip.ip_location or '待补充' }} · 类别 {{ ip.infra_category or '公共服务' }}
+                                </div>
+                                {% if ip.reasons %}
+                                <div class="entity-meta">
+                                    判定依据：
+                                    {% for reason in ip.reasons %}
+                                        {{ reason }}{% if not loop.last %}；{% endif %}
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="entity-stats">
+                                <div>命中 {{ ip.hit_count or 0 }}</div>
+                                <div>域名数 {{ ip.domain_count or 0 }}</div>
+                            </div>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
                 {% else %}
-                <div class="muted">暂无观测时间线。</div>
+                <div class="muted">暂无第三方 SDK / 公共服务 IP。</div>
                 {% endif %}
             </div>
         </section>

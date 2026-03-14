@@ -117,7 +117,9 @@ class FrontendReportEvidenceSummary(BaseModel):
     """Top-level counts shown on the report page."""
 
     domains_count: int
-    network_requests_count: int
+    ips_count: int
+    observation_hits: int
+    capture_mode: Optional[str] = None
     screenshots_count: int
 
 
@@ -127,22 +129,39 @@ class FrontendReportDomainItem(BaseModel):
     id: str
     domain: Optional[str] = None
     ip: Optional[str] = None
+    ip_location: Optional[str] = None
     score: int
     confidence: Optional[str] = None
+    hit_count: int
     request_count: int
     post_count: int
+    unique_ip_count: int = 0
+    source_types: List[str] = []
+    first_seen_at: Optional[str] = None
+    last_seen_at: Optional[str] = None
+    relevance_score: Optional[int] = None
+    relevance_level: Optional[str] = None
+    reasons: List[str] = []
+    is_common_infra: bool = False
+    infra_category: Optional[str] = None
 
 
-class FrontendReportRequestItem(BaseModel):
-    """Frontend network request item."""
+class FrontendReportIpItem(BaseModel):
+    """Frontend suspected IP item."""
 
-    id: str
-    host: Optional[str] = None
-    url: Optional[str] = None
-    method: Optional[str] = None
-    path: Optional[str] = None
-    response_code: Optional[int] = None
-    request_time: Optional[str] = None
+    ip: str
+    ip_location: Optional[str] = None
+    hit_count: int
+    domain_count: int
+    primary_domain: Optional[str] = None
+    source_types: List[str] = []
+    first_seen_at: Optional[str] = None
+    last_seen_at: Optional[str] = None
+    relevance_score: Optional[int] = None
+    relevance_level: Optional[str] = None
+    reasons: List[str] = []
+    is_common_infra: bool = False
+    infra_category: Optional[str] = None
 
 
 class FrontendReportScreenshotItem(BaseModel):
@@ -162,7 +181,9 @@ class FrontendReportResponse(BaseModel):
     task: FrontendReportTask
     summary: FrontendReportSummary
     evidence_summary: FrontendReportEvidenceSummary
-    domains: List[FrontendReportDomainItem]
-    requests: List[FrontendReportRequestItem]
+    top_domains: List[FrontendReportDomainItem]
+    top_ips: List[FrontendReportIpItem]
+    public_domains: List[FrontendReportDomainItem]
+    public_ips: List[FrontendReportIpItem]
     screenshots: List[FrontendReportScreenshotItem]
     download_url: Optional[str] = None

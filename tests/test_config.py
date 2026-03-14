@@ -146,3 +146,25 @@ def test_config_no_longer_exposes_redroid_ssh_fields(monkeypatch):
         "REDROID_SSH_PASSWORD",
     ):
         assert not hasattr(settings, field_name)
+
+
+def test_config_exposes_aliyun_ip_geo_settings(monkeypatch):
+    monkeypatch.setenv("ALIYUN_IP_GEO_ENABLED", "true")
+    monkeypatch.setenv("ALIYUN_IP_GEO_BASE_URL", "https://example.aliyun.test")
+    monkeypatch.setenv("ALIYUN_IP_GEO_APPCODE", "demo-appcode")
+    monkeypatch.setenv("ALIYUN_IP_GEO_APPKEY", "demo-appkey")
+    monkeypatch.setenv("ALIYUN_IP_GEO_APPSECRET", "demo-secret")
+    monkeypatch.setenv("ALIYUN_IP_GEO_TIMEOUT_SECONDS", "8")
+    monkeypatch.setenv("ALIYUN_IP_GEO_MAX_CONCURRENCY", "40")
+
+    from core.config import Settings
+
+    settings = Settings(_env_file=None)
+
+    assert settings.ALIYUN_IP_GEO_ENABLED is True
+    assert settings.ALIYUN_IP_GEO_BASE_URL == "https://example.aliyun.test"
+    assert settings.ALIYUN_IP_GEO_APPCODE == "demo-appcode"
+    assert settings.ALIYUN_IP_GEO_APPKEY == "demo-appkey"
+    assert settings.ALIYUN_IP_GEO_APPSECRET == "demo-secret"
+    assert settings.ALIYUN_IP_GEO_TIMEOUT_SECONDS == 8
+    assert settings.ALIYUN_IP_GEO_MAX_CONCURRENCY == 30

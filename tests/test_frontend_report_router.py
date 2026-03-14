@@ -17,6 +17,7 @@ from core.database import Base
 from models.analysis_tables import (
     AnalysisRunTable,
     AndroidPermissionCatalogTable,
+    CommonNetworkIndicatorTable,
     DynamicAnalysisTable,
     MasterDomainTable,
     NetworkRequestTable,
@@ -111,11 +112,11 @@ def _seed_completed_report_task(db: Session) -> None:
             task_id=task_id,
             detected_package="com.demo.alpha",
             capture_mode="redroid_zeek",
-            total_observations=6,
-            total_requests=3,
-            master_domains=2,
-            unique_domains=2,
-            unique_ips=2,
+            total_observations=7,
+            total_requests=4,
+            master_domains=3,
+            unique_domains=3,
+            unique_ips=3,
             source_breakdown={"dns": 3, "connect": 2, "unknown": 1},
             total_screenshots=2,
             duration_seconds=420,
@@ -150,6 +151,14 @@ def _seed_completed_report_task(db: Session) -> None:
     )
     db.add_all(
         [
+            CommonNetworkIndicatorTable(
+                pattern=".googleapis.com",
+                match_type="suffix",
+                category="google",
+                vendor="google",
+                action="demote",
+                description="Google 公共服务域名",
+            ),
             AndroidPermissionCatalogTable(
                 code="android.permission.INTERNET",
                 description_en="Allows applications to open network sockets.",
@@ -171,6 +180,7 @@ def _seed_completed_report_task(db: Session) -> None:
                 task_id=task_id,
                 domain="api.alpha.example",
                 ip="1.1.1.1",
+                ip_location="中国 上海",
                 confidence_score=98,
                 confidence_level="high",
                 request_count=5,
@@ -185,6 +195,7 @@ def _seed_completed_report_task(db: Session) -> None:
                 task_id=task_id,
                 domain="cdn.alpha.example",
                 ip="2.2.2.2",
+                ip_location="美国 加利福尼亚",
                 confidence_score=60,
                 confidence_level="medium",
                 request_count=1,
@@ -193,6 +204,21 @@ def _seed_completed_report_task(db: Session) -> None:
                 last_seen_at=datetime(2026, 3, 6, 10, 3, 40),
                 unique_ip_count=1,
                 source_types_json=["unknown"],
+            ),
+            MasterDomainTable(
+                id="domain-3",
+                task_id=task_id,
+                domain="sdk-analytics.example",
+                ip="3.3.3.3",
+                ip_location="中国 香港",
+                confidence_score=88,
+                confidence_level="high",
+                request_count=9,
+                post_count=0,
+                first_seen_at=datetime(2026, 3, 6, 10, 3, 0),
+                last_seen_at=datetime(2026, 3, 6, 10, 4, 0),
+                unique_ip_count=1,
+                source_types_json=["dns", "ssl", "http"],
             ),
         ]
     )
@@ -206,6 +232,7 @@ def _seed_completed_report_task(db: Session) -> None:
                 host="api.alpha.example",
                 path=None,
                 ip="1.1.1.1",
+                ip_location="中国 上海",
                 port=53,
                 response_code=None,
                 request_time=datetime(2026, 3, 6, 10, 3, 5),
@@ -226,6 +253,7 @@ def _seed_completed_report_task(db: Session) -> None:
                 host="api.alpha.example",
                 path=None,
                 ip="1.1.1.1",
+                ip_location="中国 上海",
                 port=443,
                 scheme="https",
                 response_code=None,
@@ -247,6 +275,7 @@ def _seed_completed_report_task(db: Session) -> None:
                 host="cdn.alpha.example",
                 path=None,
                 ip="2.2.2.2",
+                ip_location="美国 加利福尼亚",
                 port=443,
                 scheme="https",
                 response_code=None,
@@ -257,6 +286,28 @@ def _seed_completed_report_task(db: Session) -> None:
                 source_type="unknown",
                 transport="tcp",
                 protocol="unknown",
+                capture_mode="redroid_zeek",
+                attribution_tier="candidate",
+            ),
+            NetworkRequestTable(
+                id="request-4",
+                task_id=task_id,
+                url="https://sdk-analytics.example/v1/collect",
+                method="POST",
+                host="sdk-analytics.example",
+                path="/v1/collect",
+                ip="3.3.3.3",
+                ip_location="中国 香港",
+                port=443,
+                scheme="https",
+                response_code=200,
+                request_time=datetime(2026, 3, 6, 10, 3, 1),
+                first_seen_at=datetime(2026, 3, 6, 10, 3, 1),
+                last_seen_at=datetime(2026, 3, 6, 10, 3, 50),
+                hit_count=9,
+                source_type="http",
+                transport="tcp",
+                protocol="https",
                 capture_mode="redroid_zeek",
                 attribution_tier="candidate",
             ),
@@ -308,11 +359,11 @@ class TestFrontendReportRouter:
         finally:
             db.close()
 
-    def test_get_frontend_report_returns_domain_ip_first_report_dto_with_url_screenshots(
+    def test_get_frontend_report_returns_suspected_controlled_domain_report_dto_with_url_screenshots(
         self,
         frontend_client: tuple[TestClient, sessionmaker],
     ):
-        """Report endpoint should pivot to domain/IP summaries rather than request lists."""
+        """Report endpoint should expose suspected app-controlled domains/IPs only."""
         client, _ = frontend_client
 
         response = client.get("/api/v1/frontend/reports/task-report-001")
@@ -361,8 +412,7 @@ class TestFrontendReportRouter:
         assert data["evidence_summary"] == {
             "domains_count": 2,
             "ips_count": 2,
-            "observation_hits": 6,
-            "source_breakdown": {"dns": 3, "connect": 2, "unknown": 1},
+            "observation_hits": 7,
             "capture_mode": "redroid_zeek",
             "screenshots_count": 3,
         }
@@ -371,13 +421,27 @@ class TestFrontendReportRouter:
             "cdn.alpha.example",
         ]
         assert data["top_domains"][0]["hit_count"] == 5
+        assert data["top_domains"][0]["relevance_level"] == "high"
+        assert data["top_domains"][0]["is_common_infra"] is False
+        assert any("应用标识" in reason for reason in data["top_domains"][0]["reasons"])
         assert data["top_domains"][0]["first_seen_at"] == "2026-03-06T10:03:05"
         assert data["top_ips"][0]["ip"] == "1.1.1.1"
         assert data["top_ips"][0]["hit_count"] == 5
         assert data["top_ips"][0]["primary_domain"] == "api.alpha.example"
-        assert data["timeline"][0]["domain"] == "cdn.alpha.example"
-        assert data["timeline"][0]["source_type"] == "unknown"
-        assert data["timeline"][0]["last_seen_at"] == "2026-03-06T10:03:40"
+        assert data["top_ips"][0]["ip_location"] == "中国 上海"
+        assert data["top_ips"][0]["relevance_level"] == "high"
+        assert data["top_ips"][0]["is_common_infra"] is False
+        assert "timeline" not in data
+        assert "source_breakdown" not in data["evidence_summary"]
+        assert "sdk-analytics.example" not in [item["domain"] for item in data["top_domains"]]
+        assert "3.3.3.3" not in [item["ip"] for item in data["top_ips"]]
+        assert data["public_domains"][0]["domain"] == "sdk-analytics.example"
+        assert data["public_domains"][0]["ip_location"] == "中国 香港"
+        assert data["public_domains"][0]["is_common_infra"] is True
+        assert data["public_domains"][0]["infra_category"] == "analytics"
+        assert data["public_ips"][0]["ip"] == "3.3.3.3"
+        assert data["public_ips"][0]["ip_location"] == "中国 香港"
+        assert data["public_ips"][0]["is_common_infra"] is True
         assert "requests" not in data
         screenshots_by_id = {item["id"]: item for item in data["screenshots"]}
         assert data["screenshots"][0]["id"] == "shot-2"
@@ -404,6 +468,9 @@ class TestFrontendReportRouter:
 
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("image/png")
+        assert response.headers["cache-control"] == "public, max-age=86400"
+        assert response.headers["content-length"] == str(len(b"\x89PNG\r\n\x1a\nmock-image"))
+        assert response.headers["etag"]
         assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
 
     def test_report_icon_resource_is_served_via_url_reference(

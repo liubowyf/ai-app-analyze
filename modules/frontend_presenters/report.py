@@ -17,15 +17,17 @@ from models.analysis_tables import (
     StaticAnalysisTable,
 )
 from models.task import Task, TaskStatus
+from modules.ip_geo import backfill_missing_ip_locations, resolve_ip_locations
 from modules.android_permissions.catalog import (
     aggregate_permission_summary_from_runs,
     build_permission_details,
 )
-
-
-TOP_DOMAIN_LIMIT = 10
-TOP_IP_LIMIT = 10
-TIMELINE_LIMIT = 12
+from modules.domain_intelligence.relevance import (
+    extract_app_tokens,
+    load_common_network_indicators,
+    score_domain_candidate,
+    score_ip_candidate,
+)
 
 
 @dataclass
@@ -88,19 +90,6 @@ def _normalize_source_types(value: Any) -> list[str]:
     if isinstance(parsed, list):
         return sorted(str(item) for item in parsed)
     return [str(parsed)]
-
-
-def _normalize_source_breakdown(value: Any) -> dict[str, int]:
-    parsed = _parse_jsonish(value)
-    if not isinstance(parsed, dict):
-        return {}
-    result: dict[str, int] = {}
-    for key, raw_value in parsed.items():
-        try:
-            result[str(key)] = int(raw_value or 0)
-        except Exception:
-            continue
-    return result
 
 
 def _merge_iso(current: str | None, candidate: str | None, *, choose_min: bool) -> str | None:
@@ -244,6 +233,7 @@ def _serialize_domain_from_row(row: MasterDomainTable) -> dict[str, Any]:
         "id": row.id,
         "domain": row.domain,
         "ip": row.ip,
+        "ip_location": getattr(row, "ip_location", None),
         "score": int(getattr(row, "confidence_score", 0) or 0),
         "confidence": row.confidence_level,
         "hit_count": hit_count,
@@ -263,6 +253,7 @@ def _normalize_domain_item(item: dict[str, Any], *, fallback_id: str, capture_mo
         "id": str(item.get("id") or fallback_id),
         "domain": item.get("domain"),
         "ip": item.get("ip"),
+        "ip_location": item.get("ip_location"),
         "score": int(item.get("score") or 0),
         "confidence": item.get("confidence"),
         "hit_count": hit_count,
@@ -307,6 +298,7 @@ def _serialize_observation_from_row(row: NetworkRequestTable) -> dict[str, Any]:
         "domain": domain,
         "host": domain,
         "ip": row.ip,
+        "ip_location": getattr(row, "ip_location", None),
         "port": row.port,
         "source_type": getattr(row, "source_type", None) or "unknown",
         "transport": getattr(row, "transport", None) or "unknown",
@@ -334,6 +326,7 @@ def _normalize_observation_item(
         "domain": domain,
         "host": domain,
         "ip": item.get("ip"),
+        "ip_location": item.get("ip_location"),
         "port": item.get("port"),
         "source_type": item.get("source_type") or item.get("source") or "unknown",
         "transport": item.get("transport") or "unknown",
@@ -464,6 +457,231 @@ def _build_ip_stats(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return items
 
 
+def _build_suspected_controlled_domains(
+    db: Session,
+    *,
+    app_name: str,
+    package_name: str | None,
+    domain_rows: list[dict[str, Any]],
+    observations: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    app_tokens = extract_app_tokens(app_name, package_name)
+    indicators = load_common_network_indicators(db)
+    observation_hits_by_domain: dict[str, int] = {}
+    source_types_by_domain: dict[str, set[str]] = {}
+    for item in observations:
+        domain = str(item.get("domain") or item.get("host") or "").strip().lower()
+        if not domain:
+            continue
+        observation_hits_by_domain[domain] = observation_hits_by_domain.get(domain, 0) + int(item.get("hit_count") or 0)
+        source_types_by_domain.setdefault(domain, set()).add(str(item.get("source_type") or "unknown"))
+
+    suspected: list[dict[str, Any]] = []
+    public_rows: list[dict[str, Any]] = []
+    for row in domain_rows:
+        domain = str(row.get("domain") or "").strip()
+        if not domain:
+            continue
+        source_types = sorted(
+            set(row.get("source_types") or [])
+            | source_types_by_domain.get(domain.lower(), set())
+        )
+        hit_count = max(
+            int(row.get("hit_count") or row.get("request_count") or 0),
+            observation_hits_by_domain.get(domain.lower(), 0),
+        )
+        relevance = score_domain_candidate(
+            {
+                "domain": domain,
+                "ip": row.get("ip"),
+                "ip_location": row.get("ip_location"),
+                "hit_count": hit_count,
+                "request_count": hit_count,
+                "source_types": source_types,
+                "confidence": row.get("confidence"),
+                "post_count": row.get("post_count"),
+            },
+            app_tokens=app_tokens,
+            indicators=indicators,
+        )
+        enriched = {
+            **row,
+            "hit_count": hit_count,
+            "request_count": hit_count,
+            "source_types": source_types,
+            "relevance_score": int(relevance["relevance_score"]),
+            "relevance_level": relevance["relevance_level"],
+            "reasons": relevance["reasons"],
+            "is_common_infra": relevance["is_common_infra"],
+            "infra_category": relevance["infra_category"],
+        }
+        if relevance["is_common_infra"]:
+            public_rows.append(enriched)
+            continue
+        if relevance["excluded"]:
+            continue
+        suspected.append(enriched)
+
+    suspected.sort(
+        key=lambda item: (
+            {"high": 3, "medium": 2, "low": 1}.get(item.get("relevance_level"), 0) * -1,
+            -int(item.get("relevance_score") or 0),
+            -int(item.get("hit_count") or 0),
+            item.get("domain") or "",
+        )
+    )
+    public_rows.sort(
+        key=lambda item: (
+            item.get("infra_category") or "",
+            -int(item.get("hit_count") or 0),
+            item.get("domain") or "",
+        )
+    )
+    return suspected, public_rows
+
+
+def _build_classified_ips(
+    db: Session,
+    suspected_domains: list[dict[str, Any]],
+    public_domains: list[dict[str, Any]],
+    observations: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    indicators = load_common_network_indicators(db)
+    domain_lookup = {
+        str(item.get("domain") or "").strip().lower(): item
+        for item in [*suspected_domains, *public_domains]
+        if str(item.get("domain") or "").strip()
+    }
+    public_domain_names = {
+        str(item.get("domain") or "").strip().lower()
+        for item in public_domains
+        if str(item.get("domain") or "").strip()
+    }
+    rows: dict[str, dict[str, Any]] = {}
+    for item in observations:
+        domain = str(item.get("domain") or item.get("host") or "").strip().lower()
+        if domain not in domain_lookup:
+            continue
+        ip = str(item.get("ip") or "").strip()
+        if not ip:
+            continue
+        entry = rows.setdefault(
+            ip,
+            {
+                "ip": ip,
+                "hit_count": 0,
+                "domain_count": 0,
+                "primary_domain": None,
+                "source_types": set(),
+                "first_seen_at": None,
+                "last_seen_at": None,
+                "ip_location": None,
+                "domain_hits": {},
+                "reasons": set(),
+                "best_level": None,
+                "best_score": 0,
+                "is_common_infra": False,
+                "infra_category": None,
+            },
+        )
+        hit_count = int(item.get("hit_count") or 0)
+        entry["hit_count"] += hit_count
+        entry["source_types"].add(str(item.get("source_type") or "unknown"))
+        entry["first_seen_at"] = _merge_iso(entry["first_seen_at"], item.get("first_seen_at"), choose_min=True)
+        entry["last_seen_at"] = _merge_iso(entry["last_seen_at"], item.get("last_seen_at"), choose_min=False)
+        if item.get("ip_location") and not entry["ip_location"]:
+            entry["ip_location"] = item.get("ip_location")
+        entry["domain_hits"][domain] = entry["domain_hits"].get(domain, 0) + hit_count
+        domain_meta = domain_lookup[domain]
+        entry["reasons"].update(domain_meta.get("reasons") or [])
+        entry["is_common_infra"] = entry["is_common_infra"] or bool(domain_meta.get("is_common_infra"))
+        entry["infra_category"] = entry["infra_category"] or domain_meta.get("infra_category")
+        if domain in public_domain_names:
+            entry["public_hits"] = int(entry.get("public_hits") or 0) + hit_count
+        else:
+            entry["suspected_hits"] = int(entry.get("suspected_hits") or 0) + hit_count
+        if int(domain_meta.get("relevance_score") or 0) > int(entry["best_score"] or 0):
+            entry["best_score"] = int(domain_meta.get("relevance_score") or 0)
+            entry["best_level"] = domain_meta.get("relevance_level")
+
+    suspected_items: list[dict[str, Any]] = []
+    public_items: list[dict[str, Any]] = []
+    for ip, row in rows.items():
+        if not row["domain_hits"]:
+            continue
+        sorted_domains = sorted(row["domain_hits"].items(), key=lambda item: (-item[1], item[0]))
+        relevance = score_ip_candidate(
+            {
+                "ip": ip,
+                "hit_count": int(row["hit_count"] or 0),
+            },
+            indicators=indicators,
+            related_domain_rows=suspected_domains,
+        )
+        if relevance["excluded"]:
+            if not bool(row["is_common_infra"]):
+                continue
+        enriched = {
+            "ip": ip,
+            "ip_location": row.get("ip_location"),
+            "hit_count": int(row["hit_count"] or 0),
+            "domain_count": len(row["domain_hits"]),
+            "primary_domain": sorted_domains[0][0],
+            "source_types": sorted(str(item) for item in row["source_types"]),
+            "first_seen_at": row["first_seen_at"],
+            "last_seen_at": row["last_seen_at"],
+            "relevance_score": int(relevance["relevance_score"] or row["best_score"] or 0),
+            "relevance_level": relevance["relevance_level"] or row["best_level"],
+            "reasons": sorted(set(str(item) for item in row["reasons"]) | set(relevance["reasons"])),
+            "is_common_infra": bool(relevance["is_common_infra"] or row["is_common_infra"]),
+            "infra_category": relevance["infra_category"] or row["infra_category"],
+        }
+        if bool(enriched["is_common_infra"]) and int(row.get("public_hits") or 0) >= int(row.get("suspected_hits") or 0):
+            public_items.append(enriched)
+        elif not relevance["excluded"]:
+            suspected_items.append(enriched)
+        else:
+            public_items.append(enriched)
+    suspected_items.sort(
+        key=lambda item: (
+            {"high": 3, "medium": 2, "low": 1}.get(item.get("relevance_level"), 0) * -1,
+            -int(item.get("relevance_score") or 0),
+            -int(item.get("hit_count") or 0),
+            item.get("ip") or "",
+        )
+    )
+    public_items.sort(
+        key=lambda item: (
+            item.get("infra_category") or "",
+            -int(item.get("hit_count") or 0),
+            item.get("ip") or "",
+        )
+    )
+    return suspected_items, public_items
+
+
+def _backfill_report_ip_locations(
+    db: Session,
+    *,
+    domain_rows: list[MasterDomainTable],
+    observation_rows: list[NetworkRequestTable],
+) -> None:
+    """Best-effort backfill of missing IP locations for historical completed tasks."""
+    task_ids = {
+        str(getattr(row, "task_id", "") or "").strip()
+        for row in [*domain_rows, *observation_rows]
+        if getattr(row, "task_id", None)
+    }
+    if not task_ids:
+        return
+    try:
+        for task_id in sorted(task_ids):
+            backfill_missing_ip_locations(db, batch_size=100, limit=100, task_id=task_id)
+        db.refresh(domain_rows[0]) if domain_rows else None
+    except Exception:
+        db.rollback()
+
+
 def build_frontend_report(
     db: Session,
     task_id: str,
@@ -511,6 +729,12 @@ def build_frontend_report(
         .all()
     )
 
+    _backfill_report_ip_locations(
+        db,
+        domain_rows=domain_rows,
+        observation_rows=observation_rows,
+    )
+
     top_domains = [_serialize_domain_from_row(row) for row in domain_rows]
     if not top_domains:
         top_domains = _legacy_domains(legacy_dynamic, capture_mode)
@@ -533,11 +757,6 @@ def build_frontend_report(
         if isinstance(legacy_dynamic.get("network_observation_summary"), dict)
         else {}
     )
-    source_breakdown = _normalize_source_breakdown(getattr(dynamic_row, "source_breakdown", None))
-    if not source_breakdown:
-        source_breakdown = _normalize_source_breakdown(observation_summary.get("source_breakdown"))
-    if not source_breakdown:
-        source_breakdown = _build_source_breakdown(observations)
 
     observation_hits = int(getattr(dynamic_row, "total_observations", 0) or 0)
     if observation_hits <= 0:
@@ -547,15 +766,20 @@ def build_frontend_report(
     if observation_hits <= 0:
         observation_hits = int(getattr(dynamic_row, "total_requests", 0) or 0)
 
-    domains_count = int(getattr(dynamic_row, "unique_domains", 0) or observation_summary.get("unique_domains") or 0)
-    domains_count = max(domains_count, len(top_domains))
+    app_name = _app_name(task, static_row, dynamic_row, legacy_static)
+    package_name = _package_name(static_row, dynamic_row, legacy_static)
+    suspected_domains, public_domains = _build_suspected_controlled_domains(
+        db,
+        app_name=app_name,
+        package_name=package_name,
+        domain_rows=top_domains,
+        observations=observations,
+    )
+    top_ips, public_ips = _build_classified_ips(db, suspected_domains, public_domains, observations)
+    domains_count = len(suspected_domains)
+    ips_count = len(top_ips)
 
-    top_ips = _build_ip_stats(observations)
-    ips_count = int(getattr(dynamic_row, "unique_ips", 0) or observation_summary.get("unique_ips") or 0)
-    if ips_count <= 0:
-        ips_count = len(top_ips)
-
-    if not capture_mode and (top_domains or top_ips or source_breakdown or observations):
+    if not capture_mode and (suspected_domains or public_domains or top_ips or public_ips or observations):
         capture_mode = "redroid_zeek"
 
     screenshots: list[dict[str, Any]]
@@ -592,12 +816,10 @@ def build_frontend_report(
         static_row,
         dynamic_row,
         legacy_static,
-        domain_count=len(top_domains),
+        domain_count=domains_count,
         observation_hits=observation_hits,
     )
     risk_label = _risk_label(risk_level)
-    app_name = _app_name(task, static_row, dynamic_row, legacy_static)
-    package_name = _package_name(static_row, dynamic_row, legacy_static)
     screenshot_count = len(screenshots)
     runs = (
         db.query(AnalysisRunTable)
@@ -636,11 +858,11 @@ def build_frontend_report(
             "risk_label": risk_label,
             "conclusion": (
                 f"该应用当前被判定为{risk_label}。被动观测显示 {domains_count} 个主域名、"
-                f"{ips_count} 个关键 IP 端点、{observation_hits} 次观测命中。"
+                f"{ips_count} 个疑似主控 IP、{observation_hits} 次观测命中。"
             ),
             "highlights": [
-                f"识别到 {domains_count} 个高价值主域名",
-                f"归并出 {ips_count} 个关键 IP 端点",
+                f"识别到 {domains_count} 个疑似主控域名",
+                f"归并出 {ips_count} 个疑似主控 IP",
                 f"保留 {screenshot_count} 张动态截图",
             ],
         },
@@ -648,13 +870,13 @@ def build_frontend_report(
             "domains_count": domains_count,
             "ips_count": ips_count,
             "observation_hits": observation_hits,
-            "source_breakdown": source_breakdown,
             "capture_mode": capture_mode,
             "screenshots_count": screenshot_count,
         },
-        "top_domains": top_domains[:TOP_DOMAIN_LIMIT],
-        "top_ips": top_ips[:TOP_IP_LIMIT],
-        "timeline": observations[:TIMELINE_LIMIT],
+        "top_domains": suspected_domains,
+        "top_ips": top_ips,
+        "public_domains": public_domains,
+        "public_ips": public_ips,
         "screenshots": screenshots,
         "download_url": f"/api/v1/reports/{task_id}/download",
     }

@@ -27,6 +27,14 @@ function SectionCard({
   );
 }
 
+function LocationBadge({ value }: { value: string | null | undefined }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-700">
+      {value ?? "待补充"}
+    </span>
+  );
+}
+
 function PermissionList({
   codes,
   details,
@@ -81,14 +89,14 @@ export function ReportSections({ report }: ReportSectionsProps) {
     const rightTime = right.captured_at ? new Date(right.captured_at).getTime() : 0;
     return leftTime - rightTime;
   });
-  const sourceBreakdownItems = Object.entries(
-    report.evidence_summary.source_breakdown ?? {}
-  ).sort((left, right) => right[1] - left[1]);
-  const sourceBreakdownTotal = sourceBreakdownItems.reduce(
-    (total, [, value]) => total + value,
-    0
-  );
   const downloadUrl = resolveApiAssetUrl(report.download_url);
+
+  const confidenceLabel = (value?: string | null) => {
+    if (value === "high") return "高";
+    if (value === "medium") return "中";
+    if (value === "low") return "低";
+    return "待定";
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans">
@@ -263,7 +271,7 @@ export function ReportSections({ report }: ReportSectionsProps) {
         </div>
 
         <div className="grid gap-6 xl:grid-cols-2">
-          <SectionCard title="Top Domains">
+          <SectionCard title="运行期间疑似主控域名">
             {report.top_domains.length ? (
               <div className="space-y-3">
                 {report.top_domains.map((item) => (
@@ -277,7 +285,7 @@ export function ReportSections({ report }: ReportSectionsProps) {
                           {item.domain ?? "暂无"}
                         </div>
                         <div className="mt-1 text-xs text-slate-500">
-                          IP：{item.ip ?? "暂无"} · 置信度：{item.confidence ?? "unknown"}
+                          IP：{item.ip ?? "暂无"} · 归属地：<LocationBadge value={item.ip_location} /> · 观测置信度：{item.confidence ?? "unknown"} · 主控相关性：{confidenceLabel(item.relevance_level)}
                         </div>
                       </div>
                       <div className="text-right text-sm text-slate-600">
@@ -301,6 +309,22 @@ export function ReportSections({ report }: ReportSectionsProps) {
                         </span>
                       )}
                     </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {item.reasons?.length ? (
+                        item.reasons.map((reason) => (
+                          <span
+                            key={reason}
+                            className="rounded-full bg-slate-900/5 px-2.5 py-1 text-xs font-medium text-slate-600"
+                          >
+                            {reason}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="rounded-full bg-slate-900/5 px-2.5 py-1 text-xs font-medium text-slate-400">
+                          暂无判定原因
+                        </span>
+                      )}
+                    </div>
                     <div className="mt-3 text-xs text-slate-500">
                       {formatDateTime(item.first_seen_at)} 至 {formatDateTime(item.last_seen_at)}
                     </div>
@@ -314,7 +338,7 @@ export function ReportSections({ report }: ReportSectionsProps) {
             )}
           </SectionCard>
 
-          <SectionCard title="Top IPs">
+          <SectionCard title="运行期间疑似主控 IP">
             {report.top_ips.length ? (
               <div className="space-y-3">
                 {report.top_ips.map((item) => (
@@ -328,7 +352,7 @@ export function ReportSections({ report }: ReportSectionsProps) {
                           {item.ip}
                         </div>
                         <div className="mt-1 text-xs text-slate-500">
-                          主域名：{item.primary_domain ?? "暂无"}
+                          主域名：{item.primary_domain ?? "暂无"} · 归属地：<LocationBadge value={item.ip_location} /> · 主控相关性：{confidenceLabel(item.relevance_level)}
                         </div>
                       </div>
                       <div className="text-right text-sm text-slate-600">
@@ -352,6 +376,22 @@ export function ReportSections({ report }: ReportSectionsProps) {
                         </span>
                       )}
                     </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {item.reasons?.length ? (
+                        item.reasons.map((reason) => (
+                          <span
+                            key={reason}
+                            className="rounded-full bg-slate-900/5 px-2.5 py-1 text-xs font-medium text-slate-600"
+                          >
+                            {reason}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="rounded-full bg-slate-900/5 px-2.5 py-1 text-xs font-medium text-slate-400">
+                          暂无判定原因
+                        </span>
+                      )}
+                    </div>
                     <div className="mt-3 text-xs text-slate-500">
                       {formatDateTime(item.first_seen_at)} 至 {formatDateTime(item.last_seen_at)}
                     </div>
@@ -366,78 +406,101 @@ export function ReportSections({ report }: ReportSectionsProps) {
           </SectionCard>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
-          <SectionCard title="观测来源拆分">
-            <div className="space-y-3">
-              {sourceBreakdownItems.length ? (
-                sourceBreakdownItems.map(([source, count]) => {
-                  const percent = sourceBreakdownTotal
-                    ? Math.round((count / sourceBreakdownTotal) * 100)
-                    : 0;
-                  return (
-                    <div key={source} className="space-y-2">
-                      <div className="flex items-center justify-between gap-3 text-sm">
-                        <span className="font-medium text-slate-900">{source}</span>
-                        <span className="text-slate-500">
-                          {count} 次 · {percent}%
-                        </span>
+        <div className="grid gap-6 xl:grid-cols-2">
+          <SectionCard title="第三方 SDK / 公共服务域名">
+            {report.public_domains.length ? (
+              <div className="space-y-3">
+                {report.public_domains.map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-xl border border-amber-200 bg-amber-50 p-4"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">
+                          {item.domain ?? "暂无"}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          IP：{item.ip ?? "暂无"} · 归属地：<LocationBadge value={item.ip_location} /> · 类别：{item.infra_category ?? "公共服务"}
+                        </div>
                       </div>
-                      <div className="h-2 rounded-full bg-slate-100">
-                        <div
-                          className="h-2 rounded-full bg-slate-900"
-                          style={{ width: `${Math.max(percent, 6)}%` }}
-                        />
+                      <div className="text-right text-sm text-slate-600">
+                        <div>命中 {item.hit_count}</div>
+                        <div>IP 数 {item.unique_ip_count}</div>
                       </div>
                     </div>
-                  );
-                })
-              ) : (
-                <div className="rounded-xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
-                  暂无来源拆分
-                </div>
-              )}
-            </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {item.reasons?.length ? (
+                        item.reasons.map((reason) => (
+                          <span
+                            key={reason}
+                            className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-amber-700"
+                          >
+                            {reason}
+                          </span>
+                        ))
+                      ) : null}
+                    </div>
+                    <div className="mt-3 text-xs text-slate-500">
+                      {formatDateTime(item.first_seen_at)} 至 {formatDateTime(item.last_seen_at)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+                暂无第三方 SDK / 公共服务域名
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard title="第三方 SDK / 公共服务 IP">
+            {report.public_ips.length ? (
+              <div className="space-y-3">
+                {report.public_ips.map((item) => (
+                  <div
+                    key={item.ip}
+                    className="rounded-xl border border-amber-200 bg-amber-50 p-4"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">
+                          {item.ip}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          主域名：{item.primary_domain ?? "暂无"} · 归属地：<LocationBadge value={item.ip_location} /> · 类别：{item.infra_category ?? "公共服务"}
+                        </div>
+                      </div>
+                      <div className="text-right text-sm text-slate-600">
+                        <div>命中 {item.hit_count}</div>
+                        <div>域名数 {item.domain_count}</div>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {item.reasons?.length ? (
+                        item.reasons.map((reason) => (
+                          <span
+                            key={reason}
+                            className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-amber-700"
+                          >
+                            {reason}
+                          </span>
+                        ))
+                      ) : null}
+                    </div>
+                    <div className="mt-3 text-xs text-slate-500">
+                      {formatDateTime(item.first_seen_at)} 至 {formatDateTime(item.last_seen_at)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+                暂无第三方 SDK / 公共服务 IP
+              </div>
+            )}
           </SectionCard>
         </div>
-
-        <SectionCard title="观测时间线">
-          {report.timeline.length ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left text-slate-500 border-b border-slate-200">
-                    <th className="pb-3 pr-4 font-medium">来源</th>
-                    <th className="pb-3 pr-4 font-medium">域名</th>
-                    <th className="pb-3 pr-4 font-medium">IP</th>
-                    <th className="pb-3 pr-4 font-medium">协议</th>
-                    <th className="pb-3 pr-4 font-medium">命中</th>
-                    <th className="pb-3 pr-4 font-medium">时间窗</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.timeline.map((item) => (
-                    <tr key={item.id} className="border-b border-slate-100 align-top">
-                      <td className="py-3 pr-4 text-slate-900">{item.source_type}</td>
-                      <td className="py-3 pr-4 text-slate-900">{item.domain ?? "暂无"}</td>
-                      <td className="py-3 pr-4 text-slate-600">{item.ip ?? "暂无"}</td>
-                      <td className="py-3 pr-4 text-slate-600">
-                        {item.protocol.toUpperCase()} · {item.transport.toUpperCase()}
-                      </td>
-                      <td className="py-3 pr-4 text-slate-600">{item.hit_count}</td>
-                      <td className="py-3 pr-4 text-slate-600">
-                        {formatDateTime(item.first_seen_at)} 至 {formatDateTime(item.last_seen_at)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
-              暂无观测时间线
-            </div>
-          )}
-        </SectionCard>
 
         <SectionCard title="权限概览">
           <div className="grid gap-4 lg:grid-cols-3">
@@ -495,6 +558,8 @@ export function ReportSections({ report }: ReportSectionsProps) {
                       src={resolveApiAssetUrl(item.image_url) ?? undefined}
                       alt={item.description ?? `截图 ${item.id}`}
                       className="w-full aspect-[9/16] object-contain bg-slate-100"
+                      loading="lazy"
+                      decoding="async"
                     />
                   ) : (
                     <div className="w-full aspect-[9/16] bg-slate-200 flex items-center justify-center text-sm text-slate-500">

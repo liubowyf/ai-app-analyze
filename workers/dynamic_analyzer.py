@@ -23,6 +23,7 @@ from models.analysis_tables import (
 )
 from models.task import Task, TaskStatus
 from modules.android_runner import AndroidRunner
+from modules.ip_geo import resolve_ip_locations
 from modules.traffic_monitor import android_proxy_runtime
 from modules.task_orchestration.run_tracker import (
     finish_stage_run,
@@ -370,6 +371,11 @@ def _persist_dynamic_normalized_tables(
         for item in domain_stats_rows
         if isinstance(item, dict) and item.get("domain")
     }
+    ip_locations = resolve_ip_locations(unique_ips)
+    for row in (domain_report or {}).get("master_domains", []) or []:
+        normalized_ip = _normalize_ip_value(row.get("ip"))
+        if normalized_ip and normalized_ip not in ip_locations:
+            ip_locations.update(resolve_ip_locations([normalized_ip]))
 
     for attempt in range(retries + 1):
         persist_db: Session = SessionLocal()
@@ -405,6 +411,7 @@ def _persist_dynamic_normalized_tables(
             persist_db.add(dynamic_row)
 
             for item in (primary_requests + candidate_requests)[:3000]:
+                normalized_ip = _normalize_ip_value(item.get("ip"))
                 persist_db.add(
                     NetworkRequestTable(
                         task_id=task_id,
@@ -412,7 +419,8 @@ def _persist_dynamic_normalized_tables(
                         method=item.get("method"),
                         host=item.get("host") or item.get("domain"),
                         path=item.get("path"),
-                        ip=_normalize_ip_value(item.get("ip")),
+                        ip=normalized_ip,
+                        ip_location=ip_locations.get(normalized_ip) if normalized_ip else None,
                         port=int(item.get("port") or 80),
                         scheme=item.get("scheme"),
                         response_code=item.get("response_code"),
@@ -441,11 +449,13 @@ def _persist_dynamic_normalized_tables(
                 evidence = row.get("evidence")
                 evidence_text = json.dumps(evidence, ensure_ascii=False) if evidence is not None else None
                 stats_row = domain_stats_index.get(str(row.get("domain") or "").strip().lower(), {})
+                normalized_ip = _normalize_ip_value(row.get("ip"))
                 persist_db.add(
                     MasterDomainTable(
                         task_id=task_id,
                         domain=row.get("domain"),
-                        ip=_normalize_ip_value(row.get("ip")),
+                        ip=normalized_ip,
+                        ip_location=ip_locations.get(normalized_ip) if normalized_ip else None,
                         confidence_score=int(row.get("score", 0) or 0),
                         confidence_level=row.get("confidence"),
                         evidence=evidence_text,

@@ -60,6 +60,24 @@ def _ensure_tasks_table_columns(connection) -> None:
         connection.execute(text(ddl))
 
 
+def _ensure_analysis_table_columns(connection) -> None:
+    """Add additive analysis columns required by report enrichments."""
+    inspector = inspect(connection)
+    table_to_columns = {
+        "network_requests": {"ip_location": "ALTER TABLE network_requests ADD COLUMN ip_location VARCHAR(255) NULL"},
+        "master_domains": {"ip_location": "ALTER TABLE master_domains ADD COLUMN ip_location VARCHAR(255) NULL"},
+    }
+
+    for table_name, ddl_map in table_to_columns.items():
+        try:
+            columns = {column["name"] for column in inspector.get_columns(table_name)}
+        except Exception:
+            continue
+        for column_name, ddl in ddl_map.items():
+            if column_name not in columns:
+                connection.execute(text(ddl))
+
+
 def _seed_android_permission_catalog(connection) -> None:
     """Seed Android permission catalog from the checked-in JSON dataset."""
     from models.analysis_tables import AndroidPermissionCatalogTable
@@ -111,6 +129,61 @@ def _seed_android_permission_catalog(connection) -> None:
         connection.execute(AndroidPermissionCatalogTable.__table__.insert(), payload)
 
 
+def _seed_common_network_indicators(connection) -> None:
+    """Seed common network indicator catalog from the checked-in JSON dataset."""
+    from models.analysis_tables import CommonNetworkIndicatorTable
+
+    inspector = inspect(connection)
+    try:
+        if "common_network_indicators" not in inspector.get_table_names():
+            return
+    except Exception:
+        return
+
+    count = connection.execute(
+        text("SELECT COUNT(*) FROM common_network_indicators")
+    ).scalar()
+    if count and int(count) > 0:
+        return
+
+    catalog_path = (
+        Path(__file__).resolve().parents[1] / "data" / "common_network_indicators.json"
+    )
+    if not catalog_path.exists():
+        return
+
+    try:
+        rows = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+
+    if not isinstance(rows, list) or not rows:
+        return
+
+    payload = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        pattern = str(row.get("pattern") or "").strip()
+        match_type = str(row.get("match_type") or "").strip()
+        action = str(row.get("action") or "").strip() or "demote"
+        if not pattern or not match_type:
+            continue
+        payload.append(
+            {
+                "pattern": pattern,
+                "match_type": match_type,
+                "category": row.get("category"),
+                "vendor": row.get("vendor"),
+                "action": action,
+                "description": row.get("description"),
+            }
+        )
+
+    if payload:
+        connection.execute(CommonNetworkIndicatorTable.__table__.insert(), payload)
+
+
 def ensure_schema_ready() -> None:
     """Create tables under a MySQL advisory lock.
 
@@ -132,7 +205,9 @@ def ensure_schema_ready() -> None:
         try:
             Base.metadata.create_all(bind=connection)
             _ensure_tasks_table_columns(connection)
+            _ensure_analysis_table_columns(connection)
             _seed_android_permission_catalog(connection)
+            _seed_common_network_indicators(connection)
             connection.commit()
         finally:
             connection.execute(unlock_sql, {"name": SCHEMA_LOCK_NAME})
