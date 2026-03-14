@@ -9,6 +9,7 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from models.analysis_tables import (
+    AnalysisRunTable,
     DynamicAnalysisTable,
     MasterDomainTable,
     NetworkRequestTable,
@@ -16,6 +17,10 @@ from models.analysis_tables import (
     StaticAnalysisTable,
 )
 from models.task import Task, TaskStatus
+from modules.android_permissions.catalog import (
+    aggregate_permission_summary_from_runs,
+    build_permission_details,
+)
 
 
 TOP_DOMAIN_LIMIT = 10
@@ -204,19 +209,6 @@ def _declared_permissions(task: Task) -> list[str]:
         elif isinstance(item, str) and item:
             names.append(item)
     return names
-
-
-def _permission_summary(dynamic_row: DynamicAnalysisTable | None, legacy_dynamic: dict[str, Any]) -> dict[str, list[str]]:
-    summary = getattr(dynamic_row, "permission_summary", None)
-    if not isinstance(summary, dict):
-        summary = legacy_dynamic.get("permission_summary")
-    if not isinstance(summary, dict):
-        summary = {}
-    return {
-        "requested_permissions": sorted(str(item) for item in summary.get("requested_permissions") or [] if isinstance(item, str) and item),
-        "granted_permissions": sorted(str(item) for item in summary.get("granted_permissions") or [] if isinstance(item, str) and item),
-        "failed_permissions": sorted(str(item) for item in summary.get("failed_permissions") or [] if isinstance(item, str) and item),
-    }
 
 
 def _static_info(
@@ -607,6 +599,21 @@ def build_frontend_report(
     app_name = _app_name(task, static_row, dynamic_row, legacy_static)
     package_name = _package_name(static_row, dynamic_row, legacy_static)
     screenshot_count = len(screenshots)
+    runs = (
+        db.query(AnalysisRunTable)
+        .filter(AnalysisRunTable.task_id == task_id)
+        .order_by(AnalysisRunTable.started_at.desc(), AnalysisRunTable.attempt.desc())
+        .all()
+    )
+    permission_summary = aggregate_permission_summary_from_runs(runs)
+    declared_permissions = _declared_permissions(task)
+    permission_details = build_permission_details(
+        db,
+        set(declared_permissions)
+        | set(permission_summary["requested_permissions"])
+        | set(permission_summary["granted_permissions"])
+        | set(permission_summary["failed_permissions"]),
+    )
 
     return {
         "task": {
@@ -622,7 +629,8 @@ def build_frontend_report(
             "completed_at": _isoformat(task.completed_at),
         },
         "static_info": _static_info(task, static_row, dynamic_row, legacy_static),
-        "permission_summary": _permission_summary(dynamic_row, legacy_dynamic),
+        "permission_summary": permission_summary,
+        "permission_details": permission_details,
         "summary": {
             "risk_level": risk_level,
             "risk_label": risk_label,

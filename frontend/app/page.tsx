@@ -218,6 +218,12 @@ export default function TaskList() {
           </button>
         </div>
 
+        <RuntimeStatusPanel
+          status={runtimeStatus}
+          isLoading={isLoadingRuntimeStatus}
+          error={runtimeError}
+        />
+
         <TaskFilters
           searchTerm={searchTerm}
           status={statusFilter}
@@ -235,12 +241,6 @@ export default function TaskList() {
             setRiskLevelFilter(value);
             setPage(1);
           }}
-        />
-
-        <RuntimeStatusPanel
-          status={runtimeStatus}
-          isLoading={isLoadingRuntimeStatus}
-          error={runtimeError}
         />
 
         <TaskTable

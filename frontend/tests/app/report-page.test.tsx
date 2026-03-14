@@ -66,6 +66,22 @@ const reportPayload = {
     granted_permissions: ["android.permission.INTERNET"],
     failed_permissions: ["android.permission.ACCESS_FINE_LOCATION"],
   },
+  permission_details: {
+    "android.permission.INTERNET": {
+      code: "android.permission.INTERNET",
+      description_en: "Allows applications to open network sockets.",
+      description_zh: "允许应用打开网络套接字。",
+      source_url:
+        "https://developer.android.com/reference/android/Manifest.permission#INTERNET",
+    },
+    "android.permission.ACCESS_FINE_LOCATION": {
+      code: "android.permission.ACCESS_FINE_LOCATION",
+      description_en: "Allows an app to access precise location.",
+      description_zh: "允许应用访问精确位置信息。",
+      source_url:
+        "https://developer.android.com/reference/android/Manifest.permission#ACCESS_FINE_LOCATION",
+    },
+  },
   summary: {
     risk_level: "high",
     risk_label: "高风险",
@@ -130,6 +146,14 @@ const reportPayload = {
   ],
   screenshots: [
     {
+      id: "shot-0",
+      image_url: "/api/v1/frontend/reports/task-report-001/screenshots/shot-0",
+      file_size: 12000,
+      stage: "dynamic",
+      description: "启动页",
+      captured_at: "2026-03-06T10:03:10",
+    },
+    {
       id: "shot-1",
       image_url: "/api/v1/frontend/reports/task-report-001/screenshots/shot-1",
       file_size: 18000,
@@ -163,6 +187,7 @@ describe("ReportPage", () => {
     expect(screen.getByText("报告摘要")).toBeInTheDocument();
     expect(screen.getByText("应用信息")).toBeInTheDocument();
     expect(screen.getByText("权限概览")).toBeInTheDocument();
+    expect(screen.getByText("应用信息")).toBeInTheDocument();
     expect(screen.getByText("Top Domains")).toBeInTheDocument();
     expect(screen.getByText("Top IPs")).toBeInTheDocument();
     expect(screen.getByText("观测来源拆分")).toBeInTheDocument();
@@ -172,6 +197,11 @@ describe("ReportPage", () => {
     expect(screen.queryByText("网络请求样本")).not.toBeInTheDocument();
     expect(screen.getByText("2.3.1 (231)")).toBeInTheDocument();
     expect(screen.getAllByText("android.permission.ACCESS_FINE_LOCATION").length).toBeGreaterThan(0);
+    expect(screen.getByText("声明权限")).toBeInTheDocument();
+    expect(screen.getByText("已授予权限")).toBeInTheDocument();
+    expect(screen.getByText("授予失败权限")).toBeInTheDocument();
+    expect(screen.getAllByText("android.permission.INTERNET").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("允许应用访问精确位置信息。").length).toBeGreaterThan(0);
     expect(screen.getByAltText("Alpha Wallet 图标")).toHaveAttribute(
       "src",
       "http://127.0.0.1:8000/api/v1/frontend/reports/task-report-001/icon"
@@ -187,9 +217,16 @@ describe("ReportPage", () => {
     const screenshotSection = screen.getByText("关键截图").closest("section");
     const screenshotGrid = screenshotSection?.querySelector("div.grid");
     expect(screenshotGrid).toHaveClass("xl:grid-cols-6");
+    const screenshots = screen.getAllByRole("img").filter((element) =>
+      ["启动页", "登录页"].includes(element.getAttribute("alt") || "")
+    );
+    expect(screenshots.map((element) => element.getAttribute("alt"))).toEqual([
+      "启动页",
+      "登录页",
+    ]);
 
-    const backLink = screen.getByRole("link", { name: "返回任务详情" });
-    expect(backLink).toHaveAttribute("href", "/tasks/task-report-001");
+    const backLink = screen.getByRole("link", { name: "返回任务列表" });
+    expect(backLink).toHaveAttribute("href", "/");
 
     const downloadLink = screen.getByRole("link", { name: "下载 HTML 报告" });
     expect(downloadLink).toHaveAttribute(

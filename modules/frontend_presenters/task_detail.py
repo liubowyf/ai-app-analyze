@@ -17,6 +17,10 @@ from models.analysis_tables import (
     StaticAnalysisTable,
 )
 from models.task import Task, TaskStatus
+from modules.android_permissions.catalog import (
+    aggregate_permission_summary_from_runs,
+    build_permission_details,
+)
 from modules.frontend_presenters.failure_reasons import present_failure_reason
 from modules.frontend_presenters.statuses import present_task_status
 
@@ -372,10 +376,7 @@ def _report_ready(status: object) -> bool:
 
 
 def _retryable(status: object) -> bool:
-    return _status_value(status) in {
-        TaskStatus.STATIC_FAILED.value,
-        TaskStatus.DYNAMIC_FAILED.value,
-    }
+    return bool(_status_value(status))
 
 
 def _legacy_basic_info(task: Task) -> dict[str, Any]:
@@ -418,33 +419,6 @@ def _static_info(task: Task, static_row: StaticAnalysisTable | None, dynamic_row
         "apk_md5": task.apk_md5,
         "declared_permissions": _declared_permissions(task),
         "icon_url": icon_url,
-    }
-
-
-def _permission_summary(runs: list[AnalysisRunTable]) -> dict[str, list[str]]:
-    requested: set[str] = set()
-    granted: set[str] = set()
-    failed: set[str] = set()
-
-    for row in runs:
-        details = row.details if isinstance(row.details, dict) else {}
-        summary = details.get("permission_summary")
-        if not isinstance(summary, dict):
-            continue
-        for item in summary.get("requested_permissions") or []:
-            if isinstance(item, str) and item:
-                requested.add(item)
-        for item in summary.get("granted_permissions") or []:
-            if isinstance(item, str) and item:
-                granted.add(item)
-        for item in summary.get("failed_permissions") or []:
-            if isinstance(item, str) and item:
-                failed.add(item)
-
-    return {
-        "requested_permissions": sorted(requested),
-        "granted_permissions": sorted(granted),
-        "failed_permissions": sorted(failed),
     }
 
 
@@ -643,6 +617,14 @@ def build_frontend_task_detail(db: Session, task_id: str) -> dict[str, Any] | No
     ip_stats_preview = _build_ip_stats(observation_preview_rows)
     if not ip_stats_preview:
         ip_stats_preview = _build_ip_stats_from_domains(domain_preview_rows)
+    permission_summary = aggregate_permission_summary_from_runs(runs)
+    permission_details = build_permission_details(
+        db,
+        set(_declared_permissions(task))
+        | set(permission_summary["requested_permissions"])
+        | set(permission_summary["granted_permissions"])
+        | set(permission_summary["failed_permissions"]),
+    )
 
     return {
         "task": {
@@ -666,7 +648,8 @@ def build_frontend_task_detail(db: Session, task_id: str) -> dict[str, Any] | No
             "retry_count": int(task.retry_count or 0),
         },
         "static_info": _static_info(task, static_row, dynamic_row),
-        "permission_summary": _permission_summary(runs),
+        "permission_summary": permission_summary,
+        "permission_details": permission_details,
         "stage_summary": list(stage_summary_map.values()),
         "evidence_summary": {
             "runs_count": len(runs),

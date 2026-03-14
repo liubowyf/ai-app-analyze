@@ -59,3 +59,26 @@ def get_retry_delay_seconds(retry_count: int, delays: Iterable[int]) -> int:
         raise ValueError("Retry delays must not be empty")
     idx = max(0, min(int(retry_count), len(delay_list) - 1))
     return max(0, delay_list[idx])
+
+
+def manual_retry_status(
+    current_status: object,
+    *,
+    has_static_result: bool,
+    last_success_stage: object | None = None,
+) -> TaskStatus:
+    """Resolve which stage a manual retry should resume from."""
+    normalized = _normalize_status(current_status)
+    last_success = str(last_success_stage or "").strip().lower()
+
+    if normalized in {
+        TaskStatus.DYNAMIC_ANALYZING.value,
+        TaskStatus.REPORT_GENERATING.value,
+        TaskStatus.COMPLETED.value,
+        TaskStatus.DYNAMIC_FAILED.value,
+    }:
+        return TaskStatus.DYNAMIC_ANALYZING if has_static_result or last_success in {"static", "dynamic", "report"} else TaskStatus.QUEUED
+
+    if has_static_result or last_success in {"static", "dynamic", "report"}:
+        return TaskStatus.DYNAMIC_ANALYZING
+    return TaskStatus.QUEUED

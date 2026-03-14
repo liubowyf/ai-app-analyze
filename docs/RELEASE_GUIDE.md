@@ -2,6 +2,17 @@
 
 本文档只描述当前生产环境有效的发版方式。
 
+当前前端正式展示面：
+
+- 任务列表页 `/`
+- 报告页 `/reports/{taskId}`
+
+说明：
+
+- `/tasks/{taskId}` 仅保留兼容跳转，不再作为正式页面
+- 报告页权限数据依赖 `analysis_runs.details.permission_summary`
+- Android 权限中文释义依赖仓库内码表 `data/android_permission_catalog.json`
+
 ## 1. 节点角色
 
 - `<frontend-node>`：`frontend`

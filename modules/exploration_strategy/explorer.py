@@ -113,20 +113,23 @@ class AppExplorer:
         """Launch target app and require it to become foreground."""
         attempts = max(1, retries)
         last_foreground = ""
+        last_activity = ""
         for attempt in range(1, attempts + 1):
-            retry_activity = activity_name if attempt == 1 else None
+            retry_activity = activity_name
             self.android_runner.launch_app(host, port, package_name, activity_name=retry_activity)
             time.sleep(2)
             current_pkg = self._get_foreground_package(host, port)
             if current_pkg == package_name:
                 return
             last_foreground = current_pkg or ""
+            last_activity = self.android_runner.get_current_activity(host, port) or ""
             logger.warning(
-                "Launch verification failed (%s/%s): target=%s current=%s",
+                "Launch verification failed (%s/%s): target=%s current=%s activity=%s",
                 attempt,
                 attempts,
                 package_name,
                 current_pkg or "unknown",
+                last_activity or "unknown",
             )
             if attempt < attempts:
                 self.android_runner.press_home(host, port)
@@ -134,7 +137,7 @@ class AppExplorer:
 
         raise RuntimeError(
             f"Target app launch failed: {package_name} not foreground "
-            f"(current={last_foreground or 'unknown'})"
+            f"(current={last_foreground or 'unknown'}, activity={last_activity or 'unknown'})"
         )
 
     def _get_foreground_package(self, host: str, port: int) -> str:

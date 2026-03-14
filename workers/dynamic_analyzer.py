@@ -1,4 +1,5 @@
 """Dynamic analysis stage service."""
+import ipaddress
 import json
 import logging
 import re
@@ -220,6 +221,19 @@ def _observation_value(item: Any, *keys: str) -> Any:
     return None
 
 
+def _normalize_ip_value(value: Any) -> Optional[str]:
+    """Persist only valid IP literals in normalized IP columns."""
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return str(ipaddress.ip_address(text))
+    except Exception:
+        return None
+
+
 def _merge_source_breakdown(*groups: Any) -> dict[str, int]:
     """Combine source counters from primary and candidate pools."""
     merged: dict[str, int] = {}
@@ -398,7 +412,7 @@ def _persist_dynamic_normalized_tables(
                         method=item.get("method"),
                         host=item.get("host") or item.get("domain"),
                         path=item.get("path"),
-                        ip=item.get("ip"),
+                        ip=_normalize_ip_value(item.get("ip")),
                         port=int(item.get("port") or 80),
                         scheme=item.get("scheme"),
                         response_code=item.get("response_code"),
@@ -431,7 +445,7 @@ def _persist_dynamic_normalized_tables(
                     MasterDomainTable(
                         task_id=task_id,
                         domain=row.get("domain"),
-                        ip=row.get("ip"),
+                        ip=_normalize_ip_value(row.get("ip")),
                         confidence_score=int(row.get("score", 0) or 0),
                         confidence_level=row.get("confidence"),
                         evidence=evidence_text,

@@ -229,33 +229,6 @@ def run_task(task_id: str) -> None:
             else:
                 raise ValueError(f"Unsupported stage: {stage}")
         except Exception as exc:
-            delays = _get_retry_delays()
-            retry_count = int(getattr(task, "retry_count", 0) or 0)
-            if retry_count < len(delays):
-                task.retry_count = retry_count + 1
-                _restore_task_status(task, _retry_resume_status(task).value if stage in {"dynamic", "report"} else status_value)
-                task.error_message = str(exc)
-                if hasattr(task, "failure_reason"):
-                    task.failure_reason = str(exc)
-                db.commit()
-                run_task.send_with_options(args=(task_id,), delay=delays[retry_count] * 1000)
-                to_status = task.status.value if hasattr(task.status, "value") else str(task.status)
-                logger.warning(
-                    (
-                        "event=task_actor_transition_retry "
-                        "Actor transition retry task_id=%s stage=%s from_status=%s to_status=%s "
-                        "retry_count=%s delay_seconds=%s error=%s"
-                    ),
-                    task_id,
-                    stage,
-                    status_value,
-                    to_status,
-                    task.retry_count,
-                    delays[retry_count],
-                    exc,
-                )
-                return
-
             task.status = _failed_status_for_stage(stage)
             task.error_message = str(exc)
             if hasattr(task, "failure_reason"):
@@ -263,10 +236,10 @@ def run_task(task_id: str) -> None:
             db.commit()
             logger.error(
                 (
-                    "event=task_actor_transition_failed "
-                    "Actor transition failed task_id=%s stage=%s from_status=%s to_status=%s "
-                    "retry_count=%s delay_seconds=%s error=%s"
-                ),
+                "event=task_actor_transition_failed "
+                "Actor transition failed task_id=%s stage=%s from_status=%s to_status=%s "
+                "retry_count=%s delay_seconds=%s error=%s"
+            ),
                 task_id,
                 stage,
                 status_value,

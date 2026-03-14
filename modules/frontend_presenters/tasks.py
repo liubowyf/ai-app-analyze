@@ -53,7 +53,12 @@ def _report_ready(status: object) -> bool:
 
 
 def _retryable(status: object) -> bool:
-    return _status_value(status) in {
+    return bool(_status_value(status))
+
+
+def _is_failed_status(status: object) -> bool:
+    normalized = _status_value(status)
+    return normalized in {
         TaskStatus.STATIC_FAILED.value,
         TaskStatus.DYNAMIC_FAILED.value,
     }
@@ -127,13 +132,7 @@ def _to_frontend_task_item(row: object) -> FrontendTaskListItem:
         icon_url=_icon_url(task_id, row),
         retryable=retryable,
         deletable=True,
-        failure_reason=(
-            presented_failure_reason
-            if retryable and presented_failure_reason
-            else "失败原因待补充"
-            if retryable
-            else None
-        ),
+        failure_reason=presented_failure_reason if _is_failed_status(status) else None,
         created_at=_isoformat(getattr(row, "created_at")),
         completed_at=_isoformat(getattr(row, "completed_at")),
         report_ready=report_ready,

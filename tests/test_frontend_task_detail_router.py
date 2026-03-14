@@ -16,6 +16,7 @@ from sqlalchemy.pool import StaticPool
 from core.database import Base
 from models.analysis_tables import (
     AnalysisRunTable,
+    AndroidPermissionCatalogTable,
     DynamicAnalysisTable,
     MasterDomainTable,
     NetworkRequestTable,
@@ -162,6 +163,22 @@ def _seed_failed_task_detail(db: Session) -> None:
                         ],
                     }
                 },
+            ),
+        ]
+    )
+    db.add_all(
+        [
+            AndroidPermissionCatalogTable(
+                code="android.permission.INTERNET",
+                description_en="Allows applications to open network sockets.",
+                description_zh="允许应用打开网络套接字。",
+                source_url="https://developer.android.com/reference/android/Manifest.permission#INTERNET",
+            ),
+            AndroidPermissionCatalogTable(
+                code="android.permission.ACCESS_FINE_LOCATION",
+                description_en="Allows an app to access precise location.",
+                description_zh="允许应用访问精确位置信息。",
+                source_url="https://developer.android.com/reference/android/Manifest.permission#ACCESS_FINE_LOCATION",
             ),
         ]
     )
@@ -353,10 +370,35 @@ class TestFrontendTaskDetailRouter:
                 "android.permission.ACCESS_FINE_LOCATION",
             ],
         }
+        assert data["permission_details"]["android.permission.INTERNET"]["description_zh"] == (
+            "允许应用打开网络套接字。"
+        )
 
         assert data["retryable"] is True
         assert data["report_ready"] is False
         assert data["report_url"] is None
+
+    def test_completed_task_detail_is_retryable(
+        self,
+        frontend_client: tuple[TestClient, sessionmaker],
+    ):
+        """Completed task detail should also expose manual retry."""
+        client, session_local = frontend_client
+        db = session_local()
+        try:
+            task = db.query(Task).filter(Task.id == "task-detail-001").first()
+            assert task is not None
+            task.status = TaskStatus.COMPLETED
+            task.completed_at = datetime(2026, 3, 6, 9, 7, 0)
+            db.commit()
+        finally:
+            db.close()
+
+        response = client.get("/api/v1/frontend/tasks/task-detail-001")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["retryable"] is True
 
         assert data["evidence_summary"]["runs_count"] == 2
         assert data["evidence_summary"]["domains_count"] == 2
@@ -441,7 +483,7 @@ class TestFrontendTaskDetailRouter:
         assert data["task"]["status"] == "dynamic_analyzing"
         assert data["task"]["retry_count"] == 2
         assert data["task"]["error_message"] is None
-        assert data["retryable"] is False
+        assert data["retryable"] is True
         enqueue_task.assert_called_once()
 
         db = session_local()

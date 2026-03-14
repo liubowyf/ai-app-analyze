@@ -43,6 +43,7 @@ from modules.frontend_presenters.task_detail import (
 from modules.frontend_presenters.tasks import build_frontend_task_list
 from modules.redroid_remote.host_agent_client import HostAgentError, RedroidHostAgentClient
 from modules.task_orchestration.queue_backend import enqueue_task, get_backend_runtime_diagnostics
+from modules.task_orchestration.state_machine import manual_retry_status
 from modules.upload_batch.service import BatchUploadFile, BatchUploadService
 
 router = APIRouter()
@@ -411,20 +412,19 @@ def retry_frontend_task(task_id: str, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.status not in {TaskStatus.STATIC_FAILED, TaskStatus.DYNAMIC_FAILED}:
-        raise HTTPException(status_code=400, detail="Only failed tasks can be retried")
 
-    if task.status == TaskStatus.DYNAMIC_FAILED and (
-        str(task.last_success_stage or "").strip().lower() == "static"
-        or _has_static_analysis_result(db, task)
-    ):
-        task.status = TaskStatus.DYNAMIC_ANALYZING
-    else:
-        task.status = TaskStatus.QUEUED
+    task.status = manual_retry_status(
+        task.status,
+        has_static_result=_has_static_analysis_result(db, task),
+        last_success_stage=task.last_success_stage,
+    )
     task.retry_count += 1
     task.error_message = None
     task.error_stack = None
     task.failure_reason = None
+    task.dynamic_analysis_result = None
+    task.report_storage_path = None
+    task.web_report_path = None
     task.completed_at = None
     db.commit()
     db.refresh(task)

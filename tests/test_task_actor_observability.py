@@ -42,26 +42,31 @@ def test_run_task_logs_transition_fields_on_success(caplog):
     )
 
 
-def test_run_task_logs_retry_fields_on_stage_error(caplog):
-    task = SimpleNamespace(id="task-log-retry", status=TaskStatus.QUEUED, error_message=None, retry_count=0)
+def test_run_task_logs_failed_fields_on_stage_error(caplog):
+    task = SimpleNamespace(
+        id="task-log-retry",
+        status=TaskStatus.QUEUED,
+        error_message=None,
+        failure_reason=None,
+        retry_count=0,
+    )
     db = _build_db_with_task(task)
 
     with patch("workers.task_actor._acquire_task_lock", return_value=("lock:task:task-log-retry", "token")), \
          patch("workers.task_actor._release_task_lock"), \
-         patch("workers.task_actor._get_retry_delays", return_value=[7, 30]), \
          patch("workers.task_actor.SessionLocal", return_value=db), \
          patch("workers.task_actor.run_static_stage", side_effect=RuntimeError("boom")), \
          patch.object(run_task, "send_with_options"):
-        with caplog.at_level(logging.WARNING, logger="workers.task_actor"):
+        with caplog.at_level(logging.ERROR, logger="workers.task_actor"):
             run_task("task-log-retry")
 
     assert any(
-        "event=task_actor_transition_retry" in record.message
+        "event=task_actor_transition_failed" in record.message
         and "task_id=task-log-retry" in record.message
         and "stage=static" in record.message
         and "from_status=queued" in record.message
-        and "to_status=queued" in record.message
-        and "retry_count=1" in record.message
-        and "delay_seconds=7" in record.message
+        and "to_status=static_failed" in record.message
+        and "retry_count=0" in record.message
+        and "delay_seconds=0" in record.message
         for record in caplog.records
     )

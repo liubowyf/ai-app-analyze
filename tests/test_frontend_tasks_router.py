@@ -172,7 +172,7 @@ class TestFrontendTasksRouter:
         assert data["items"][0]["app_name"] == "Beta Chat"
         assert data["items"][0]["package_name"] == "com.demo.beta"
         assert data["items"][0]["risk_level"] == "low"
-        assert data["items"][0]["failure_reason"] is not None
+        assert data["items"][0]["failure_reason"] is None
         assert data["items"][0]["retryable"] is True
         assert data["items"][0]["deletable"] is True
         assert data["items"][0]["report_ready"] is False
@@ -243,6 +243,47 @@ class TestFrontendTasksRouter:
         assert item["failure_reason"] == "静态分析阶段失败：APK 解析异常"
         assert item["retryable"] is True
         assert item["deletable"] is True
+
+    def test_list_tasks_marks_completed_and_running_tasks_as_retryable(
+        self,
+        frontend_client: tuple[TestClient, sessionmaker],
+    ):
+        """Retry action should be available for all task states in the list."""
+        client, _ = frontend_client
+
+        response = client.get("/api/v1/frontend/tasks")
+
+        assert response.status_code == 200
+        items = {item["id"]: item for item in response.json()["items"]}
+        assert items["task-alpha-001"]["retryable"] is True
+        assert items["task-gamma-003"]["retryable"] is True
+
+    def test_list_tasks_hides_failure_reason_for_non_failed_statuses(
+        self,
+        frontend_client: tuple[TestClient, sessionmaker],
+    ):
+        """Only failed tasks should expose a failure reason in the list."""
+        client, session_local = frontend_client
+        db = session_local()
+        try:
+            completed = db.query(Task).filter(Task.id == "task-alpha-001").first()
+            running = db.query(Task).filter(Task.id == "task-gamma-003").first()
+            failed = db.query(Task).filter(Task.id == "task-beta-002").first()
+            assert completed is not None and running is not None and failed is not None
+            completed.failure_reason = "历史错误"
+            running.failure_reason = "历史错误"
+            failed.failure_reason = "静态分析阶段失败：APK 解析异常"
+            db.commit()
+        finally:
+            db.close()
+
+        response = client.get("/api/v1/frontend/tasks")
+
+        assert response.status_code == 200
+        items = {item["id"]: item for item in response.json()["items"]}
+        assert items["task-alpha-001"]["failure_reason"] is None
+        assert items["task-gamma-003"]["failure_reason"] is None
+        assert items["task-beta-002"]["failure_reason"] == "静态分析阶段失败：APK 解析异常"
 
     def test_list_task_maps_raw_failure_reason_to_chinese_category(
         self,

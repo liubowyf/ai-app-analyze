@@ -21,7 +21,7 @@
 
 ## 当前系统一句话
 系统当前仅保留一条动态分析主线：
-`页面上传 APK -> FastAPI 建任务 -> Dramatiq worker -> redroid_remote -> 远程 ADB 控制 redroid -> redroid-host-agent 启停 tcpdump/运行 Zeek/回传日志 -> MySQL 落库 -> MinIO 存截图与报告 -> 前端详情页/报告页展示`
+`页面上传 APK -> FastAPI 建任务 -> Dramatiq worker -> redroid_remote -> 远程 ADB 控制 redroid -> redroid-host-agent 启停 tcpdump/运行 Zeek/回传日志 -> MySQL 落库 -> MinIO 存截图与报告 -> 前端列表页/报告页展示`
 
 ## 读代码的最小入口
 
@@ -51,7 +51,7 @@
 
 ### 2. 任务主链路
 - `api/routers/frontend.py`
-  - 页面上传、任务列表、任务详情、报告 DTO 接口
+  - 页面上传、任务列表、报告 DTO 接口
 - `workers/task_actor.py`
   - 阶段推进：static -> dynamic -> report
 - `workers/dynamic_analyzer.py`
@@ -92,12 +92,8 @@
   - 任务、运行记录、网络观测、域名、截图表
 - `core/storage.py`
   - MinIO 存储
-- `modules/frontend_presenters/task_detail.py`
-  - 详情页 DTO
 - `modules/frontend_presenters/report.py`
   - 报告页 DTO
-- `frontend/app/tasks/[taskId]/page.tsx`
-  - 任务详情页
 - `frontend/app/reports/[taskId]/page.tsx`
   - 报告页
 
@@ -145,11 +141,12 @@
 - `modules/frontend_presenters/report.py`
 - `frontend/lib/api.ts`
 
-### 详情页/报告页数据不对
+### 报告页数据不对
 先看：
 - `api/routers/frontend.py`
-- `modules/frontend_presenters/task_detail.py`
 - `modules/frontend_presenters/report.py`
+- `modules/android_permissions/catalog.py`
+- `data/android_permission_catalog.json`
 
 ## 当前成功样本
 - 任务：`00ff992d-95eb-4cdc-b7b9-9d7195a7184a`
@@ -161,7 +158,7 @@
   - `unique_ips = 30`
   - `capture_mode = redroid_zeek`
 - 页面：
-  - `/tasks/00ff992d-95eb-4cdc-b7b9-9d7195a7184a`
+  - `/`
   - `/reports/00ff992d-95eb-4cdc-b7b9-9d7195a7184a`
 
 ## 后续上下文压缩原则

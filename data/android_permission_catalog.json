@@ -1,0 +1,2084 @@
+[
+  {
+    "code": "android.permission.ACCEPT_HANDOVER",
+    "description_en": "Allows a calling app to continue a call which was started in another app.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCEPT_HANDOVER",
+    "description_zh": "允许呼叫应用程序继续在另一个应用程序中启动的呼叫。"
+  },
+  {
+    "code": "android.permission.ACCESS_BACKGROUND_LOCATION",
+    "description_en": "Allows an app to access location in the background.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCESS_BACKGROUND_LOCATION",
+    "description_zh": "允许应用程序在后台访问位置。"
+  },
+  {
+    "code": "android.permission.ACCESS_BIOMETRIC_SENSOR_STRENGTHS",
+    "description_en": "Allows an application to retrieve the sensor security strengths of the biometric sensors.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCESS_BIOMETRIC_SENSOR_STRENGTHS",
+    "description_zh": "允许应用程序检索生物识别传感器的传感器安全强度。"
+  },
+  {
+    "code": "android.permission.ACCESS_BLOBS_ACROSS_USERS",
+    "description_en": "Allows an application to access data blobs across users.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCESS_BLOBS_ACROSS_USERS",
+    "description_zh": "允许应用程序跨用户访问数据 blob。"
+  },
+  {
+    "code": "android.permission.ACCESS_CHECKIN_PROPERTIES",
+    "description_en": "Allows read/write access to the \"properties\" table in the checkin database, to change values that get uploaded.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCESS_CHECKIN_PROPERTIES",
+    "description_zh": "允许对签入数据库中的“属性”表进行读/写访问，以更改上传的值。"
+  },
+  {
+    "code": "android.permission.ACCESS_COARSE_LOCATION",
+    "description_en": "Allows an app to access approximate location.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCESS_COARSE_LOCATION",
+    "description_zh": "允许应用访问大概位置。"
+  },
+  {
+    "code": "android.permission.ACCESS_FINE_LOCATION",
+    "description_en": "Allows an app to access precise location.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCESS_FINE_LOCATION",
+    "description_zh": "允许应用程序访问精确位置。"
+  },
+  {
+    "code": "android.permission.ACCESS_HIDDEN_PROFILES",
+    "description_en": "Allows applications to access profiles with android.content.pm.UserProperties#PROFILE_API_VISIBILITY_HIDDEN user property, e.g.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCESS_HIDDEN_PROFILES",
+    "description_zh": "允许应用程序使用 android.content.pm.UserProperties#PROFILE_API_VISIBILITY_HIDDEN 用户属性访问配置文件，例如"
+  },
+  {
+    "code": "android.permission.ACCESS_LAUNCHER_DATA",
+    "description_en": "This permission protects a content provider within home/launcher applications, enabling management of home screen metadata such as shortcut placement, launch intents, and labels.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCESS_LAUNCHER_DATA",
+    "description_zh": "此权限可以保护主/启动器应用程序中的内容提供者，从而能够管理主屏幕元数据，例如快捷方式放置、启动意图和标签。"
+  },
+  {
+    "code": "android.permission.ACCESS_LOCAL_NETWORK",
+    "description_en": "Required to be able to advertise and connect to local network devices.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCESS_LOCAL_NETWORK",
+    "description_zh": "需要能够通告并连接到本地网络设备。"
+  },
+  {
+    "code": "android.permission.ACCESS_LOCATION_EXTRA_COMMANDS",
+    "description_en": "Allows an application to access extra location provider commands.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCESS_LOCATION_EXTRA_COMMANDS",
+    "description_zh": "允许应用程序访问额外的位置提供程序命令。"
+  },
+  {
+    "code": "android.permission.ACCESS_MEDIA_LOCATION",
+    "description_en": "Allows an application to access any geographic locations persisted in the user's shared collection.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCESS_MEDIA_LOCATION",
+    "description_zh": "允许应用程序访问用户共享集合中保留的任何地理位置。"
+  },
+  {
+    "code": "android.permission.ACCESS_NETWORK_STATE",
+    "description_en": "Allows applications to access information about networks.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCESS_NETWORK_STATE",
+    "description_zh": "允许应用程序访问有关网络的信息。"
+  },
+  {
+    "code": "android.permission.ACCESS_NOTIFICATION_POLICY",
+    "description_en": "Marker permission for applications that wish to access notification policy.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCESS_NOTIFICATION_POLICY",
+    "description_zh": "为希望访问通知策略的应用程序标记权限。"
+  },
+  {
+    "code": "android.permission.ACCESS_WIFI_STATE",
+    "description_en": "Allows applications to access information about Wi-Fi networks.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCESS_WIFI_STATE",
+    "description_zh": "允许应用程序访问有关 Wi-Fi 网络的信息。"
+  },
+  {
+    "code": "android.permission.ACCOUNT_MANAGER",
+    "description_en": "Allows applications to call into AccountAuthenticators.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACCOUNT_MANAGER",
+    "description_zh": "允许应用程序调用 AccountAuthenticators。"
+  },
+  {
+    "code": "android.permission.ACTIVITY_RECOGNITION",
+    "description_en": "Allows an application to recognize physical activity.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ACTIVITY_RECOGNITION",
+    "description_zh": "允许应用程序识别身体活动。"
+  },
+  {
+    "code": "android.permission.ADD_VOICEMAIL",
+    "description_en": "Allows an application to add voicemails into the system.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ADD_VOICEMAIL",
+    "description_zh": "允许应用程序将语音邮件添加到系统中。"
+  },
+  {
+    "code": "android.permission.ANSWER_PHONE_CALLS",
+    "description_en": "Allows the app to answer an incoming phone call.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ANSWER_PHONE_CALLS",
+    "description_zh": "允许应用接听来电。"
+  },
+  {
+    "code": "android.permission.APPLY_PICTURE_PROFILE",
+    "description_en": "Allows an app to apply a ERROR(/MediaQualityManager.PictureProfile) to a layer via ERROR(/MediaCodec.PARAMETER_KEY_PICTURE_PROFILE) and, additionally, system apps via ERROR(/SurfaceControl.Transaction#setPictureProfileHandle) .",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#APPLY_PICTURE_PROFILE",
+    "description_zh": "允许应用程序通过 ERROR(/MediaCodec.PARAMETER_KEY_PICTURE_PROFILE) 将 ERROR(/MediaQualityManager.PictureProfile) 应用于图层，此外，允许应用程序通过 ERROR(/SurfaceControl.Transaction#setPictureProfileHandle) 将 ERROR(/MediaQualityManager.PictureProfile) 应用于图层。"
+  },
+  {
+    "code": "android.permission.BATTERY_STATS",
+    "description_en": "Allows an application to collect battery statistics Protection level: signature|privileged|development",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BATTERY_STATS",
+    "description_zh": "允许应用程序收集电池统计数据保护级别：签名|特权|开发"
+  },
+  {
+    "code": "android.permission.BIND_ACCESSIBILITY_SERVICE",
+    "description_en": "Must be required by an AccessibilityService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_ACCESSIBILITY_SERVICE",
+    "description_zh": "必须由 AccessibilityService 要求，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_APPWIDGET",
+    "description_en": "Allows an application to tell the AppWidget service which application can access AppWidget's data.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_APPWIDGET",
+    "description_zh": "允许应用程序告诉 AppWidget 服务哪个应用程序可以访问 AppWidget 的数据。"
+  },
+  {
+    "code": "android.permission.BIND_APP_FUNCTION_SERVICE",
+    "description_en": "Must be required by an AppFunctionService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_APP_FUNCTION_SERVICE",
+    "description_zh": "必须由 AppFunctionService 要求，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_AUTOFILL_SERVICE",
+    "description_en": "Must be required by a AutofillService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_AUTOFILL_SERVICE",
+    "description_zh": "必须由 AutofillService 要求，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_CALL_REDIRECTION_SERVICE",
+    "description_en": "Must be required by a CallRedirectionService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_CALL_REDIRECTION_SERVICE",
+    "description_zh": "必须由 CallRedirectionService 要求，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_CARRIER_MESSAGING_CLIENT_SERVICE",
+    "description_en": "A subclass of CarrierMessagingClientService must be protected with this permission.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_CARRIER_MESSAGING_CLIENT_SERVICE",
+    "description_zh": "CarrierMessagingClientService 的子类必须使用此权限进行保护。"
+  },
+  {
+    "code": "android.permission.BIND_CARRIER_MESSAGING_SERVICE",
+    "description_en": "This constant was deprecated in API level 23. Use BIND_CARRIER_SERVICES instead",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_CARRIER_MESSAGING_SERVICE",
+    "description_zh": "该常量在 API 级别 23 中已弃用。请改用 BIND_CARRIER_SERVICES"
+  },
+  {
+    "code": "android.permission.BIND_CARRIER_SERVICES",
+    "description_en": "The system process that is allowed to bind to services in carrier apps will have this permission.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_CARRIER_SERVICES",
+    "description_zh": "允许绑定运营商应用中的服务的系统进程将拥有此权限。"
+  },
+  {
+    "code": "android.permission.BIND_CHOOSER_TARGET_SERVICE",
+    "description_en": "This constant was deprecated in API level 30. For publishing direct share targets, please follow the instructions in https://developer.android.com/training/sharing/receive.html#providing-direct-share-targets instead.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_CHOOSER_TARGET_SERVICE",
+    "description_zh": "此常量在 API 级别 30 中已弃用。要发布直接共享目标，请按照 https://developer.android.com/training/sharing/receive.html#providing-direct-share-targets 中的说明进行操作。"
+  },
+  {
+    "code": "android.permission.BIND_COMPANION_DEVICE_SERVICE",
+    "description_en": "Must be required by any CompanionDeviceService s to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_COMPANION_DEVICE_SERVICE",
+    "description_zh": "任何 CompanionDeviceService 都必须要求，以确保只有系统可以与其绑定。"
+  },
+  {
+    "code": "android.permission.BIND_CONDITION_PROVIDER_SERVICE",
+    "description_en": "Must be required by a ConditionProviderService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_CONDITION_PROVIDER_SERVICE",
+    "description_zh": "必须由 ConditionProviderService 要求，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_CONTROLS",
+    "description_en": "Allows SystemUI to request third party controls.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_CONTROLS",
+    "description_zh": "允许 SystemUI 请求第三方控件。"
+  },
+  {
+    "code": "android.permission.BIND_CREDENTIAL_PROVIDER_SERVICE",
+    "description_en": "Must be required by a CredentialProviderService to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_CREDENTIAL_PROVIDER_SERVICE",
+    "description_zh": "CredentialProviderService 必须要求确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_DEVICE_ADMIN",
+    "description_en": "Must be required by device administration receiver, to ensure that only the system can interact with it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_DEVICE_ADMIN",
+    "description_zh": "设备管理接收器必须要求，以确保只有系统可以与其交互。"
+  },
+  {
+    "code": "android.permission.BIND_DREAM_SERVICE",
+    "description_en": "Must be required by an DreamService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_DREAM_SERVICE",
+    "description_zh": "必须由 DreamService 要求，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_INCALL_SERVICE",
+    "description_en": "Must be required by a InCallService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_INCALL_SERVICE",
+    "description_zh": "必须由 InCallService 要求，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_INPUT_METHOD",
+    "description_en": "Must be required by an InputMethodService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_INPUT_METHOD",
+    "description_zh": "必须由 InputMethodService 要求，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_MIDI_DEVICE_SERVICE",
+    "description_en": "Must be required by an MidiDeviceService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_MIDI_DEVICE_SERVICE",
+    "description_zh": "必须由 MidiDeviceService 要求，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_NFC_SERVICE",
+    "description_en": "Must be required by a HostApduService or OffHostApduService to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_NFC_SERVICE",
+    "description_zh": "必须由 HostApduService 或 OffHostApduService 要求，以确保只有系统可以与其绑定。"
+  },
+  {
+    "code": "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE",
+    "description_en": "Must be required by an NotificationListenerService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_NOTIFICATION_LISTENER_SERVICE",
+    "description_zh": "必须是 NotificationListenerService 所必需的，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_PRINT_SERVICE",
+    "description_en": "Must be required by a PrintService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_PRINT_SERVICE",
+    "description_zh": "必须是 PrintService 所必需的，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_QUICK_ACCESS_WALLET_SERVICE",
+    "description_en": "Must be required by a QuickAccessWalletService to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_QUICK_ACCESS_WALLET_SERVICE",
+    "description_zh": "QuickAccessWalletService 必须要求确保只有系统可以与其绑定。"
+  },
+  {
+    "code": "android.permission.BIND_QUICK_SETTINGS_TILE",
+    "description_en": "Allows an application to bind to third party quick settings tiles.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_QUICK_SETTINGS_TILE",
+    "description_zh": "允许应用程序绑定到第三方快速设置图块。"
+  },
+  {
+    "code": "android.permission.BIND_REMOTEVIEWS",
+    "description_en": "Must be required by a RemoteViewsService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_REMOTEVIEWS",
+    "description_zh": "必须是 RemoteViewsService 所必需的，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_SCREENING_SERVICE",
+    "description_en": "Must be required by a CallScreeningService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_SCREENING_SERVICE",
+    "description_zh": "必须由 CallScreeningService 要求，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_TELECOM_CONNECTION_SERVICE",
+    "description_en": "Must be required by a ConnectionService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_TELECOM_CONNECTION_SERVICE",
+    "description_zh": "必须是 ConnectionService 所必需的，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_TEXT_SERVICE",
+    "description_en": "Must be required by a TextService (e.g. SpellCheckerService) to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_TEXT_SERVICE",
+    "description_zh": "必须由 TextService（例如 SpellCheckerService）要求，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_TV_AD_SERVICE",
+    "description_en": "Must be required by a android.media.tv.ad.TvAdService to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_TV_AD_SERVICE",
+    "description_zh": "必须是 android.media.tv.ad.TvAdService 所必需的，以确保只有系统可以与其绑定。"
+  },
+  {
+    "code": "android.permission.BIND_TV_INPUT",
+    "description_en": "Must be required by a TvInputService to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_TV_INPUT",
+    "description_zh": "TvInputService 必须要求确保只有系统可以与其绑定。"
+  },
+  {
+    "code": "android.permission.BIND_TV_INTERACTIVE_APP",
+    "description_en": "Must be required by a TvInteractiveAppService to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_TV_INTERACTIVE_APP",
+    "description_zh": "TvInteractiveAppService 必须要求确保只有系统可以与其绑定。"
+  },
+  {
+    "code": "android.permission.BIND_VISUAL_VOICEMAIL_SERVICE",
+    "description_en": "Must be required by a link VisualVoicemailService to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_VISUAL_VOICEMAIL_SERVICE",
+    "description_zh": "必须通过 VisualVoicemailService 来链接，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_VOICE_INTERACTION",
+    "description_en": "Must be required by a VoiceInteractionService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_VOICE_INTERACTION",
+    "description_zh": "必须由 VoiceInteractionService 要求，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_VPN_SERVICE",
+    "description_en": "Must be required by a VpnService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_VPN_SERVICE",
+    "description_zh": "必须由 VpnService 要求，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_VR_LISTENER_SERVICE",
+    "description_en": "Must be required by an VrListenerService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_VR_LISTENER_SERVICE",
+    "description_zh": "必须由 VrListenerService 要求，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BIND_WALLPAPER",
+    "description_en": "Must be required by a WallpaperService , to ensure that only the system can bind to it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BIND_WALLPAPER",
+    "description_zh": "必须是壁纸服务所必需的，以确保只有系统可以绑定到它。"
+  },
+  {
+    "code": "android.permission.BLUETOOTH",
+    "description_en": "Allows applications to connect to paired bluetooth devices.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BLUETOOTH",
+    "description_zh": "允许应用程序连接到配对的蓝牙设备。"
+  },
+  {
+    "code": "android.permission.BLUETOOTH_ADMIN",
+    "description_en": "Allows applications to discover and pair bluetooth devices.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BLUETOOTH_ADMIN",
+    "description_zh": "允许应用程序发现并配对蓝牙设备。"
+  },
+  {
+    "code": "android.permission.BLUETOOTH_ADVERTISE",
+    "description_en": "Required to be able to advertise to nearby Bluetooth devices.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BLUETOOTH_ADVERTISE",
+    "description_zh": "需要能够向附近的蓝牙设备进行广告。"
+  },
+  {
+    "code": "android.permission.BLUETOOTH_CONNECT",
+    "description_en": "Required to be able to connect to paired Bluetooth devices.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BLUETOOTH_CONNECT",
+    "description_zh": "需要能够连接到配对的蓝牙设备。"
+  },
+  {
+    "code": "android.permission.BLUETOOTH_PRIVILEGED",
+    "description_en": "Allows applications to pair bluetooth devices without user interaction, and to allow or disallow phonebook access or message access.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BLUETOOTH_PRIVILEGED",
+    "description_zh": "允许应用程序在无需用户交互的情况下配对蓝牙设备，并允许或禁止电话簿访问或消息访问。"
+  },
+  {
+    "code": "android.permission.BLUETOOTH_SCAN",
+    "description_en": "Required to be able to discover and pair nearby Bluetooth devices.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BLUETOOTH_SCAN",
+    "description_zh": "需要能够发现并配对附近的蓝牙设备。"
+  },
+  {
+    "code": "android.permission.BODY_SENSORS",
+    "description_en": "Allows an application to access data from sensors that the user uses to measure what is happening inside their body, such as heart rate.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BODY_SENSORS",
+    "description_zh": "允许应用程序访问来自用户用来测量体内发生的情况的传感器的数据，例如心率。"
+  },
+  {
+    "code": "android.permission.BODY_SENSORS_BACKGROUND",
+    "description_en": "Allows an application to access data from sensors that the user uses to measure what is happening inside their body, such as heart rate.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BODY_SENSORS_BACKGROUND",
+    "description_zh": "允许应用程序访问来自用户用来测量体内发生的情况的传感器的数据，例如心率。"
+  },
+  {
+    "code": "android.permission.BROADCAST_PACKAGE_REMOVED",
+    "description_en": "Allows an application to broadcast a notification that an application package has been removed.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BROADCAST_PACKAGE_REMOVED",
+    "description_zh": "允许应用程序广播应用程序包已被删除的通知。"
+  },
+  {
+    "code": "android.permission.BROADCAST_SMS",
+    "description_en": "Allows an application to broadcast an SMS receipt notification.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BROADCAST_SMS",
+    "description_zh": "允许应用程序广播短信接收通知。"
+  },
+  {
+    "code": "android.permission.BROADCAST_STICKY",
+    "description_en": "Allows an application to broadcast sticky intents.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BROADCAST_STICKY",
+    "description_zh": "允许应用程序广播粘性意图。"
+  },
+  {
+    "code": "android.permission.BROADCAST_WAP_PUSH",
+    "description_en": "Allows an application to broadcast a WAP PUSH receipt notification.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#BROADCAST_WAP_PUSH",
+    "description_zh": "允许应用程序广播 WAP PUSH 回执通知。"
+  },
+  {
+    "code": "android.permission.CALL_COMPANION_APP",
+    "description_en": "Allows an app which implements the InCallService API to be eligible to be enabled as a calling companion app.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CALL_COMPANION_APP",
+    "description_zh": "允许实现 InCallService API 的应用程序有资格启用为呼叫配套应用程序。"
+  },
+  {
+    "code": "android.permission.CALL_PHONE",
+    "description_en": "Allows an application to initiate a phone call without going through the Dialer user interface for the user to confirm the call.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CALL_PHONE",
+    "description_zh": "允许应用程序发起电话呼叫，而无需通过拨号器用户界面供用户确认呼叫。"
+  },
+  {
+    "code": "android.permission.CALL_PRIVILEGED",
+    "description_en": "Allows an application to call any phone number, including emergency numbers, without going through the Dialer user interface for the user to confirm the call being placed.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CALL_PRIVILEGED",
+    "description_zh": "允许应用程序呼叫任何电话号码，包括紧急号码，而无需通过拨号器用户界面让用户确认正在拨打的呼叫。"
+  },
+  {
+    "code": "android.permission.CAMERA",
+    "description_en": "Required to be able to access the camera device.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CAMERA",
+    "description_zh": "需要能够访问相机设备。"
+  },
+  {
+    "code": "android.permission.CAPTURE_AUDIO_OUTPUT",
+    "description_en": "Allows an application to capture audio output.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CAPTURE_AUDIO_OUTPUT",
+    "description_zh": "允许应用程序捕获音频输出。"
+  },
+  {
+    "code": "android.permission.CAPTURE_KEYBOARD",
+    "description_en": "Allows the currently focused application to be able to consume keys before Android system get chance to process system keys and shortcuts.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CAPTURE_KEYBOARD",
+    "description_zh": "允许当前聚焦的应用程序能够在 Android 系统有机会处理系统按键和快捷键之前使用按键。"
+  },
+  {
+    "code": "android.permission.CHANGE_COMPONENT_ENABLED_STATE",
+    "description_en": "Allows an application to change whether an application component (other than its own) is enabled or not.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CHANGE_COMPONENT_ENABLED_STATE",
+    "description_zh": "允许应用程序更改是否启用应用程序组件（除了它自己的组件）。"
+  },
+  {
+    "code": "android.permission.CHANGE_CONFIGURATION",
+    "description_en": "Allows an application to modify the current configuration, such as locale.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CHANGE_CONFIGURATION",
+    "description_zh": "允许应用程序修改当前配置，例如区域设置。"
+  },
+  {
+    "code": "android.permission.CHANGE_NETWORK_STATE",
+    "description_en": "Allows applications to change network connectivity state.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CHANGE_NETWORK_STATE",
+    "description_zh": "允许应用程序更改网络连接状态。"
+  },
+  {
+    "code": "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+    "description_en": "Allows applications to enter Wi-Fi Multicast mode.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CHANGE_WIFI_MULTICAST_STATE",
+    "description_zh": "允许应用程序进入 Wi-Fi 多​​播模式。"
+  },
+  {
+    "code": "android.permission.CHANGE_WIFI_STATE",
+    "description_en": "Allows applications to change Wi-Fi connectivity state.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CHANGE_WIFI_STATE",
+    "description_zh": "允许应用程序更改 Wi-Fi 连接状态。"
+  },
+  {
+    "code": "android.permission.CLEAR_APP_CACHE",
+    "description_en": "Allows an application to clear the caches of all installed applications on the device.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CLEAR_APP_CACHE",
+    "description_zh": "允许应用程序清除设备上所有已安装应用程序的缓存。"
+  },
+  {
+    "code": "android.permission.CONFIGURE_WIFI_DISPLAY",
+    "description_en": "Allows an application to configure and connect to Wifi displays",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CONFIGURE_WIFI_DISPLAY",
+    "description_zh": "允许应用程序配置并连接到 Wifi 显示器"
+  },
+  {
+    "code": "android.permission.CONTROL_LOCATION_UPDATES",
+    "description_en": "Allows enabling/disabling location update notifications from the radio.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CONTROL_LOCATION_UPDATES",
+    "description_zh": "允许启用/禁用无线电的位置更新通知。"
+  },
+  {
+    "code": "android.permission.CREDENTIAL_MANAGER_QUERY_CANDIDATE_CREDENTIALS",
+    "description_en": "Allows a browser to invoke the set of query apis to get metadata about credential candidates prepared during the CredentialManager.prepareGetCredential API.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CREDENTIAL_MANAGER_QUERY_CANDIDATE_CREDENTIALS",
+    "description_zh": "允许浏览器调用查询 api 集来获取有关在 CredentialManager.prepareGetCredential API 期间准备的凭证候选的元数据。"
+  },
+  {
+    "code": "android.permission.CREDENTIAL_MANAGER_SET_ALLOWED_PROVIDERS",
+    "description_en": "Allows specifying candidate credential providers to be queried in Credential Manager get flows, or to be preferred as a default in the Credential Manager create flows.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CREDENTIAL_MANAGER_SET_ALLOWED_PROVIDERS",
+    "description_zh": "允许指定要在凭证管理器获取流中查询的候选凭证提供程序，或者在凭证管理器创建流中作为默认值首选。"
+  },
+  {
+    "code": "android.permission.CREDENTIAL_MANAGER_SET_ORIGIN",
+    "description_en": "Allows a browser to invoke credential manager APIs on behalf of another RP.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#CREDENTIAL_MANAGER_SET_ORIGIN",
+    "description_zh": "允许浏览器代表另一个 RP 调用凭证管理器 API。"
+  },
+  {
+    "code": "android.permission.DELETE_CACHE_FILES",
+    "description_en": "Old permission for deleting an app's cache files, no longer used, but signals for us to quietly ignore calls instead of throwing an exception.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#DELETE_CACHE_FILES",
+    "description_zh": "用于删除应用程序缓存文件的旧权限不再使用，但会向我们发出信号，让我们悄悄地忽略调用而不是抛出异常。"
+  },
+  {
+    "code": "android.permission.DELETE_PACKAGES",
+    "description_en": "Allows an application to delete packages.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#DELETE_PACKAGES",
+    "description_zh": "允许应用程序删除包。"
+  },
+  {
+    "code": "android.permission.DELIVER_COMPANION_MESSAGES",
+    "description_en": "Allows an application to deliver companion messages to system",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#DELIVER_COMPANION_MESSAGES",
+    "description_zh": "允许应用程序向系统传送伴随消息"
+  },
+  {
+    "code": "android.permission.DETECT_SCREEN_CAPTURE",
+    "description_en": "Allows an application to get notified when a screen capture of its windows is attempted.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#DETECT_SCREEN_CAPTURE",
+    "description_zh": "允许应用程序在尝试对其窗口进行屏幕捕获时收到通知。"
+  },
+  {
+    "code": "android.permission.DETECT_SCREEN_RECORDING",
+    "description_en": "Allows an application to get notified when it is being recorded.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#DETECT_SCREEN_RECORDING",
+    "description_zh": "允许应用程序在录制时收到通知。"
+  },
+  {
+    "code": "android.permission.DIAGNOSTIC",
+    "description_en": "Allows applications to RW to diagnostic resources.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#DIAGNOSTIC",
+    "description_zh": "允许应用程序读写诊断资源。"
+  },
+  {
+    "code": "android.permission.DISABLE_KEYGUARD",
+    "description_en": "Allows applications to disable the keyguard if it is not secure.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#DISABLE_KEYGUARD",
+    "description_zh": "如果键盘保护不安全，则允许应用程序禁用它。"
+  },
+  {
+    "code": "android.permission.DUMP",
+    "description_en": "Allows an application to retrieve state dump information from system services.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#DUMP",
+    "description_zh": "允许应用程序从系统服务检索状态转储信息。"
+  },
+  {
+    "code": "android.permission.ENFORCE_UPDATE_OWNERSHIP",
+    "description_en": "Allows an application to indicate via PackageInstaller.SessionParams.setRequestUpdateOwnership(boolean) that it has the intention of becoming the update owner.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#ENFORCE_UPDATE_OWNERSHIP",
+    "description_zh": "允许应用程序通过 PackageInstaller.SessionParams.setRequestUpdateOwnership(boolean) 指示它打算成为更新所有者。"
+  },
+  {
+    "code": "android.permission.EXECUTE_APP_ACTION",
+    "description_en": "Allows an assistive application to perform actions on behalf of users inside of applications.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#EXECUTE_APP_ACTION",
+    "description_zh": "允许辅助应用程序代表应用程序内的用户执行操作。"
+  },
+  {
+    "code": "android.permission.EXECUTE_APP_FUNCTIONS",
+    "description_en": "Allows an application to perform actions on behalf of users inside of applications.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#EXECUTE_APP_FUNCTIONS",
+    "description_zh": "允许应用程序代表应用程序内的用户执行操作。"
+  },
+  {
+    "code": "android.permission.EXPAND_STATUS_BAR",
+    "description_en": "Allows an application to expand or collapse the status bar.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#EXPAND_STATUS_BAR",
+    "description_zh": "允许应用程序展开或折叠状态栏。"
+  },
+  {
+    "code": "android.permission.FACTORY_TEST",
+    "description_en": "Run as a manufacturer test application, running as the root user.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#FACTORY_TEST",
+    "description_zh": "作为制造商测试应用程序运行，以 root 用户身份运行。"
+  },
+  {
+    "code": "android.permission.FOREGROUND_SERVICE",
+    "description_en": "Allows a regular application to use Service.startForeground .",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#FOREGROUND_SERVICE",
+    "description_zh": "允许常规应用程序使用 Service.startForeground 。"
+  },
+  {
+    "code": "android.permission.FOREGROUND_SERVICE_CAMERA",
+    "description_en": "Allows a regular application to use Service.startForeground with the type \"camera\".",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#FOREGROUND_SERVICE_CAMERA",
+    "description_zh": "允许常规应用程序使用类型为“camera”的 Service.startForeground。"
+  },
+  {
+    "code": "android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE",
+    "description_en": "Allows a regular application to use Service.startForeground with the type \"connectedDevice\".",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#FOREGROUND_SERVICE_CONNECTED_DEVICE",
+    "description_zh": "允许常规应用程序使用类型为“connectedDevice”的 Service.startForeground。"
+  },
+  {
+    "code": "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+    "description_en": "Allows a regular application to use Service.startForeground with the type \"dataSync\".",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#FOREGROUND_SERVICE_DATA_SYNC",
+    "description_zh": "允许常规应用程序使用类型为“dataSync”的 Service.startForeground。"
+  },
+  {
+    "code": "android.permission.FOREGROUND_SERVICE_HEALTH",
+    "description_en": "Allows a regular application to use Service.startForeground with the type \"health\".",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#FOREGROUND_SERVICE_HEALTH",
+    "description_zh": "允许常规应用程序使用类型为“health”的 Service.startForeground。"
+  },
+  {
+    "code": "android.permission.FOREGROUND_SERVICE_LOCATION",
+    "description_en": "Allows a regular application to use Service.startForeground with the type \"location\".",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#FOREGROUND_SERVICE_LOCATION",
+    "description_zh": "允许常规应用程序使用类型为“location”的 Service.startForeground。"
+  },
+  {
+    "code": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+    "description_en": "Allows a regular application to use Service.startForeground with the type \"mediaPlayback\".",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+    "description_zh": "允许常规应用程序使用类型为“mediaPlayback”的 Service.startForeground。"
+  },
+  {
+    "code": "android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING",
+    "description_en": "Allows a regular application to use Service.startForeground with the type \"mediaProcessing\".",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#FOREGROUND_SERVICE_MEDIA_PROCESSING",
+    "description_zh": "允许常规应用程序使用类型为“mediaProcessing”的 Service.startForeground。"
+  },
+  {
+    "code": "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+    "description_en": "Allows a regular application to use Service.startForeground with the type \"mediaProjection\".",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#FOREGROUND_SERVICE_MEDIA_PROJECTION",
+    "description_zh": "允许常规应用程序使用类型为“mediaProjection”的 Service.startForeground。"
+  },
+  {
+    "code": "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+    "description_en": "Allows a regular application to use Service.startForeground with the type \"microphone\".",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#FOREGROUND_SERVICE_MICROPHONE",
+    "description_zh": "允许常规应用程序使用“麦克风”类型的 Service.startForeground。"
+  },
+  {
+    "code": "android.permission.FOREGROUND_SERVICE_PHONE_CALL",
+    "description_en": "Allows a regular application to use Service.startForeground with the type \"phoneCall\".",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#FOREGROUND_SERVICE_PHONE_CALL",
+    "description_zh": "允许常规应用程序使用类型为“phoneCall”的 Service.startForeground。"
+  },
+  {
+    "code": "android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING",
+    "description_en": "Allows a regular application to use Service.startForeground with the type \"remoteMessaging\".",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#FOREGROUND_SERVICE_REMOTE_MESSAGING",
+    "description_zh": "允许常规应用程序使用类型为“remoteMessaging”的 Service.startForeground。"
+  },
+  {
+    "code": "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+    "description_en": "Allows a regular application to use Service.startForeground with the type \"specialUse\".",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#FOREGROUND_SERVICE_SPECIAL_USE",
+    "description_zh": "允许常规应用程序使用类型为“specialUse”的 Service.startForeground。"
+  },
+  {
+    "code": "android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED",
+    "description_en": "Allows a regular application to use Service.startForeground with the type \"systemExempted\".",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#FOREGROUND_SERVICE_SYSTEM_EXEMPTED",
+    "description_zh": "允许常规应用程序使用类型为“systemExempted”的 Service.startForeground。"
+  },
+  {
+    "code": "android.permission.GET_ACCOUNTS",
+    "description_en": "Allows access to the list of accounts in the Accounts Service.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#GET_ACCOUNTS",
+    "description_zh": "允许访问帐户服务中的帐户列表。"
+  },
+  {
+    "code": "android.permission.GET_ACCOUNTS_PRIVILEGED",
+    "description_en": "Allows access to the list of accounts in the Accounts Service.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#GET_ACCOUNTS_PRIVILEGED",
+    "description_zh": "允许访问帐户服务中的帐户列表。"
+  },
+  {
+    "code": "android.permission.GET_PACKAGE_SIZE",
+    "description_en": "Allows an application to find out the space used by any package.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#GET_PACKAGE_SIZE",
+    "description_zh": "允许应用程序找出任何包所使用的空间。"
+  },
+  {
+    "code": "android.permission.GET_TASKS",
+    "description_en": "This constant was deprecated in API level 21. No longer enforced.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#GET_TASKS",
+    "description_zh": "该常量在 API 级别 21 中已弃用。不再强制执行。"
+  },
+  {
+    "code": "android.permission.GLOBAL_SEARCH",
+    "description_en": "This permission can be used on content providers to allow the global search system to access their data.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#GLOBAL_SEARCH",
+    "description_zh": "此权限可用于内容提供商，以允许全球搜索系统访问其数据。"
+  },
+  {
+    "code": "android.permission.HIDE_OVERLAY_WINDOWS",
+    "description_en": "Allows an app to prevent non-system-overlay windows from being drawn on top of it",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#HIDE_OVERLAY_WINDOWS",
+    "description_zh": "允许应用程序防止在其上方绘制非系统覆盖窗口"
+  },
+  {
+    "code": "android.permission.HIGH_SAMPLING_RATE_SENSORS",
+    "description_en": "Allows an app to access sensor data with a sampling rate greater than 200 Hz.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#HIGH_SAMPLING_RATE_SENSORS",
+    "description_zh": "允许应用以大于 200 Hz 的采样率访问传感器数据。"
+  },
+  {
+    "code": "android.permission.INSTALL_LOCATION_PROVIDER",
+    "description_en": "Allows an application to install a location provider into the Location Manager.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#INSTALL_LOCATION_PROVIDER",
+    "description_zh": "允许应用程序将位置提供程序安装到位置管理器中。"
+  },
+  {
+    "code": "android.permission.INSTALL_PACKAGES",
+    "description_en": "Allows an application to install packages.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#INSTALL_PACKAGES",
+    "description_zh": "允许应用程序安装软件包。"
+  },
+  {
+    "code": "android.permission.INSTALL_SHORTCUT",
+    "description_en": "Allows an application to install a shortcut in Launcher.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#INSTALL_SHORTCUT",
+    "description_zh": "允许应用程序在启动器中安装快捷方式。"
+  },
+  {
+    "code": "android.permission.INSTANT_APP_FOREGROUND_SERVICE",
+    "description_en": "Allows an instant app to create foreground services.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#INSTANT_APP_FOREGROUND_SERVICE",
+    "description_zh": "允许免安装应用创建前台服务。"
+  },
+  {
+    "code": "android.permission.INTERACT_ACROSS_PROFILES",
+    "description_en": "Allows interaction across profiles in the same profile group.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#INTERACT_ACROSS_PROFILES",
+    "description_zh": "允许同一配置文件组中的配置文件之间进行交互。"
+  },
+  {
+    "code": "android.permission.INTERNET",
+    "description_en": "Allows applications to open network sockets.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#INTERNET",
+    "description_zh": "允许应用程序打开网络套接字。"
+  },
+  {
+    "code": "android.permission.KILL_BACKGROUND_PROCESSES",
+    "description_en": "Allows an application to call ActivityManager.killBackgroundProcesses(String) .",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#KILL_BACKGROUND_PROCESSES",
+    "description_zh": "允许应用程序调用 ActivityManager.killBackgroundProcesses(String) 。"
+  },
+  {
+    "code": "android.permission.LAUNCH_CAPTURE_CONTENT_ACTIVITY_FOR_NOTE",
+    "description_en": "Allows an application to capture screen content to perform a screenshot using the intent action Intent.ACTION_LAUNCH_CAPTURE_CONTENT_ACTIVITY_FOR_NOTE .",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#LAUNCH_CAPTURE_CONTENT_ACTIVITY_FOR_NOTE",
+    "description_zh": "允许应用程序捕获屏幕内容以使用意图操作 Intent.ACTION_LAUNCH_CAPTURE_CONTENT_ACTIVITY_FOR_NOTE 执行屏幕截图。"
+  },
+  {
+    "code": "android.permission.LAUNCH_MULTI_PANE_SETTINGS_DEEP_LINK",
+    "description_en": "An application needs this permission for Settings.ACTION_SETTINGS_EMBED_DEEP_LINK_ACTIVITY to show its Activity embedded in Settings app.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#LAUNCH_MULTI_PANE_SETTINGS_DEEP_LINK",
+    "description_zh": "应用程序需要 Settings.ACTION_SETTINGS_EMBED_DEEP_LINK_ACTIVITY 的此权限才能显示其嵌入在“设置”应用中的活动。"
+  },
+  {
+    "code": "android.permission.LOADER_USAGE_STATS",
+    "description_en": "Allows a data loader to read a package's access logs.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#LOADER_USAGE_STATS",
+    "description_zh": "允许数据加载器读取包的访问日志。"
+  },
+  {
+    "code": "android.permission.LOCATION_HARDWARE",
+    "description_en": "Allows an application to use location features in hardware, such as the geofencing api.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#LOCATION_HARDWARE",
+    "description_zh": "允许应用程序使用硬件中的位置功能，例如地理围栏 API。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_LOCK_STATE",
+    "description_en": "Allows financed device kiosk apps to perform actions on the Device Lock service Protection level: internal|role Intended for use by the FINANCED_DEVICE_KIOSK role only.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_LOCK_STATE",
+    "description_zh": "允许融资设备展台应用对设备锁定服务执行操作 保护级别：内部|角色 仅供 FINANCED_DEVICE_KIOSK 角色使用。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_ACCESSIBILITY",
+    "description_en": "Allows an application to manage policy related to accessibility.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_ACCESSIBILITY",
+    "description_zh": "允许应用程序管理与可访问性相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_ACCOUNT_MANAGEMENT",
+    "description_en": "Allows an application to set policy related to account management.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_ACCOUNT_MANAGEMENT",
+    "description_zh": "允许应用程序设置与帐户管理相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_ACROSS_USERS",
+    "description_en": "Allows an application to set device policies outside the current user that are required for securing device ownership without accessing user data.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_ACROSS_USERS",
+    "description_zh": "允许应用程序在当前用户之外设置保护设备所有权所需的设备策略，而无需访问用户数据。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_ACROSS_USERS_FULL",
+    "description_en": "Allows an application to set device policies outside the current user.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_ACROSS_USERS_FULL",
+    "description_zh": "允许应用程序在当前用户之外设置设备策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_ACROSS_USERS_SECURITY_CRITICAL",
+    "description_en": "Allows an application to set device policies outside the current user that are critical for securing data within the current user.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_ACROSS_USERS_SECURITY_CRITICAL",
+    "description_zh": "允许应用程序在当前用户外部设置设备策略，这对于保护当前用户内部的数据至关重要。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_AIRPLANE_MODE",
+    "description_en": "Allows an application to set policy related to airplane mode.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_AIRPLANE_MODE",
+    "description_zh": "允许应用程序设置与飞行模式相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_APPS_CONTROL",
+    "description_en": "Allows an application to manage policy regarding modifying applications.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_APPS_CONTROL",
+    "description_zh": "允许应用程序管理有关修改应用程序的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_APP_FUNCTIONS",
+    "description_en": "Allows an application to manage policy related to AppFunctions.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_APP_FUNCTIONS",
+    "description_zh": "允许应用程序管理与 AppFunctions 相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_APP_RESTRICTIONS",
+    "description_en": "Allows an application to manage application restrictions.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_APP_RESTRICTIONS",
+    "description_zh": "允许应用程序管理应用程序限制。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_APP_USER_DATA",
+    "description_en": "Allows an application to manage policy related to application user data.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_APP_USER_DATA",
+    "description_zh": "允许应用程序管理与应用程序用户数据相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_ASSIST_CONTENT",
+    "description_en": "Allows an application to set policy related to sending assist content to a privileged app such as the Assistant app.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_ASSIST_CONTENT",
+    "description_zh": "允许应用程序设置与将辅助内容发送到特权应用程序（例如助手应用程序）相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_AUDIO_OUTPUT",
+    "description_en": "Allows an application to set policy related to audio output.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_AUDIO_OUTPUT",
+    "description_zh": "允许应用程序设置与音频输出相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_AUTOFILL",
+    "description_en": "Allows an application to set policy related to autofill.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_AUTOFILL",
+    "description_zh": "允许应用程序设置与自动填充相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_BACKUP_SERVICE",
+    "description_en": "Allows an application to manage backup service policy.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_BACKUP_SERVICE",
+    "description_zh": "允许应用程序管理备份服务策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_BLOCK_UNINSTALL",
+    "description_en": "Allows an application to manage policy related to block package uninstallation.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_BLOCK_UNINSTALL",
+    "description_zh": "允许应用程序管理与块包卸载相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_BLUETOOTH",
+    "description_en": "Allows an application to set policy related to bluetooth.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_BLUETOOTH",
+    "description_zh": "允许应用程序设置与蓝牙相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_BUGREPORT",
+    "description_en": "Allows an application to request bugreports with user consent.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_BUGREPORT",
+    "description_zh": "允许应用程序在用户同意的情况下请求错误报告。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_CALLS",
+    "description_en": "Allows an application to manage calling policy.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_CALLS",
+    "description_zh": "允许应用程序管理呼叫策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_CAMERA",
+    "description_en": "Allows an application to set policy related to restricting a user's ability to use or enable and disable the camera.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_CAMERA",
+    "description_zh": "允许应用程序设置与限制用户使用或启用和禁用相机的能力相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_CAMERA_TOGGLE",
+    "description_en": "Allows an application to manage policy related to camera toggle.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_CAMERA_TOGGLE",
+    "description_zh": "允许应用程序管理与相机切换相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_CERTIFICATES",
+    "description_en": "Allows an application to set policy related to certificates.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_CERTIFICATES",
+    "description_zh": "允许应用程序设置与证书相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_COMMON_CRITERIA_MODE",
+    "description_en": "Allows an application to manage policy related to common criteria mode.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_COMMON_CRITERIA_MODE",
+    "description_zh": "允许应用程序管理与通用标准模式相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_CONTENT_PROTECTION",
+    "description_en": "Allows an application to manage policy related to content protection.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_CONTENT_PROTECTION",
+    "description_zh": "允许应用程序管理与内容保护相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_DEBUGGING_FEATURES",
+    "description_en": "Allows an application to manage debugging features policy.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_DEBUGGING_FEATURES",
+    "description_zh": "允许应用程序管理调试功能策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_DEFAULT_SMS",
+    "description_en": "Allows an application to set policy related to the default sms application.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_DEFAULT_SMS",
+    "description_zh": "允许应用程序设置与默认短信应用程序相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_DEVICE_IDENTIFIERS",
+    "description_en": "Allows an application to manage policy related to device identifiers.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_DEVICE_IDENTIFIERS",
+    "description_zh": "允许应用程序管理与设备标识符相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_DISPLAY",
+    "description_en": "Allows an application to set policy related to the display.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_DISPLAY",
+    "description_zh": "允许应用程序设置与显示相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_FACTORY_RESET",
+    "description_en": "Allows an application to set policy related to factory reset.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_FACTORY_RESET",
+    "description_zh": "允许应用程序设置与恢复出厂设置相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_FUN",
+    "description_en": "Allows an application to set policy related to fun.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_FUN",
+    "description_zh": "允许应用程序设置与乐趣相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_INPUT_METHODS",
+    "description_en": "Allows an application to set policy related to input methods.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_INPUT_METHODS",
+    "description_zh": "允许应用程序设置与输入法相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_INSTALL_UNKNOWN_SOURCES",
+    "description_en": "Allows an application to manage installing from unknown sources policy.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_INSTALL_UNKNOWN_SOURCES",
+    "description_zh": "允许应用程序管理来自未知来源的安装策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_KEEP_UNINSTALLED_PACKAGES",
+    "description_en": "Allows an application to set policy related to keeping uninstalled packages.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_KEEP_UNINSTALLED_PACKAGES",
+    "description_zh": "允许应用程序设置与保留已卸载的软件包相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_KEYGUARD",
+    "description_en": "Allows an application to manage policy related to keyguard.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_KEYGUARD",
+    "description_zh": "允许应用程序管理与键盘锁相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_LOCALE",
+    "description_en": "Allows an application to set policy related to locale.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_LOCALE",
+    "description_zh": "允许应用程序设置与区域设置相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_LOCATION",
+    "description_en": "Allows an application to set policy related to location.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_LOCATION",
+    "description_zh": "允许应用程序设置与位置相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_LOCK",
+    "description_en": "Allows an application to lock a profile or the device with the appropriate cross-user permission.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_LOCK",
+    "description_zh": "允许应用程序使用适当的跨用户权限锁定配置文件或设备。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_LOCK_CREDENTIALS",
+    "description_en": "Allows an application to set policy related to lock credentials.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_LOCK_CREDENTIALS",
+    "description_zh": "允许应用程序设置与锁定凭据相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_LOCK_TASK",
+    "description_en": "Allows an application to manage lock task policy.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_LOCK_TASK",
+    "description_zh": "允许应用程序管理锁定任务策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_MANAGED_SUBSCRIPTIONS",
+    "description_en": "Allows an application to set policy related to subscriptions downloaded by an admin.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_MANAGED_SUBSCRIPTIONS",
+    "description_zh": "允许应用程序设置与管理员下载的订阅相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_METERED_DATA",
+    "description_en": "Allows an application to manage policy related to metered data.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_METERED_DATA",
+    "description_zh": "允许应用程序管理与计量数据相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_MICROPHONE",
+    "description_en": "Allows an application to set policy related to restricting a user's ability to use or enable and disable the microphone.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_MICROPHONE",
+    "description_zh": "允许应用程序设置与限制用户使用或启用和禁用麦克风的能力相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_MICROPHONE_TOGGLE",
+    "description_en": "Allows an application to manage policy related to microphone toggle.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_MICROPHONE_TOGGLE",
+    "description_zh": "允许应用程序管理与麦克风切换相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_MOBILE_NETWORK",
+    "description_en": "Allows an application to set policy related to mobile networks.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_MOBILE_NETWORK",
+    "description_zh": "允许应用程序设置与移动网络相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_MODIFY_USERS",
+    "description_en": "Allows an application to manage policy preventing users from modifying users.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_MODIFY_USERS",
+    "description_zh": "允许应用程序管理阻止用户修改用户的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_MTE",
+    "description_en": "Allows an application to manage policy related to the Memory Tagging Extension (MTE).",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_MTE",
+    "description_zh": "允许应用程序管理与内存标记扩展 (MTE) 相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_NEARBY_COMMUNICATION",
+    "description_en": "Allows an application to set policy related to nearby communications (e.g. Beam and nearby streaming).",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_NEARBY_COMMUNICATION",
+    "description_zh": "允许应用程序设置与附近通信相关的策略（例如 Beam 和附近流媒体）。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_NETWORK_LOGGING",
+    "description_en": "Allows an application to set policy related to network logging.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_NETWORK_LOGGING",
+    "description_zh": "允许应用程序设置与网络日志记录相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_ORGANIZATION_IDENTITY",
+    "description_en": "Allows an application to manage the identity of the managing organization.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_ORGANIZATION_IDENTITY",
+    "description_zh": "允许应用程序管理管理组织的身份。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_OVERRIDE_APN",
+    "description_en": "Allows an application to set policy related to override APNs.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_OVERRIDE_APN",
+    "description_zh": "允许应用程序设置与覆盖 APN 相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_PACKAGE_STATE",
+    "description_en": "Allows an application to set policy related to hiding and suspending packages.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_PACKAGE_STATE",
+    "description_zh": "允许应用程序设置与隐藏和挂起包相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_PHYSICAL_MEDIA",
+    "description_en": "Allows an application to set policy related to physical media.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_PHYSICAL_MEDIA",
+    "description_zh": "允许应用程序设置与物理介质相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_PRINTING",
+    "description_en": "Allows an application to set policy related to printing.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_PRINTING",
+    "description_zh": "允许应用程序设置与打印相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_PRIVATE_DNS",
+    "description_en": "Allows an application to set policy related to private DNS.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_PRIVATE_DNS",
+    "description_zh": "允许应用程序设置与私有 DNS 相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_PROFILES",
+    "description_en": "Allows an application to set policy related to profiles.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_PROFILES",
+    "description_zh": "允许应用程序设置与配置文件相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_PROFILE_INTERACTION",
+    "description_en": "Allows an application to set policy related to interacting with profiles (e.g. Disallowing cross-profile copy and paste).",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_PROFILE_INTERACTION",
+    "description_zh": "允许应用程序设置与配置文件交互相关的策略（例如禁止跨配置文件复制和粘贴）。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_PROXY",
+    "description_en": "Allows an application to set a network-independent global HTTP proxy.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_PROXY",
+    "description_zh": "允许应用程序设置独立于网络的全局 HTTP 代理。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_QUERY_SYSTEM_UPDATES",
+    "description_en": "Allows an application query system updates.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_QUERY_SYSTEM_UPDATES",
+    "description_zh": "允许应用程序查询系统更新。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_RESET_PASSWORD",
+    "description_en": "Allows an application to force set a new device unlock password or a managed profile challenge on current user.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_RESET_PASSWORD",
+    "description_zh": "允许应用程序强制为当前用户设置新的设备解锁密码或托管配置文件质询。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_RESTRICT_PRIVATE_DNS",
+    "description_en": "Allows an application to set policy related to restricting the user from configuring private DNS.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_RESTRICT_PRIVATE_DNS",
+    "description_zh": "允许应用程序设置与限制用户配置私有 DNS 相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_RUNTIME_PERMISSIONS",
+    "description_en": "Allows an application to set the grant state of runtime permissions on packages.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_RUNTIME_PERMISSIONS",
+    "description_zh": "允许应用程序设置包上运行时权限的授予状态。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_RUN_IN_BACKGROUND",
+    "description_en": "Allows an application to set policy related to users running in the background.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_RUN_IN_BACKGROUND",
+    "description_zh": "允许应用程序设置与后台运行的用户相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_SAFE_BOOT",
+    "description_en": "Allows an application to manage safe boot policy.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_SAFE_BOOT",
+    "description_zh": "允许应用程序管理安全启动策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_SCREEN_CAPTURE",
+    "description_en": "Allows an application to set policy related to screen capture.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_SCREEN_CAPTURE",
+    "description_zh": "允许应用程序设置与屏幕捕获相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_SCREEN_CONTENT",
+    "description_en": "Allows an application to set policy related to the usage of the contents of the screen.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_SCREEN_CONTENT",
+    "description_zh": "允许应用程序设置与屏幕内容的使用相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_SECURITY_LOGGING",
+    "description_en": "Allows an application to set policy related to security logging.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_SECURITY_LOGGING",
+    "description_zh": "允许应用程序设置与安全日志记录相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_SETTINGS",
+    "description_en": "Allows an application to set policy related to settings.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_SETTINGS",
+    "description_zh": "允许应用程序设置与设置相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_SMS",
+    "description_en": "Allows an application to set policy related to sms.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_SMS",
+    "description_zh": "允许应用程序设置与短信相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_STATUS_BAR",
+    "description_en": "Allows an application to set policy related to the status bar.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_STATUS_BAR",
+    "description_zh": "允许应用程序设置与状态栏相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_SUPPORT_MESSAGE",
+    "description_en": "Allows an application to set support messages for when a user action is affected by an active policy.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_SUPPORT_MESSAGE",
+    "description_zh": "允许应用程序设置当用户操作受到活动策略影响时的支持消息。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_SUSPEND_PERSONAL_APPS",
+    "description_en": "Allows an application to set policy related to suspending personal apps.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_SUSPEND_PERSONAL_APPS",
+    "description_zh": "允许应用程序设置与暂停个人应用程序相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_SYSTEM_APPS",
+    "description_en": "Allows an application to manage policy related to system apps.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_SYSTEM_APPS",
+    "description_zh": "允许应用程序管理与系统应用程序相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_SYSTEM_DIALOGS",
+    "description_en": "Allows an application to set policy related to system dialogs.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_SYSTEM_DIALOGS",
+    "description_zh": "允许应用程序设置与系统对话框相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_SYSTEM_UPDATES",
+    "description_en": "Allows an application to set policy related to system updates.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_SYSTEM_UPDATES",
+    "description_zh": "允许应用程序设置与系统更新相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_THREAD_NETWORK",
+    "description_en": "Allows an application to set policy related to Thread network.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_THREAD_NETWORK",
+    "description_zh": "允许应用程序设置与 Thread 网络相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_TIME",
+    "description_en": "Allows an application to manage device policy relating to time.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_TIME",
+    "description_zh": "允许应用程序管理与时间相关的设备策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_USB_DATA_SIGNALLING",
+    "description_en": "Allows an application to set policy related to usb data signalling.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_USB_DATA_SIGNALLING",
+    "description_zh": "允许应用程序设置与 USB 数据信号相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_USB_FILE_TRANSFER",
+    "description_en": "Allows an application to set policy related to usb file transfers.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_USB_FILE_TRANSFER",
+    "description_zh": "允许应用程序设置与 USB 文件传输相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_USERS",
+    "description_en": "Allows an application to set policy related to users.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_USERS",
+    "description_zh": "允许应用程序设置与用户相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_VPN",
+    "description_en": "Allows an application to set policy related to VPNs.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_VPN",
+    "description_zh": "允许应用程序设置与 VPN 相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_WALLPAPER",
+    "description_en": "Allows an application to set policy related to the wallpaper.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_WALLPAPER",
+    "description_zh": "允许应用程序设置与壁纸相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_WIFI",
+    "description_en": "Allows an application to set policy related to Wifi.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_WIFI",
+    "description_zh": "允许应用程序设置与 Wifi 相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_WINDOWS",
+    "description_en": "Allows an application to set policy related to windows.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_WINDOWS",
+    "description_zh": "允许应用程序设置与窗口相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DEVICE_POLICY_WIPE_DATA",
+    "description_en": "Allows an application to manage policy related to wiping data.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DEVICE_POLICY_WIPE_DATA",
+    "description_zh": "允许应用程序管理与擦除数据相关的策略。"
+  },
+  {
+    "code": "android.permission.MANAGE_DOCUMENTS",
+    "description_en": "Allows an application to manage access to documents, usually as part of a document picker.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_DOCUMENTS",
+    "description_zh": "允许应用程序管理对文档的访问，通常作为文档选择器的一部分。"
+  },
+  {
+    "code": "android.permission.MANAGE_EXTERNAL_STORAGE",
+    "description_en": "Allows an application a broad access to external storage in scoped storage.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_EXTERNAL_STORAGE",
+    "description_zh": "允许应用程序广泛访问范围存储中的外部存储。"
+  },
+  {
+    "code": "android.permission.MANAGE_MEDIA",
+    "description_en": "Allows an application to modify and delete media files on this device or any connected storage device without user confirmation.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_MEDIA",
+    "description_zh": "允许应用程序修改和删除此设备或任何连接的存储设备上的媒体文件，无需用户确认。"
+  },
+  {
+    "code": "android.permission.MANAGE_ONGOING_CALLS",
+    "description_en": "Allows to query ongoing call details and manage ongoing calls Protection level: signature|appop",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_ONGOING_CALLS",
+    "description_zh": "允许查询当前通话详情并管理当前通话保护级别：signature|appop"
+  },
+  {
+    "code": "android.permission.MANAGE_OWN_CALLS",
+    "description_en": "Allows a calling application which manages its own calls through the self-managed ConnectionService APIs.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_OWN_CALLS",
+    "description_zh": "允许调用应用程序通过自我管理的 ConnectionService API 管理自己的调用。"
+  },
+  {
+    "code": "android.permission.MANAGE_WIFI_INTERFACES",
+    "description_en": "Allows applications to get notified when a Wi-Fi interface request cannot be satisfied without tearing down one or more other interfaces, and provide a decision whether to approve the request or reject it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_WIFI_INTERFACES",
+    "description_zh": "当在不拆除一个或多个其他接口的情况下无法满足 Wi-Fi 接口请求时，允许应用程序收到通知，并决定是否批准该请求或拒绝该请求。"
+  },
+  {
+    "code": "android.permission.MANAGE_WIFI_NETWORK_SELECTION",
+    "description_en": "This permission is used to let OEMs grant their trusted app access to a subset of privileged wifi APIs to improve wifi performance.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MANAGE_WIFI_NETWORK_SELECTION",
+    "description_zh": "此权限用于让 OEM 授予其受信任的应用程序对特权 wifi API 子集的访问权限，以提高 wifi 性能。"
+  },
+  {
+    "code": "android.permission.MASTER_CLEAR",
+    "description_en": "Not for use by third-party applications.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MASTER_CLEAR",
+    "description_zh": "不供第三方应用程序使用。"
+  },
+  {
+    "code": "android.permission.MEDIA_CONTENT_CONTROL",
+    "description_en": "Allows an application to know what content is playing and control its playback.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MEDIA_CONTENT_CONTROL",
+    "description_zh": "允许应用程序了解正在播放的内容并控制其播放。"
+  },
+  {
+    "code": "android.permission.MEDIA_ROUTING_CONTROL",
+    "description_en": "Allows an application to control the routing of media apps.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MEDIA_ROUTING_CONTROL",
+    "description_zh": "允许应用程序控制媒体应用程序的路由。"
+  },
+  {
+    "code": "android.permission.MODIFY_AUDIO_SETTINGS",
+    "description_en": "Allows an application to modify global audio settings.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MODIFY_AUDIO_SETTINGS",
+    "description_zh": "允许应用程序修改全局音频设置。"
+  },
+  {
+    "code": "android.permission.MODIFY_PHONE_STATE",
+    "description_en": "Allows modification of the telephony state - power on, mmi, etc.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MODIFY_PHONE_STATE",
+    "description_zh": "允许修改电话状态 - 开机、mmi 等。"
+  },
+  {
+    "code": "android.permission.MOUNT_FORMAT_FILESYSTEMS",
+    "description_en": "Allows formatting file systems for removable storage.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MOUNT_FORMAT_FILESYSTEMS",
+    "description_zh": "允许格式化可移动存储的文件系统。"
+  },
+  {
+    "code": "android.permission.MOUNT_UNMOUNT_FILESYSTEMS",
+    "description_en": "Allows mounting and unmounting file systems for removable storage.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#MOUNT_UNMOUNT_FILESYSTEMS",
+    "description_zh": "允许安装和卸载可移动存储的文件系统。"
+  },
+  {
+    "code": "android.permission.NEARBY_WIFI_DEVICES",
+    "description_en": "Required to be able to advertise and connect to nearby devices via Wi-Fi.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#NEARBY_WIFI_DEVICES",
+    "description_zh": "需要能够通过 Wi-Fi 进行广告并连接到附近的设备。"
+  },
+  {
+    "code": "android.permission.NFC",
+    "description_en": "Allows applications to perform I/O operations over NFC.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#NFC",
+    "description_zh": "允许应用程序通过 NFC 执行 I/O 操作。"
+  },
+  {
+    "code": "android.permission.NFC_PREFERRED_PAYMENT_INFO",
+    "description_en": "Allows applications to receive NFC preferred payment service information.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#NFC_PREFERRED_PAYMENT_INFO",
+    "description_zh": "允许应用程序接收 NFC 首选支付服务信息。"
+  },
+  {
+    "code": "android.permission.NFC_TRANSACTION_EVENT",
+    "description_en": "Allows applications to receive NFC transaction events.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#NFC_TRANSACTION_EVENT",
+    "description_zh": "允许应用程序接收 NFC 交易事件。"
+  },
+  {
+    "code": "android.permission.OVERRIDE_MEDIA_SESSION_OWNER",
+    "description_en": "Allows an application to override the owner of a MediaSession.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#OVERRIDE_MEDIA_SESSION_OWNER",
+    "description_zh": "允许应用程序覆盖 MediaSession 的所有者。"
+  },
+  {
+    "code": "android.permission.OVERRIDE_WIFI_CONFIG",
+    "description_en": "Allows an application to modify any wifi configuration, even if created by another application.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#OVERRIDE_WIFI_CONFIG",
+    "description_zh": "允许应用程序修改任何 wifi 配置，即使是由另一个应用程序创建的。"
+  },
+  {
+    "code": "android.permission.PACKAGE_USAGE_STATS",
+    "description_en": "Allows an application to collect component usage statistics Declaring the permission implies intention to use the API and the user of the device can grant permission through the Settings application.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#PACKAGE_USAGE_STATS",
+    "description_zh": "允许应用程序收集组件使用统计信息声明权限意味着使用 API 的意图，并且设备的用户可以通过“设置”应用程序授予权限。"
+  },
+  {
+    "code": "android.permission.PERSISTENT_ACTIVITY",
+    "description_en": "This constant was deprecated in API level 15. This functionality will be removed in the future; please do not use. Allow an application to make its activities persistent.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#PERSISTENT_ACTIVITY",
+    "description_zh": "该常量在 API 级别 15 中已弃用。该功能将来将被删除；请不要使用。允许应用程序使其活动持久化。"
+  },
+  {
+    "code": "android.permission.POST_NOTIFICATIONS",
+    "description_en": "Allows an app to post notifications Protection level: dangerous",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#POST_NOTIFICATIONS",
+    "description_zh": "允许应用发布通知 保护级别：危险"
+  },
+  {
+    "code": "android.permission.POST_PROMOTED_NOTIFICATIONS",
+    "description_en": "Required for apps to post promoted notifications.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#POST_PROMOTED_NOTIFICATIONS",
+    "description_zh": "应用程序需要发布升级通知。"
+  },
+  {
+    "code": "android.permission.PROCESS_OUTGOING_CALLS",
+    "description_en": "This constant was deprecated in API level 29. Applications should use CallRedirectionService instead of the Intent.ACTION_NEW_OUTGOING_CALL broadcast.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#PROCESS_OUTGOING_CALLS",
+    "description_zh": "该常量在 API 级别 29 中已弃用。应用程序应使用 CallRedirectionService 而不是 Intent.ACTION_NEW_OUTGOING_CALL 广播。"
+  },
+  {
+    "code": "android.permission.PROVIDE_OWN_AUTOFILL_SUGGESTIONS",
+    "description_en": "Allows an application to display its suggestions using the autofill framework.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#PROVIDE_OWN_AUTOFILL_SUGGESTIONS",
+    "description_zh": "允许应用程序使用自动填充框架显示其建议。"
+  },
+  {
+    "code": "android.permission.PROVIDE_REMOTE_CREDENTIALS",
+    "description_en": "Allows an application to be able to store and retrieve credentials from a remote device.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#PROVIDE_REMOTE_CREDENTIALS",
+    "description_zh": "允许应用程序能够从远程设备存储和检索凭据。"
+  },
+  {
+    "code": "android.permission.QUERY_ADVANCED_PROTECTION_MODE",
+    "description_en": "Allows an application to query the device's advanced protection mode status.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#QUERY_ADVANCED_PROTECTION_MODE",
+    "description_zh": "允许应用程序查询设备的高级保护模式状态。"
+  },
+  {
+    "code": "android.permission.QUERY_ALL_PACKAGES",
+    "description_en": "Allows query of any normal app on the device, regardless of manifest declarations.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#QUERY_ALL_PACKAGES",
+    "description_zh": "允许查询设备上的任何正常应用程序，无论清单声明如何。"
+  },
+  {
+    "code": "android.permission.RANGING",
+    "description_en": "Required to be able to range to devices using generic ranging module.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#RANGING",
+    "description_zh": "需要能够使用通用测距模块对设备进行测距。"
+  },
+  {
+    "code": "android.permission.READ_ASSISTANT_APP_SEARCH_DATA",
+    "description_en": "Allows an application to query over global data in AppSearch that's visible to the ASSISTANT role.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_ASSISTANT_APP_SEARCH_DATA",
+    "description_zh": "允许应用程序查询 ASSISTANT 角色可见的 AppSearch 中的全局数据。"
+  },
+  {
+    "code": "android.permission.READ_BASIC_PHONE_STATE",
+    "description_en": "Allows read only access to phone state with a non dangerous permission, including the information like cellular network type, software version.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_BASIC_PHONE_STATE",
+    "description_zh": "允许以非危险权限只读访问手机状态，包括蜂窝网络类型、软件版本等信息。"
+  },
+  {
+    "code": "android.permission.READ_CALENDAR",
+    "description_en": "Allows an application to read the user's calendar data.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_CALENDAR",
+    "description_zh": "允许应用程序读取用户的日历数据。"
+  },
+  {
+    "code": "android.permission.READ_CALL_LOG",
+    "description_en": "Allows an application to read the user's call log.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_CALL_LOG",
+    "description_zh": "允许应用程序读取用户的通话记录。"
+  },
+  {
+    "code": "android.permission.READ_COLOR_ZONES",
+    "description_en": "Allows an application to read the aggregated color zones on the screen for use cases like TV ambient backlight usages.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_COLOR_ZONES",
+    "description_zh": "允许应用程序读取屏幕上聚合的颜色区域，以用于电视环境背光使用等用例。"
+  },
+  {
+    "code": "android.permission.READ_CONTACTS",
+    "description_en": "Allows an application to read the user's contacts data.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_CONTACTS",
+    "description_zh": "允许应用程序读取用户的联系人数据。"
+  },
+  {
+    "code": "android.permission.READ_DROPBOX_DATA",
+    "description_en": "Allows an application to access the data in Dropbox.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_DROPBOX_DATA",
+    "description_zh": "允许应用程序访问 Dropbox 中的数据。"
+  },
+  {
+    "code": "android.permission.READ_EXTERNAL_STORAGE",
+    "description_en": "Allows an application to read from external storage.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_EXTERNAL_STORAGE",
+    "description_zh": "允许应用程序从外部存储中读取数据。"
+  },
+  {
+    "code": "android.permission.READ_HOME_APP_SEARCH_DATA",
+    "description_en": "Allows an application to query over global data in AppSearch that's visible to the HOME role.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_HOME_APP_SEARCH_DATA",
+    "description_zh": "允许应用程序查询 HOME 角色可见的 AppSearch 中的全局数据。"
+  },
+  {
+    "code": "android.permission.READ_INPUT_STATE",
+    "description_en": "This constant was deprecated in API level 16. The API that used this permission has been removed.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_INPUT_STATE",
+    "description_zh": "此常量在 API 级别 16 中已弃用。使用此权限的 API 已被删除。"
+  },
+  {
+    "code": "android.permission.READ_LOGS",
+    "description_en": "Allows an application to read the low-level system log files.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_LOGS",
+    "description_zh": "允许应用程序读取低级系统日志文件。"
+  },
+  {
+    "code": "android.permission.READ_MEDIA_AUDIO",
+    "description_en": "Allows an application to read audio files from external storage.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_MEDIA_AUDIO",
+    "description_zh": "允许应用程序从外部存储读取音频文件。"
+  },
+  {
+    "code": "android.permission.READ_MEDIA_IMAGES",
+    "description_en": "Allows an application to read image files from external storage.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_MEDIA_IMAGES",
+    "description_zh": "允许应用程序从外部存储读取图像文件。"
+  },
+  {
+    "code": "android.permission.READ_MEDIA_VIDEO",
+    "description_en": "Allows an application to read video files from external storage.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_MEDIA_VIDEO",
+    "description_zh": "允许应用程序从外部存储读取视频文件。"
+  },
+  {
+    "code": "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+    "description_en": "Allows an application to read image or video files from external storage that a user has selected via the permission prompt photo picker.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_MEDIA_VISUAL_USER_SELECTED",
+    "description_zh": "允许应用程序从用户通过权限提示照片选择器选择的外部存储中读取图像或视频文件。"
+  },
+  {
+    "code": "android.permission.READ_NEARBY_STREAMING_POLICY",
+    "description_en": "Allows an application to read nearby streaming policy.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_NEARBY_STREAMING_POLICY",
+    "description_zh": "允许应用程序读取附近的流策略。"
+  },
+  {
+    "code": "android.permission.READ_PHONE_NUMBERS",
+    "description_en": "Allows read access to the device's phone number(s), which is exposed to instant applications.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_PHONE_NUMBERS",
+    "description_zh": "允许对设备的电话号码进行读取访问，该电话号码会公开给即时应用程序。"
+  },
+  {
+    "code": "android.permission.READ_PHONE_STATE",
+    "description_en": "Allows read only access to phone state, including the current cellular network information, the status of any ongoing calls, and a list of any PhoneAccount s registered on the device.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_PHONE_STATE",
+    "description_zh": "允许对电话状态进行只读访问，包括当前的蜂窝网络信息、任何正在进行的通话的状态以及设备上注册的任何 PhoneAccount 的列表。"
+  },
+  {
+    "code": "android.permission.READ_PRECISE_PHONE_STATE",
+    "description_en": "Allows read only access to precise phone state.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_PRECISE_PHONE_STATE",
+    "description_zh": "允许以只读方式访问精确的手机状态。"
+  },
+  {
+    "code": "android.permission.READ_SMS",
+    "description_en": "Allows an application to read SMS messages.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_SMS",
+    "description_zh": "允许应用程序读取 SMS 消息。"
+  },
+  {
+    "code": "android.permission.READ_SYNC_SETTINGS",
+    "description_en": "Allows applications to read the sync settings.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_SYNC_SETTINGS",
+    "description_zh": "允许应用程序读取同步设置。"
+  },
+  {
+    "code": "android.permission.READ_SYNC_STATS",
+    "description_en": "Allows applications to read the sync stats.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_SYNC_STATS",
+    "description_zh": "允许应用程序读取同步统计信息。"
+  },
+  {
+    "code": "android.permission.READ_SYSTEM_PREFERENCES",
+    "description_en": "Allows an application to access the Settings Preference services to read settings exposed by the system Settings app and system apps that contribute settings surfaced by the Settings app.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_SYSTEM_PREFERENCES",
+    "description_zh": "允许应用程序访问“设置首选项”服务，以读取系统“设置”应用程序公开的设置以及提供“设置”应用程序显示的设置的系统应用程序。"
+  },
+  {
+    "code": "android.permission.READ_VOICEMAIL",
+    "description_en": "Allows an application to read voicemails in the system.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#READ_VOICEMAIL",
+    "description_zh": "允许应用程序读取系统中的语音邮件。"
+  },
+  {
+    "code": "android.permission.REBOOT",
+    "description_en": "Required to be able to reboot the device.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REBOOT",
+    "description_zh": "需要能够重新启动设备。"
+  },
+  {
+    "code": "android.permission.RECEIVE_BOOT_COMPLETED",
+    "description_en": "Allows an application to receive the Intent.ACTION_BOOT_COMPLETED that is broadcast after the system finishes booting.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#RECEIVE_BOOT_COMPLETED",
+    "description_zh": "允许应用程序接收系统完成启动后广播的 Intent.ACTION_BOOT_COMPLETED。"
+  },
+  {
+    "code": "android.permission.RECEIVE_MMS",
+    "description_en": "Allows an application to monitor incoming MMS messages.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#RECEIVE_MMS",
+    "description_zh": "允许应用程序监控传入的彩信。"
+  },
+  {
+    "code": "android.permission.RECEIVE_SENSITIVE_NOTIFICATIONS",
+    "description_en": "Allows apps with a NotificationListenerService to receive notifications with sensitive information Apps with a NotificationListenerService without this permission will not be able to view certain types of sensitive information contained in notifications This permission also allows apps with the SMS permissions to query and receive broadcasts about SMS messages that contain One Time Passwords Protection level: signature|preinstalled|knownSigner|role",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#RECEIVE_SENSITIVE_NOTIFICATIONS",
+    "description_zh": "允许具有NotificationListenerService 的应用程序接收包含敏感信息的通知 具有NotificationListenerService 且没有此权限的应用程序将无法查看通知中包含的某些类型的敏感信息 此权限还允许具有SMS 权限的应用程序查询和接收有关包含一次性密码的SMS 消息的广播 保护级别：signature|preinstalled|knownSigner|role"
+  },
+  {
+    "code": "android.permission.RECEIVE_SMS",
+    "description_en": "Allows an application to receive SMS messages.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#RECEIVE_SMS",
+    "description_zh": "允许应用程序接收 SMS 消息。"
+  },
+  {
+    "code": "android.permission.RECEIVE_WAP_PUSH",
+    "description_en": "Allows an application to receive WAP push messages.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#RECEIVE_WAP_PUSH",
+    "description_zh": "允许应用程序接收 WAP 推送消息。"
+  },
+  {
+    "code": "android.permission.RECORD_AUDIO",
+    "description_en": "Allows an application to record audio.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#RECORD_AUDIO",
+    "description_zh": "允许应用程序录制音频。"
+  },
+  {
+    "code": "android.permission.REORDER_TASKS",
+    "description_en": "Allows an application to change the Z-order of tasks.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REORDER_TASKS",
+    "description_zh": "允许应用程序更改任务的 Z 顺序。"
+  },
+  {
+    "code": "android.permission.REPOSITION_SELF_WINDOWS",
+    "description_en": "Allows an application to programmatically move and resize its tasks when the system is in a state that allows such operations, e.g. in a desktop-like environment.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REPOSITION_SELF_WINDOWS",
+    "description_zh": "当系统处于允许此类操作的状态时，允许应用程序以编程方式移动其任务并调整其大小，例如在类似桌面的环境中。"
+  },
+  {
+    "code": "android.permission.REQUEST_COMPANION_PROFILE_APP_STREAMING",
+    "description_en": "Allows application to request to be associated with a virtual device capable of streaming Android applications ( AssociationRequest.DEVICE_PROFILE_APP_STREAMING ) by CompanionDeviceManager .",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_COMPANION_PROFILE_APP_STREAMING",
+    "description_zh": "允许应用程序通过 CompanionDeviceManager 请求与能够传输 Android 应用程序 (AssociationRequest.DEVICE_PROFILE_APP_STREAMING) 的虚拟设备关联。"
+  },
+  {
+    "code": "android.permission.REQUEST_COMPANION_PROFILE_AUTOMOTIVE_PROJECTION",
+    "description_en": "Allows application to request to be associated with a vehicle head unit capable of automotive projection ( AssociationRequest.DEVICE_PROFILE_AUTOMOTIVE_PROJECTION ) by CompanionDeviceManager .",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_COMPANION_PROFILE_AUTOMOTIVE_PROJECTION",
+    "description_zh": "允许应用程序通过 CompanionDeviceManager 请求与能够进行汽车投影的车辆主机单元 (AssociationRequest.DEVICE_PROFILE_AUTOMOTIVE_PROJECTION) 关联。"
+  },
+  {
+    "code": "android.permission.REQUEST_COMPANION_PROFILE_COMPUTER",
+    "description_en": "Allows application to request to be associated with a computer to share functionality and/or data with other devices, such as notifications, photos and media ( AssociationRequest.DEVICE_PROFILE_COMPUTER ) by CompanionDeviceManager .",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_COMPANION_PROFILE_COMPUTER",
+    "description_zh": "允许应用程序通过 CompanionDeviceManager 请求与计算机关联，以便与其他设备共享功能和/或数据，例如通知、照片和媒体 ( AssociationRequest.DEVICE_PROFILE_COMPUTER )。"
+  },
+  {
+    "code": "android.permission.REQUEST_COMPANION_PROFILE_GLASSES",
+    "description_en": "Allows app to request to be associated with a device via CompanionDeviceManager as \"glasses\" Protection level: normal",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_COMPANION_PROFILE_GLASSES",
+    "description_zh": "允许应用程序通过 CompanionDeviceManager 请求与设备关联为“眼镜” 保护级别：正常"
+  },
+  {
+    "code": "android.permission.REQUEST_COMPANION_PROFILE_MEDICAL",
+    "description_en": "Allows application to request to associate with a AssociationRequest.DEVICE_PROFILE_MEDICAL device via CompanionDeviceManager .",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_COMPANION_PROFILE_MEDICAL",
+    "description_zh": "允许应用程序通过 CompanionDeviceManager 请求与 AssociationRequest.DEVICE_PROFILE_MEDICAL 设备关联。"
+  },
+  {
+    "code": "android.permission.REQUEST_COMPANION_PROFILE_NEARBY_DEVICE_STREAMING",
+    "description_en": "Allows application to request to stream content from an Android host to a nearby device ( AssociationRequest.DEVICE_PROFILE_NEARBY_DEVICE_STREAMING ) by CompanionDeviceManager .",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_COMPANION_PROFILE_NEARBY_DEVICE_STREAMING",
+    "description_zh": "允许应用程序通过 CompanionDeviceManager 请求将内容从 Android 主机流式传输到附近的设备 ( AssociationRequest.DEVICE_PROFILE_NEARBY_DEVICE_STREAMING )。"
+  },
+  {
+    "code": "android.permission.REQUEST_COMPANION_PROFILE_WATCH",
+    "description_en": "Allows app to request to be associated with a device via CompanionDeviceManager as a \"watch\" Protection level: normal",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_COMPANION_PROFILE_WATCH",
+    "description_zh": "允许应用程序请求通过 CompanionDeviceManager 作为“手表”与设备关联保护级别：正常"
+  },
+  {
+    "code": "android.permission.REQUEST_COMPANION_RUN_IN_BACKGROUND",
+    "description_en": "Allows a companion app to run in the background.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_COMPANION_RUN_IN_BACKGROUND",
+    "description_zh": "允许配套应用程序在后台运行。"
+  },
+  {
+    "code": "android.permission.REQUEST_COMPANION_SELF_MANAGED",
+    "description_en": "Allows an application to create a \"self-managed\" association.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_COMPANION_SELF_MANAGED",
+    "description_zh": "允许应用程序创建“自我管理”关联。"
+  },
+  {
+    "code": "android.permission.REQUEST_COMPANION_START_FOREGROUND_SERVICES_FROM_BACKGROUND",
+    "description_en": "Allows a companion app to start a foreground service from the background.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_COMPANION_START_FOREGROUND_SERVICES_FROM_BACKGROUND",
+    "description_zh": "允许配套应用程序从后台启动前台服务。"
+  },
+  {
+    "code": "android.permission.REQUEST_COMPANION_USE_DATA_IN_BACKGROUND",
+    "description_en": "Allows a companion app to use data in the background.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_COMPANION_USE_DATA_IN_BACKGROUND",
+    "description_zh": "允许配套应用程序在后台使用数据。"
+  },
+  {
+    "code": "android.permission.REQUEST_DELETE_PACKAGES",
+    "description_en": "Allows an application to request deleting packages.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_DELETE_PACKAGES",
+    "description_zh": "允许应用程序请求删除包。"
+  },
+  {
+    "code": "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+    "description_en": "Permission an application must hold in order to use Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS .",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+    "description_zh": "应用程序必须持有权限才能使用 Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS 。"
+  },
+  {
+    "code": "android.permission.REQUEST_INSTALL_PACKAGES",
+    "description_en": "Allows an application to request installing packages.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_INSTALL_PACKAGES",
+    "description_zh": "允许应用程序请求安装包。"
+  },
+  {
+    "code": "android.permission.REQUEST_OBSERVE_COMPANION_DEVICE_PRESENCE",
+    "description_en": "Allows an application to subscribe to notifications about the presence status change of their associated companion device",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_OBSERVE_COMPANION_DEVICE_PRESENCE",
+    "description_zh": "允许应用程序订阅有关其关联配套设备的在线状态更改的通知"
+  },
+  {
+    "code": "android.permission.REQUEST_OBSERVE_DEVICE_UUID_PRESENCE",
+    "description_en": "Allows an application to subscribe to notifications about the nearby devices' presence status change base on the UUIDs.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_OBSERVE_DEVICE_UUID_PRESENCE",
+    "description_zh": "允许应用程序根据 UUID 订阅有关附近设备的存在状态更改的通知。"
+  },
+  {
+    "code": "android.permission.REQUEST_PASSWORD_COMPLEXITY",
+    "description_en": "Allows an application to request the screen lock complexity and prompt users to update the screen lock to a certain complexity level.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#REQUEST_PASSWORD_COMPLEXITY",
+    "description_zh": "允许应用程序请求屏幕锁定复杂性并提示用户将屏幕锁定更新到特定复杂性级别。"
+  },
+  {
+    "code": "android.permission.RESTART_PACKAGES",
+    "description_en": "This constant was deprecated in API level 15. The ActivityManager.restartPackage(String) API is no longer supported.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#RESTART_PACKAGES",
+    "description_zh": "该常量在 API 级别 15 中已弃用。不再支持 ActivityManager.restartPackage(String) API。"
+  },
+  {
+    "code": "android.permission.RUN_USER_INITIATED_JOBS",
+    "description_en": "Allows applications to use the user-initiated jobs API.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#RUN_USER_INITIATED_JOBS",
+    "description_zh": "允许应用程序使用用户启动的作业 API。"
+  },
+  {
+    "code": "android.permission.SCHEDULE_EXACT_ALARM",
+    "description_en": "Allows applications to use exact alarm APIs.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SCHEDULE_EXACT_ALARM",
+    "description_zh": "允许应用程序使用精确的警报 API。"
+  },
+  {
+    "code": "android.permission.SEND_RESPOND_VIA_MESSAGE",
+    "description_en": "Allows an application (Phone) to send a request to other applications to handle the respond-via-message action during incoming calls.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SEND_RESPOND_VIA_MESSAGE",
+    "description_zh": "允许应用程序（电话）向其他应用程序发送请求，以在来电期间处理通过消息响应操作。"
+  },
+  {
+    "code": "android.permission.SEND_SMS",
+    "description_en": "Allows an application to send SMS messages.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SEND_SMS",
+    "description_zh": "允许应用程序发送 SMS 消息。"
+  },
+  {
+    "code": "android.permission.SET_ALARM",
+    "description_en": "Allows an application to broadcast an Intent to set an alarm for the user.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SET_ALARM",
+    "description_zh": "允许应用程序广播 Intent 来为用户设置闹钟。"
+  },
+  {
+    "code": "android.permission.SET_ALWAYS_FINISH",
+    "description_en": "Allows an application to control whether activities are immediately finished when put in the background.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SET_ALWAYS_FINISH",
+    "description_zh": "允许应用程序控制活动在置于后台时是否立即完成。"
+  },
+  {
+    "code": "android.permission.SET_ANIMATION_SCALE",
+    "description_en": "Modify the global animation scaling factor.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SET_ANIMATION_SCALE",
+    "description_zh": "修改全局动画缩放因子。"
+  },
+  {
+    "code": "android.permission.SET_BIOMETRIC_DIALOG_ADVANCED",
+    "description_en": "Allows an application to set the advanced features on BiometricDialog (SystemUI), including logo, logo description, and content view with more options button.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SET_BIOMETRIC_DIALOG_ADVANCED",
+    "description_zh": "允许应用程序在 BiometricDialog (SystemUI) 上设置高级功能，包括徽标、徽标描述和带有更多选项按钮的内容视图。"
+  },
+  {
+    "code": "android.permission.SET_DEBUG_APP",
+    "description_en": "Configure an application for debugging.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SET_DEBUG_APP",
+    "description_zh": "配置应用程序以进行调试。"
+  },
+  {
+    "code": "android.permission.SET_PREFERRED_APPLICATIONS",
+    "description_en": "This constant was deprecated in API level 15. No longer useful, see PackageManager.addPackageToPreferred(String) for details.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SET_PREFERRED_APPLICATIONS",
+    "description_zh": "该常量在 API 级别 15 中已弃用。不再有用，请参阅 PackageManager.addPackageToPreferred(String) 了解详细信息。"
+  },
+  {
+    "code": "android.permission.SET_PROCESS_LIMIT",
+    "description_en": "Allows an application to set the maximum number of (not needed) application processes that can be running.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SET_PROCESS_LIMIT",
+    "description_zh": "允许应用程序设置可以运行的（不需要的）应用程序进程的最大数量。"
+  },
+  {
+    "code": "android.permission.SET_TIME",
+    "description_en": "Allows applications to set the system time directly.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SET_TIME",
+    "description_zh": "允许应用程序直接设置系统时间。"
+  },
+  {
+    "code": "android.permission.SET_TIME_ZONE",
+    "description_en": "Allows applications to set the system time zone directly.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SET_TIME_ZONE",
+    "description_zh": "允许应用程序直接设置系统时区。"
+  },
+  {
+    "code": "android.permission.SET_WALLPAPER",
+    "description_en": "Allows applications to set the wallpaper.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SET_WALLPAPER",
+    "description_zh": "允许应用程序设置壁纸。"
+  },
+  {
+    "code": "android.permission.SET_WALLPAPER_HINTS",
+    "description_en": "Allows applications to set the wallpaper hints.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SET_WALLPAPER_HINTS",
+    "description_zh": "允许应用程序设置壁纸提示。"
+  },
+  {
+    "code": "android.permission.SHOW_POWER_MENU",
+    "description_en": "Permission needed to request to show the Power Menu.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SHOW_POWER_MENU",
+    "description_zh": "请求显示电源菜单需要权限。"
+  },
+  {
+    "code": "android.permission.SHOW_POWER_MENU_PRIVILEGED",
+    "description_en": "Permission needed to request to show the Power Menu.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SHOW_POWER_MENU_PRIVILEGED",
+    "description_zh": "请求显示电源菜单需要权限。"
+  },
+  {
+    "code": "android.permission.SIGNAL_PERSISTENT_PROCESSES",
+    "description_en": "Allow an application to request that a signal be sent to all persistent processes.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SIGNAL_PERSISTENT_PROCESSES",
+    "description_zh": "允许应用程序请求将信号发送到所有持久进程。"
+  },
+  {
+    "code": "android.permission.SMS_FINANCIAL_TRANSACTIONS",
+    "description_en": "This constant was deprecated in API level 31. The API that used this permission is no longer functional.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SMS_FINANCIAL_TRANSACTIONS",
+    "description_zh": "此常量在 API 级别 31 中已弃用。使用此权限的 API 不再起作用。"
+  },
+  {
+    "code": "android.permission.START_FOREGROUND_SERVICES_FROM_BACKGROUND",
+    "description_en": "Allows an application to start foreground services from the background at any time.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#START_FOREGROUND_SERVICES_FROM_BACKGROUND",
+    "description_zh": "允许应用程序随时从后台启动前台服务。"
+  },
+  {
+    "code": "android.permission.START_VIEW_APP_FEATURES",
+    "description_en": "Allows the holder to start the screen with a list of app features.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#START_VIEW_APP_FEATURES",
+    "description_zh": "允许持有人启动带有应用程序功能列表的屏幕。"
+  },
+  {
+    "code": "android.permission.START_VIEW_PERMISSION_USAGE",
+    "description_en": "Allows the holder to start the permission usage screen for an app.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#START_VIEW_PERMISSION_USAGE",
+    "description_zh": "允许持有者启动应用程序的权限使用屏幕。"
+  },
+  {
+    "code": "android.permission.STATUS_BAR",
+    "description_en": "Allows an application to open, close, or disable the status bar and its icons.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#STATUS_BAR",
+    "description_zh": "允许应用程序打开、关闭或禁用状态栏及其图标。"
+  },
+  {
+    "code": "android.permission.SUBSCRIBE_TO_KEYGUARD_LOCKED_STATE",
+    "description_en": "Allows an application to subscribe to device locked and keyguard locked (i.e., showing) state.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SUBSCRIBE_TO_KEYGUARD_LOCKED_STATE",
+    "description_zh": "允许应用程序订阅设备锁定和键盘锁锁定（即显示）状态。"
+  },
+  {
+    "code": "android.permission.SYSTEM_ALERT_WINDOW",
+    "description_en": "Allows an app to create windows using the type WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY , shown on top of all other apps.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#SYSTEM_ALERT_WINDOW",
+    "description_zh": "允许应用使用 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY 类型创建窗口，显示在所有其他应用之上。"
+  },
+  {
+    "code": "android.permission.TRANSMIT_IR",
+    "description_en": "Allows using the device's IR transmitter, if available.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#TRANSMIT_IR",
+    "description_zh": "允许使用设备的红外发射器（如果有）。"
+  },
+  {
+    "code": "android.permission.TURN_SCREEN_ON",
+    "description_en": "Allows an app to turn on the screen on, e.g. with PowerManager.ACQUIRE_CAUSES_WAKEUP .",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#TURN_SCREEN_ON",
+    "description_zh": "允许应用程序打开屏幕，例如使用 PowerManager.ACQUIRE_CAUSES_WAKEUP 。"
+  },
+  {
+    "code": "android.permission.TV_IMPLICIT_ENTER_PIP",
+    "description_en": "Allows an app to enter Picture-in-Picture mode when the user is not explicitly requesting it.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#TV_IMPLICIT_ENTER_PIP",
+    "description_zh": "当用户未明确请求时，允许应用程序进入画中画模式。"
+  },
+  {
+    "code": "android.permission.UNINSTALL_SHORTCUT",
+    "description_en": "Don't use this permission in your app.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#UNINSTALL_SHORTCUT",
+    "description_zh": "不要在您的应用程序中使用此权限。"
+  },
+  {
+    "code": "android.permission.UPDATE_DEVICE_STATS",
+    "description_en": "Allows an application to update device statistics.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#UPDATE_DEVICE_STATS",
+    "description_zh": "允许应用程序更新设备统计信息。"
+  },
+  {
+    "code": "android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION",
+    "description_en": "Allows an application to indicate via PackageInstaller.SessionParams.setRequireUserAction(int) that user action should not be required for an app update.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#UPDATE_PACKAGES_WITHOUT_USER_ACTION",
+    "description_zh": "允许应用程序通过 PackageInstaller.SessionParams.setRequireUserAction(int) 指示应用程序更新不需要用户操作。"
+  },
+  {
+    "code": "android.permission.USE_BIOMETRIC",
+    "description_en": "Allows an app to use device supported biometric modalities.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#USE_BIOMETRIC",
+    "description_zh": "允许应用程序使用设备支持的生物识别模式。"
+  },
+  {
+    "code": "android.permission.USE_EXACT_ALARM",
+    "description_en": "Allows apps to use exact alarms just like with SCHEDULE_EXACT_ALARM but without needing to request this permission from the user.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#USE_EXACT_ALARM",
+    "description_zh": "允许应用程序使用精确警报，就像 SCHEDULE_EXACT_ALARM 一样，但无需向用户请求此权限。"
+  },
+  {
+    "code": "android.permission.USE_FINGERPRINT",
+    "description_en": "This constant was deprecated in API level 28. Applications should request USE_BIOMETRIC instead",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#USE_FINGERPRINT",
+    "description_zh": "该常量在 API 级别 28 中已弃用。应用程序应改为请求 USE_BIOMETRIC"
+  },
+  {
+    "code": "android.permission.USE_FULL_SCREEN_INTENT",
+    "description_en": "Required for apps targeting Build.VERSION_CODES.Q that want to use notification full screen intents .",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#USE_FULL_SCREEN_INTENT",
+    "description_zh": "对于想要使用通知全屏意图的面向 Build.VERSION_CODES.Q 的应用程序是必需的。"
+  },
+  {
+    "code": "android.permission.USE_ICC_AUTH_WITH_DEVICE_IDENTIFIER",
+    "description_en": "Allows to read device identifiers and use ICC based authentication like EAP-AKA.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#USE_ICC_AUTH_WITH_DEVICE_IDENTIFIER",
+    "description_zh": "允许读取设备标识符并使​​用基于 ICC 的身份验证（如 EAP-AKA）。"
+  },
+  {
+    "code": "android.permission.USE_LOOPBACK_INTERFACE",
+    "description_en": "Required to be able to interact with other applications via IP packets on the loopback interface.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#USE_LOOPBACK_INTERFACE",
+    "description_zh": "需要能够通过环回接口上的 IP 数据包与其他应用程序交互。"
+  },
+  {
+    "code": "android.permission.USE_SIP",
+    "description_en": "Allows an application to use SIP service.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#USE_SIP",
+    "description_zh": "允许应用程序使用 SIP 服务。"
+  },
+  {
+    "code": "android.permission.UWB_RANGING",
+    "description_en": "Required to be able to range to devices using ultra-wideband.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#UWB_RANGING",
+    "description_zh": "需要能够覆盖使用超宽带的设备。"
+  },
+  {
+    "code": "android.permission.VIBRATE",
+    "description_en": "Allows access to the vibrator.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#VIBRATE",
+    "description_zh": "允许使用振动器。"
+  },
+  {
+    "code": "android.permission.WAKE_LOCK",
+    "description_en": "Allows using PowerManager WakeLocks to keep processor from sleeping or screen from dimming.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#WAKE_LOCK",
+    "description_zh": "允许使用 PowerManager WakeLocks 防止处理器休眠或屏幕变暗。"
+  },
+  {
+    "code": "android.permission.WRITE_APN_SETTINGS",
+    "description_en": "Allows applications to write the apn settings and read sensitive fields of an existing apn settings like user and password.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#WRITE_APN_SETTINGS",
+    "description_zh": "允许应用程序写入 apn 设置并读取现有 apn 设置的敏感字段（例如用户和密码）。"
+  },
+  {
+    "code": "android.permission.WRITE_CALENDAR",
+    "description_en": "Allows an application to write the user's calendar data.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#WRITE_CALENDAR",
+    "description_zh": "允许应用程序写入用户的日历数据。"
+  },
+  {
+    "code": "android.permission.WRITE_CALL_LOG",
+    "description_en": "Allows an application to write and read the user's call log data.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#WRITE_CALL_LOG",
+    "description_zh": "允许应用程序写入和读取用户的通话记录数据。"
+  },
+  {
+    "code": "android.permission.WRITE_CONTACTS",
+    "description_en": "Allows an application to write the user's contacts data.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#WRITE_CONTACTS",
+    "description_zh": "允许应用程序写入用户的联系人数据。"
+  },
+  {
+    "code": "android.permission.WRITE_EXTERNAL_STORAGE",
+    "description_en": "Allows an application to write to external storage.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#WRITE_EXTERNAL_STORAGE",
+    "description_zh": "允许应用程序写入外部存储。"
+  },
+  {
+    "code": "android.permission.WRITE_GSERVICES",
+    "description_en": "Allows an application to modify the Google service map.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#WRITE_GSERVICES",
+    "description_zh": "允许应用程序修改 Google 服务地图。"
+  },
+  {
+    "code": "android.permission.WRITE_SECURE_SETTINGS",
+    "description_en": "Allows an application to read or write the secure system settings.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#WRITE_SECURE_SETTINGS",
+    "description_zh": "允许应用程序读取或写入安全系统设置。"
+  },
+  {
+    "code": "android.permission.WRITE_SETTINGS",
+    "description_en": "Allows an application to read or write the system settings.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#WRITE_SETTINGS",
+    "description_zh": "允许应用程序读取或写入系统设置。"
+  },
+  {
+    "code": "android.permission.WRITE_SYNC_SETTINGS",
+    "description_en": "Allows applications to write the sync settings.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#WRITE_SYNC_SETTINGS",
+    "description_zh": "允许应用程序写入同步设置。"
+  },
+  {
+    "code": "android.permission.WRITE_SYSTEM_PREFERENCES",
+    "description_en": "Allows an application to access the Settings Preference services to write settings values exposed by the system Settings app and system apps that contribute settings surfaced in the Settings app.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#WRITE_SYSTEM_PREFERENCES",
+    "description_zh": "允许应用程序访问“设置首选项”服务，以写入由系统“设置”应用程序和提供“设置”应用程序中显示的设置的系统应用程序公开的设置值。"
+  },
+  {
+    "code": "android.permission.WRITE_VOICEMAIL",
+    "description_en": "Allows an application to modify and remove existing voicemails in the system.",
+    "source_url": "https://developer.android.com/reference/android/Manifest.permission.html#WRITE_VOICEMAIL",
+    "description_zh": "允许应用程序修改和删除系统中现有的语音邮件。"
+  }
+]

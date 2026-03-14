@@ -15,6 +15,8 @@ from sqlalchemy.pool import StaticPool
 
 from core.database import Base
 from models.analysis_tables import (
+    AnalysisRunTable,
+    AndroidPermissionCatalogTable,
     DynamicAnalysisTable,
     MasterDomainTable,
     NetworkRequestTable,
@@ -103,20 +105,7 @@ def _seed_completed_report_task(db: Session) -> None:
             {"name": "android.permission.ACCESS_FINE_LOCATION"},
         ],
     }
-    task.dynamic_analysis_result = {
-        "permission_summary": {
-            "requested_permissions": [
-                "android.permission.INTERNET",
-                "android.permission.ACCESS_FINE_LOCATION",
-            ],
-            "granted_permissions": [
-                "android.permission.INTERNET",
-            ],
-            "failed_permissions": [
-                "android.permission.ACCESS_FINE_LOCATION",
-            ],
-        }
-    }
+    task.dynamic_analysis_result = {}
     db.add(
         DynamicAnalysisTable(
             task_id=task_id,
@@ -131,6 +120,49 @@ def _seed_completed_report_task(db: Session) -> None:
             total_screenshots=2,
             duration_seconds=420,
         )
+    )
+    db.add(
+        AnalysisRunTable(
+            id="run-dynamic-1",
+            task_id=task_id,
+            stage="dynamic",
+            attempt=1,
+            status="success",
+            worker_name="worker-a",
+            started_at=datetime(2026, 3, 6, 10, 2, 0),
+            completed_at=datetime(2026, 3, 6, 10, 8, 0),
+            duration_seconds=360,
+            details={
+                "permission_summary": {
+                    "requested_permissions": [
+                        "android.permission.INTERNET",
+                        "android.permission.ACCESS_FINE_LOCATION",
+                    ],
+                    "granted_permissions": [
+                        "android.permission.INTERNET",
+                    ],
+                    "failed_permissions": [
+                        "android.permission.ACCESS_FINE_LOCATION",
+                    ],
+                }
+            },
+        )
+    )
+    db.add_all(
+        [
+            AndroidPermissionCatalogTable(
+                code="android.permission.INTERNET",
+                description_en="Allows applications to open network sockets.",
+                description_zh="允许应用打开网络套接字。",
+                source_url="https://developer.android.com/reference/android/Manifest.permission#INTERNET",
+            ),
+            AndroidPermissionCatalogTable(
+                code="android.permission.ACCESS_FINE_LOCATION",
+                description_en="Allows an app to access precise location.",
+                description_zh="允许应用访问精确位置信息。",
+                source_url="https://developer.android.com/reference/android/Manifest.permission#ACCESS_FINE_LOCATION",
+            ),
+        ]
     )
     db.add_all(
         [
@@ -318,6 +350,12 @@ class TestFrontendReportRouter:
                 "android.permission.ACCESS_FINE_LOCATION",
             ],
         }
+        assert data["permission_details"]["android.permission.INTERNET"]["description_zh"] == (
+            "允许应用打开网络套接字。"
+        )
+        assert data["permission_details"]["android.permission.ACCESS_FINE_LOCATION"][
+            "description_zh"
+        ] == "允许应用访问精确位置信息。"
         assert data["summary"]["risk_level"] == "high"
         assert data["summary"]["risk_label"] == "高风险"
         assert data["evidence_summary"] == {

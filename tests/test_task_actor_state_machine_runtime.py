@@ -123,6 +123,34 @@ def test_run_task_marks_dynamic_failed_when_dynamic_stage_raises():
     send.assert_not_called()
 
 
+def test_run_task_does_not_auto_retry_dynamic_stage_failure():
+    task = SimpleNamespace(
+        id="task-no-auto-retry",
+        status=TaskStatus.STATIC_ANALYZING,
+        error_message=None,
+        retry_count=0,
+        last_success_stage="static",
+        failure_reason=None,
+    )
+    db = _build_db_with_task(task)
+
+    with patch("workers.task_actor._acquire_task_lock", return_value=("lock:task:task-no-auto-retry", "token")), \
+         patch("workers.task_actor._release_task_lock"), \
+         patch("workers.task_actor.SessionLocal", return_value=db), \
+         patch("workers.task_actor.run_dynamic_stage", side_effect=RuntimeError("launch failed")), \
+         patch("workers.task_actor._get_retry_delays", return_value=[10, 30, 60]), \
+         patch.object(run_task, "send_with_options") as send_with_options, \
+         patch.object(run_task, "send") as send:
+        run_task("task-no-auto-retry")
+
+    assert task.status == TaskStatus.DYNAMIC_FAILED
+    assert task.retry_count == 0
+    assert task.error_message == "launch failed"
+    assert task.failure_reason == "launch failed"
+    send_with_options.assert_not_called()
+    send.assert_not_called()
+
+
 def test_run_task_skips_terminal_task_without_stage_call():
     task = SimpleNamespace(id="task-3", status=TaskStatus.COMPLETED, error_message=None, retry_count=0)
     db = _build_db_with_task(task)

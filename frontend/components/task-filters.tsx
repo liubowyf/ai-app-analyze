@@ -12,7 +12,7 @@ interface TaskFiltersProps {
 }
 
 const STATUS_OPTIONS = [
-  { value: "", label: "状态筛选" },
+  { value: "", label: "全部状态" },
   { value: "queued", label: "排队中" },
   { value: "static_analyzing", label: "静态分析中" },
   { value: "dynamic_analyzing", label: "动态分析中" },
@@ -23,7 +23,7 @@ const STATUS_OPTIONS = [
 ];
 
 const RISK_OPTIONS = [
-  { value: "", label: "风险等级" },
+  { value: "", label: "全部风险" },
   { value: "high", label: "高风险" },
   { value: "medium", label: "中风险" },
   { value: "low", label: "低风险" },
@@ -40,27 +40,28 @@ export function TaskFilters({
   onRiskLevelChange,
 }: TaskFiltersProps) {
   return (
-    <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-      <div className="relative w-full sm:w-96">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="relative w-full lg:max-w-xl">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           type="text"
           placeholder="搜索任务ID、应用名称或包名..."
           value={searchTerm}
           onChange={(event) => onSearchChange(event.target.value)}
-          className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm"
+          className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100"
         />
       </div>
 
-      <div className="flex items-center gap-3 w-full sm:w-auto">
-        <label className="relative flex items-center gap-2 px-4 py-2 text-sm text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors w-full sm:w-auto justify-center font-medium">
-          <Filter className="w-4 h-4" />
+      <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-auto">
+        <label className="relative flex min-w-[180px] items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100">
+          <Filter className="h-4 w-4 shrink-0 text-slate-400" />
           <select
             aria-label="状态筛选"
             value={status}
             disabled={isLoading}
             onChange={(event) => onStatusChange(event.target.value)}
-            className="appearance-none bg-transparent pr-5 outline-none disabled:cursor-not-allowed"
+            className="w-full appearance-none bg-transparent pr-6 text-sm text-slate-700 outline-none disabled:cursor-not-allowed"
           >
             {STATUS_OPTIONS.map((option) => (
               <option key={option.value || "all"} value={option.value}>
@@ -68,17 +69,17 @@ export function TaskFilters({
               </option>
             ))}
           </select>
-          <ChevronDown className="w-4 h-4 text-slate-400 pointer-events-none" />
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         </label>
 
-        <label className="relative flex items-center gap-2 px-4 py-2 text-sm text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors w-full sm:w-auto justify-center font-medium">
-          <ShieldAlert className="w-4 h-4" />
+        <label className="relative flex min-w-[180px] items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100">
+          <ShieldAlert className="h-4 w-4 shrink-0 text-slate-400" />
           <select
             aria-label="风险等级"
             value={riskLevel}
             disabled={isLoading}
             onChange={(event) => onRiskLevelChange(event.target.value)}
-            className="appearance-none bg-transparent pr-5 outline-none disabled:cursor-not-allowed"
+            className="w-full appearance-none bg-transparent pr-6 text-sm text-slate-700 outline-none disabled:cursor-not-allowed"
           >
             {RISK_OPTIONS.map((option) => (
               <option key={option.value || "all"} value={option.value}>
@@ -86,8 +87,9 @@ export function TaskFilters({
               </option>
             ))}
           </select>
-          <ChevronDown className="w-4 h-4 text-slate-400 pointer-events-none" />
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         </label>
+      </div>
       </div>
     </div>
   );

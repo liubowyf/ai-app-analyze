@@ -9,7 +9,6 @@ import {
   RefreshCcw,
   Search,
   Trash2,
-  User,
 } from "lucide-react";
 
 import { RiskBadge } from "@/components/risk-badge";
@@ -47,25 +46,21 @@ export function TaskTable({
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1380px] table-fixed text-left border-collapse">
+        <table className="w-full min-w-[1240px] table-fixed text-left border-collapse">
           <colgroup>
-            <col className="w-[15%]" />
-            <col className="w-[17%]" />
-            <col className="w-[7%]" />
-            <col className="w-[9%]" />
-            <col className="w-[7%]" />
+            <col className="w-[30%]" />
             <col className="w-[8%]" />
+            <col className="w-[10%]" />
             <col className="w-[9%]" />
-            <col className="w-[13%]" />
-            <col className="w-[15%]" />
+            <col className="w-[9%]" />
+            <col className="w-[12%]" />
+            <col className="w-[22%]" />
           </colgroup>
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs uppercase tracking-wider">
-              <th className="px-4 py-4 font-medium">分析 APK 名称 / 时间</th>
-              <th className="px-4 py-4 font-medium">APP 信息</th>
+              <th className="px-5 py-4 font-medium">APK / APP 信息</th>
               <th className="px-4 py-4 font-medium whitespace-nowrap">文件大小</th>
               <th className="px-4 py-4 font-medium whitespace-nowrap">MD5</th>
-              <th className="px-4 py-4 font-medium whitespace-nowrap">提交人</th>
               <th className="px-4 py-4 font-medium whitespace-nowrap">风险等级</th>
               <th className="px-4 py-4 font-medium whitespace-nowrap">状态</th>
               <th className="px-4 py-4 font-medium">失败原因</th>
@@ -85,36 +80,37 @@ export function TaskTable({
                     key={task.id}
                     className="hover:bg-slate-50/80 transition-colors group"
                   >
-                    <td className="px-4 py-4 align-top">
-                      <div
-                        className="max-w-[200px] truncate text-sm font-medium text-slate-900"
-                        title={task.apk_file_name}
-                      >
-                        {task.apk_file_name}
-                      </div>
-                      <div className="text-xs text-slate-500 mt-1">
-                        {formatDateTime(task.created_at)}
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 align-top">
+                    <td className="px-5 py-5 align-top">
                       <div className="flex min-w-0 items-center gap-3">
                         {task.icon_url ? (
                           <img
                             src={resolveApiAssetUrl(task.icon_url) ?? undefined}
                             alt={`${task.app_name || task.apk_file_name} 图标`}
-                            className="w-10 h-10 rounded-lg border border-slate-200 object-cover shrink-0"
+                            className="h-12 w-12 rounded-xl border border-slate-200 object-cover shrink-0 bg-white"
                           />
                         ) : (
-                          <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center border border-indigo-100 shrink-0">
-                            <Activity className="w-5 h-5 text-indigo-500" />
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-indigo-100 bg-indigo-50">
+                            <Activity className="h-5 w-5 text-indigo-500" />
                           </div>
                         )}
                         <div className="min-w-0">
-                          <div className="max-w-[200px] truncate font-medium text-slate-900" title={task.app_name || task.apk_file_name}>
+                          <div
+                            className="max-w-[320px] truncate text-base font-semibold text-slate-900"
+                            title={task.app_name || task.apk_file_name}
+                          >
                             {task.app_name || task.apk_file_name}
                           </div>
-                          <div className="mt-0.5 max-w-[200px] truncate text-xs text-slate-500" title={task.package_name || "包名待解析"}>
+                          <div
+                            className="mt-2 max-w-[320px] truncate text-xs text-slate-500"
+                            title={task.apk_file_name}
+                          >
+                            {task.apk_file_name}
+                          </div>
+                          <div className="mt-1 max-w-[320px] truncate text-xs text-slate-500" title={task.package_name || "包名待解析"}>
                             {task.package_name || "包名待解析"}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {formatDateTime(task.created_at)}
                           </div>
                         </div>
                       </div>
@@ -133,12 +129,6 @@ export function TaskTable({
                       </div>
                     </td>
                     <td className="px-4 py-4 align-top whitespace-nowrap">
-                      <div className="flex items-center gap-1.5 text-sm text-slate-600">
-                        <User className="w-3.5 h-3.5 text-slate-400" />
-                        {task.submitter ?? "系统"}
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 align-top whitespace-nowrap">
                       <RiskBadge level={task.risk_level} status={task.status} />
                     </td>
                     <td className="px-4 py-4 align-top whitespace-nowrap">
@@ -146,27 +136,19 @@ export function TaskTable({
                     </td>
                     <td className="px-4 py-4 align-top">
                       <div
-                        className="line-clamp-3 max-w-[190px] break-words text-sm leading-6 text-slate-500"
+                        className="line-clamp-3 max-w-[220px] break-words text-sm leading-6 text-slate-500"
                         title={task.failure_reason || "-"}
                       >
                         {task.failure_reason || "-"}
                       </div>
                     </td>
                     <td className="sticky right-0 z-10 bg-white px-4 py-4 text-right align-top shadow-[-10px_0_18px_-14px_rgba(15,23,42,0.22)] group-hover:bg-slate-50/80">
-                      <div className="ml-auto flex w-[216px] flex-col items-end gap-2">
-                        <button
-                          type="button"
-                          disabled
-                          title="暂无 APK 下载"
-                          className="p-2 text-slate-300 bg-slate-50 rounded-lg cursor-not-allowed"
-                        >
-                          <Download className="w-4 h-4" />
-                        </button>
-                        <div className="flex w-full justify-end">
+                      <div className="ml-auto flex w-[176px] flex-col items-end gap-2">
+                        <div className="flex w-full items-center justify-end gap-2">
                           {isCompleted ? (
                             <Link
                               href={`/reports/${task.id}`}
-                              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100"
+                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100"
                             >
                               <FileText className="w-4 h-4" />
                               查看报告
@@ -175,27 +157,35 @@ export function TaskTable({
                             <button
                               type="button"
                               disabled
-                              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-400 cursor-not-allowed"
+                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-50 px-3 py-2 text-sm font-medium text-slate-400 cursor-not-allowed"
                             >
                               <FileText className="w-4 h-4" />
                               暂无报告
                             </button>
                           )}
+                          <button
+                            type="button"
+                            disabled
+                            title="暂无 APK 下载"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-50 text-slate-300 cursor-not-allowed shrink-0"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
                         </div>
-                        <div className="flex w-full justify-end gap-2">
+                        <div className="grid w-full grid-cols-2 gap-2">
                           {task.retryable ? (
                             <button
                               type="button"
                               onClick={() => onRetryTask(task.id)}
                               disabled={isLoading || isActing}
                               aria-label="重新分析"
-                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-50 px-2.5 py-2 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               <RefreshCcw className={`w-4 h-4 ${isActing ? "animate-spin" : ""}`} />
                               重新分析
                             </button>
                           ) : (
-                            <span className="flex-1" />
+                            <span />
                           )}
                           {task.deletable ? (
                             <button
@@ -203,13 +193,13 @@ export function TaskTable({
                               onClick={() => onDeleteTask(task.id)}
                               disabled={isLoading || isActing}
                               aria-label="删除任务"
-                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-red-50 px-2.5 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               <Trash2 className="w-4 h-4" />
                               删除任务
                             </button>
                           ) : (
-                            <span className="flex-1" />
+                            <span />
                           )}
                         </div>
                       </div>
@@ -220,7 +210,7 @@ export function TaskTable({
 
             {!hasTasks && (
               <tr>
-                <td colSpan={9} className="px-6 py-16 text-center text-slate-500">
+                <td colSpan={7} className="px-6 py-16 text-center text-slate-500">
                   <div className="flex flex-col items-center justify-center gap-3">
                     <Search className="w-8 h-8 text-slate-300" />
                     <p>{isLoading ? "正在加载任务..." : error || "没有找到匹配的任务"}</p>

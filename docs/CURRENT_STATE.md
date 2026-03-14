@@ -34,7 +34,7 @@
    - 调用 `redroid-host-agent` 运行 Zeek 并拉回 `conn.log / dns.log / ssl.log / http.log`
    - 聚合 `domain / ip / hit_count / source_type`
 6. 结果写入 MySQL，截图与报告写入 MinIO
-7. 前端详情页和报告页展示结构化结果
+7. 前端任务列表页和报告页展示结构化结果
 
 ## 4. 当前固定基础设施
 ### 应用服务
@@ -97,7 +97,7 @@
 - `network_requests` 有观测数据
 - `master_domains` 有域名统计
 - `screenshots` 已落库且图片可访问
-- 前端详情页和报告页可正常展示
+- 前端任务列表页和报告页可正常展示
 
 ## 8. 当前已验证成功样本
 任务：`00ff992d-95eb-4cdc-b7b9-9d7195a7184a`
@@ -109,7 +109,7 @@
 - capture_mode：`redroid_zeek`
 
 前端页面：
-- 详情页：`/tasks/00ff992d-95eb-4cdc-b7b9-9d7195a7184a`
+- 列表页：`/`
 - 报告页：`/reports/00ff992d-95eb-4cdc-b7b9-9d7195a7184a`
 
 ## 9. 启停方式
@@ -194,7 +194,10 @@ PYTHONPATH=. ./venv/bin/python scripts/verify_collect_stability.py
 
 ## 11. 当前明确边界
 - 目标是域名、IP、命中次数、时间线和截图，不追求 HTTPS 明文正文
-- 详情页和报告页是当前唯一有效展示面
+- 列表页和报告页是当前唯一有效展示面
+- 旧 `/tasks/{taskId}` 仅保留兼容跳转，不再作为正式展示面
+- 报告页运行期权限统一从 `analysis_runs.details.permission_summary` 聚合
+- Android 权限中文释义由 `data/android_permission_catalog.json` 提供，并在 API 启动时自动初始化到数据库
 - 不再保留旧方案兼容层
 - `redroid-host-agent` 只负责容器管理、抓包、Zeek 和文件回传；不负责 ADB、AI、MySQL、MinIO
 

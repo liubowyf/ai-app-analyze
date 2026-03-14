@@ -218,17 +218,45 @@ class TestTasksRouter:
         assert response.json()["status"] == "dynamic_analyzing"
 
     def test_retry_task_not_failed(self, client: TestClient):
-        """Test retry on non-failed task."""
+        """Completed task retry should be allowed and resume from dynamic."""
         mock_task = create_mock_task(status=TaskStatus.COMPLETED)
+        mock_task.static_analysis_result = {"basic_info": {"package_name": "com.demo.done"}}
 
-        with patch("api.routers.tasks.SessionLocal") as mock_session_local:
+        with patch("api.routers.tasks.SessionLocal") as mock_session_local, \
+             patch("api.routers.tasks.enqueue_task", return_value=True) as mock_enqueue:
             mock_db = MagicMock(spec=Session)
             mock_session_local.return_value = mock_db
             mock_db.query.return_value.filter.return_value.first.return_value = mock_task
+            mock_db.refresh.side_effect = lambda obj: None
 
             response = client.post("/api/v1/tasks/test-task-id/retry")
 
-            assert response.status_code == 400
+            assert response.status_code == 200
+            assert response.json()["status"] == "dynamic_analyzing"
+            mock_enqueue.assert_called_once_with("test-task-id", priority=TaskPriority.NORMAL)
+
+    def test_retry_task_running_task_is_allowed_and_resumes_from_dynamic(self, client: TestClient):
+        """Running task retry should be accepted and reset to dynamic stage."""
+        mock_task = create_mock_task(
+            status=TaskStatus.DYNAMIC_ANALYZING,
+            retry_count=4,
+            last_success_stage="static",
+        )
+        mock_task.static_analysis_result = {"basic_info": {"package_name": "com.demo.running"}}
+
+        with patch("api.routers.tasks.SessionLocal") as mock_session_local, \
+             patch("api.routers.tasks.enqueue_task", return_value=True) as mock_enqueue:
+            mock_db = MagicMock(spec=Session)
+            mock_session_local.return_value = mock_db
+            mock_db.query.return_value.filter.return_value.first.return_value = mock_task
+            mock_db.refresh.side_effect = lambda obj: None
+
+            response = client.post("/api/v1/tasks/test-task-id/retry")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "dynamic_analyzing"
+        assert response.json()["retry_count"] == 5
+        mock_enqueue.assert_called_once_with("test-task-id", priority=TaskPriority.NORMAL)
 
     def test_retry_task_not_found(self, client: TestClient):
         """Test retry on non-existent task."""

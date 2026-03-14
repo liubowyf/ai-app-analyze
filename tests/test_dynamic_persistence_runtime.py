@@ -137,3 +137,49 @@ def test_persist_dynamic_normalized_tables_rebuilds_rows_after_deadlock(monkeypa
     assert second_session.closed is True
     assert len(first_session.added) > 0
     assert len(second_session.added) > 0
+
+
+def test_persist_dynamic_normalized_tables_sanitizes_non_ip_master_domain_values(monkeypatch):
+    from workers import dynamic_analyzer
+    from core import database as database_module
+    from models.analysis_tables import MasterDomainTable
+
+    session = _FakePersistSession()
+    monkeypatch.setattr(dynamic_analyzer, "SessionLocal", lambda: session)
+    monkeypatch.setattr(database_module.Base.metadata, "create_all", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dynamic_analyzer.time, "sleep", lambda *_args, **_kwargs: None)
+
+    exploration_result = SimpleNamespace(
+        total_steps=1,
+        phases_completed=["explore"],
+        activities_visited=[],
+        screenshots=[],
+        success=True,
+        error_message=None,
+    )
+
+    dynamic_analyzer._persist_dynamic_normalized_tables(
+        db=None,
+        task_id="task-cname-1",
+        package_name="com.demo.app",
+        exploration_result=exploration_result,
+        traffic_monitor=_FakeTrafficMonitor(),
+        domain_report={
+            "master_domains": [
+                {
+                    "domain": "staevent.xyz",
+                    "ip": "4e0ff7d2d1135811a03589a62c784c73dx73dx23y.cname88.com",
+                    "score": 12,
+                    "confidence": "observed",
+                    "request_count": 12,
+                }
+            ]
+        },
+        retries=0,
+        retry_delay=0,
+    )
+
+    domain_rows = [row for row in session.added if isinstance(row, MasterDomainTable)]
+    assert len(domain_rows) == 1
+    assert domain_rows[0].domain == "staevent.xyz"
+    assert domain_rows[0].ip is None

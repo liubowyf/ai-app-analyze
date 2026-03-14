@@ -60,6 +60,7 @@ def test_frontend_and_backend_compose_define_separated_roles():
     assert worker_service["image"].startswith("apk-analysis/backend:")
     assert worker_service["env_file"]
     assert "dramatiq workers.task_actor" in worker_service["command"]
+    assert "--queues analysis default static dynamic report" in worker_service["command"]
     assert "-l info" not in worker_service["command"]
     assert worker_service["volumes"] == ["${APP_SOURCE_DIR:-/home/devops/ai-app-analyze}:/app:ro"]
     assert worker_service["environment"]["APP_SOURCE_DIR"] == "${APP_SOURCE_DIR:-/home/devops/ai-app-analyze}"

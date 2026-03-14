@@ -317,37 +317,60 @@ class AndroidRunner:
             except ValueError:
                 launch_timeout = 15.0
             launch_timeout = max(3.0, min(launch_timeout, 120.0))
-
+            self.force_stop_app(host, port, package)
+            launch_commands: list[str] = []
             if activity_name:
                 component = f"{package}/{activity_name}"
-                try:
-                    self.execute_adb_remote(
-                        host,
-                        port,
+                launch_commands.extend(
+                    [
                         f"shell am start -W -n {component}",
-                        timeout_seconds=launch_timeout,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "Explicit activity launch failed for %s, falling back to package launcher: %s",
-                        component,
-                        exc,
-                    )
-                    self.execute_adb_remote(
-                        host,
-                        port,
-                        f"shell monkey -p {package} -c android.intent.category.LAUNCHER 1",
-                        timeout_seconds=launch_timeout,
-                    )
-            else:
-                self.execute_adb_remote(
-                    host, port,
-                    f"shell monkey -p {package} -c android.intent.category.LAUNCHER 1",
+                        f"shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n {component}",
+                    ]
+                )
+            resolved_activity = self.resolve_launcher_activity(host, port, package)
+            if resolved_activity and resolved_activity != activity_name:
+                resolved_component = f"{package}/{resolved_activity}"
+                launch_commands.extend(
+                    [
+                        f"shell am start -W -n {resolved_component}",
+                        f"shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n {resolved_component}",
+                    ]
+                )
+            launch_commands.append(
+                f"shell monkey -p {package} -c android.intent.category.LAUNCHER 1"
+            )
+            last_output = ""
+            for adb_command in launch_commands:
+                last_output = self.execute_adb_remote(
+                    host,
+                    port,
+                    adb_command,
                     timeout_seconds=launch_timeout,
                 )
+                if "Error" not in (last_output or "") and "Exception" not in (last_output or ""):
+                    break
+                logger.warning("Launch command returned non-success for %s: %s", package, (last_output or "").strip()[:300])
             logger.info(f"Launched app {package}")
         except Exception as e:
             logger.error(f"Failed to launch app: {e}")
+
+    def resolve_launcher_activity(self, host: str, port: int, package: str) -> str:
+        """Resolve launcher activity from package manager."""
+        try:
+            commands = [
+                f"shell cmd package resolve-activity --brief {package}",
+                f"shell pm resolve-activity --brief {package}",
+            ]
+            for command in commands:
+                output = self.execute_adb_remote(host, port, command)
+                for line in (output or "").splitlines():
+                    token = line.strip()
+                    if token.startswith(package + "/"):
+                        return token.split("/", 1)[1]
+            return ""
+        except Exception as e:
+            logger.warning("Failed to resolve launcher activity for %s: %s", package, e)
+            return ""
 
     def execute_tap(self, host: str, port: int, x: int, y: int) -> None:
         """

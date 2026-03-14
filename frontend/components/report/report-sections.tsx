@@ -27,7 +27,60 @@ function SectionCard({
   );
 }
 
+function PermissionList({
+  codes,
+  details,
+  tone = "default",
+}: {
+  codes: string[];
+  details?: FrontendReportResponse["permission_details"];
+  tone?: "default" | "success" | "failed";
+}) {
+  const toneClassName =
+    tone === "success"
+      ? "border-emerald-100 bg-emerald-50"
+      : tone === "failed"
+        ? "border-rose-100 bg-rose-50"
+        : "border-slate-200 bg-white";
+  const codeClassName =
+    tone === "success"
+      ? "text-emerald-700"
+      : tone === "failed"
+        ? "text-rose-700"
+        : "text-slate-700";
+
+  if (!codes.length) {
+    return <span className="text-sm text-slate-500">暂无</span>;
+  }
+
+  return (
+    <div className="space-y-2">
+      {codes.map((code) => {
+        const detail = details?.[code];
+        return (
+          <div
+            key={code}
+            className={`rounded-xl border px-3 py-2 ${toneClassName}`}
+          >
+            <div className={`break-all text-xs font-semibold ${codeClassName}`}>
+              {code}
+            </div>
+            <div className="mt-1 text-xs leading-5 text-slate-500">
+              {detail?.description_zh || detail?.description_en || "权限说明待补充"}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ReportSections({ report }: ReportSectionsProps) {
+  const orderedScreenshots = [...report.screenshots].sort((left, right) => {
+    const leftTime = left.captured_at ? new Date(left.captured_at).getTime() : 0;
+    const rightTime = right.captured_at ? new Date(right.captured_at).getTime() : 0;
+    return leftTime - rightTime;
+  });
   const sourceBreakdownItems = Object.entries(
     report.evidence_summary.source_breakdown ?? {}
   ).sort((left, right) => right[1] - left[1]);
@@ -44,11 +97,11 @@ export function ReportSections({ report }: ReportSectionsProps) {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-3">
               <Link
-                href={`/tasks/${report.task.id}`}
+                href="/"
                 className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-700"
               >
                 <ArrowLeft className="w-4 h-4" />
-                返回任务详情
+                返回任务列表
               </Link>
               <div className="space-y-2">
                 <h1 className="text-2xl font-bold text-slate-900">
@@ -75,6 +128,81 @@ export function ReportSections({ report }: ReportSectionsProps) {
             ) : null}
           </div>
         </section>
+
+        <SectionCard title="应用信息">
+          <div className="space-y-5">
+            <div className="flex items-start gap-4">
+              {report.static_info.icon_url ? (
+                <img
+                  src={resolveApiAssetUrl(report.static_info.icon_url) ?? undefined}
+                  alt={`${report.task.app_name} 图标`}
+                  className="h-20 w-20 rounded-2xl border border-slate-200 bg-slate-50 object-contain p-2"
+                />
+              ) : (
+                <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400">
+                  暂无图标
+                </div>
+              )}
+              <div className="space-y-1">
+                <div className="text-lg font-semibold text-slate-900">
+                  {report.static_info.app_name ?? report.task.app_name}
+                </div>
+                <div className="text-sm text-slate-500 break-all">
+                  {report.static_info.package_name ?? report.task.package_name ?? "暂无包名"}
+                </div>
+                <div className="text-sm font-medium text-slate-700">
+                  {report.static_info.version_name
+                    ? `${report.static_info.version_name} (${report.static_info.version_code ?? "-"})`
+                    : "暂无版本信息"}
+                </div>
+              </div>
+            </div>
+            <dl className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div>
+                <dt className="text-sm text-slate-500">APK 文件</dt>
+                <dd className="mt-1 text-sm font-medium text-slate-900">
+                  {report.task.apk_file_name}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm text-slate-500">文件大小</dt>
+                <dd className="mt-1 text-sm font-medium text-slate-900">
+                  {formatFileSize(report.static_info.apk_file_size ?? report.task.apk_file_size)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm text-slate-500">包名</dt>
+                <dd className="mt-1 break-all text-sm font-medium text-slate-900">
+                  {report.static_info.package_name ?? report.task.package_name ?? "暂无"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm text-slate-500">MD5</dt>
+                <dd className="mt-1 break-all text-sm font-medium text-slate-900">
+                  {report.static_info.apk_md5 ?? report.task.apk_md5}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm text-slate-500">SDK</dt>
+                <dd className="mt-1 text-sm font-medium text-slate-900">
+                  minSdk {report.static_info.min_sdk ?? "-"} / targetSdk {report.static_info.target_sdk ?? "-"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm text-slate-500">提交时间</dt>
+                <dd className="mt-1 text-sm font-medium text-slate-900">
+                  {formatDateTime(report.task.created_at)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm text-slate-500">完成时间</dt>
+                <dd className="mt-1 text-sm font-medium text-slate-900">
+                  {formatDateTime(report.task.completed_at)}
+                </dd>
+              </div>
+            </dl>
+          </div>
+        </SectionCard>
 
         <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <SectionCard title="报告摘要">
@@ -311,81 +439,6 @@ export function ReportSections({ report }: ReportSectionsProps) {
           )}
         </SectionCard>
 
-        <SectionCard title="应用信息">
-          <div className="space-y-5">
-            <div className="flex items-start gap-4">
-              {report.static_info.icon_url ? (
-                <img
-                  src={resolveApiAssetUrl(report.static_info.icon_url) ?? undefined}
-                  alt={`${report.task.app_name} 图标`}
-                  className="h-20 w-20 rounded-2xl border border-slate-200 bg-slate-50 object-contain p-2"
-                />
-              ) : (
-                <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400">
-                  暂无图标
-                </div>
-              )}
-              <div className="space-y-1">
-                <div className="text-lg font-semibold text-slate-900">
-                  {report.static_info.app_name ?? report.task.app_name}
-                </div>
-                <div className="text-sm text-slate-500 break-all">
-                  {report.static_info.package_name ?? report.task.package_name ?? "暂无包名"}
-                </div>
-                <div className="text-sm font-medium text-slate-700">
-                  {report.static_info.version_name
-                    ? `${report.static_info.version_name} (${report.static_info.version_code ?? "-"})`
-                    : "暂无版本信息"}
-                </div>
-              </div>
-            </div>
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <dt className="text-sm text-slate-500">APK 文件</dt>
-              <dd className="mt-1 text-sm font-medium text-slate-900">
-                {report.task.apk_file_name}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm text-slate-500">文件大小</dt>
-              <dd className="mt-1 text-sm font-medium text-slate-900">
-                {formatFileSize(report.static_info.apk_file_size ?? report.task.apk_file_size)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm text-slate-500">包名</dt>
-              <dd className="mt-1 text-sm font-medium text-slate-900 break-all">
-                {report.static_info.package_name ?? report.task.package_name ?? "暂无"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm text-slate-500">MD5</dt>
-              <dd className="mt-1 text-sm font-medium text-slate-900 break-all">
-                {report.static_info.apk_md5 ?? report.task.apk_md5}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm text-slate-500">SDK</dt>
-              <dd className="mt-1 text-sm font-medium text-slate-900">
-                minSdk {report.static_info.min_sdk ?? "-"} / targetSdk {report.static_info.target_sdk ?? "-"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm text-slate-500">提交时间</dt>
-              <dd className="mt-1 text-sm font-medium text-slate-900">
-                {formatDateTime(report.task.created_at)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm text-slate-500">完成时间</dt>
-              <dd className="mt-1 text-sm font-medium text-slate-900">
-                {formatDateTime(report.task.completed_at)}
-              </dd>
-            </div>
-          </dl>
-          </div>
-        </SectionCard>
-
         <SectionCard title="权限概览">
           <div className="grid gap-4 lg:grid-cols-3">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -393,47 +446,46 @@ export function ReportSections({ report }: ReportSectionsProps) {
               <div className="mt-2 text-2xl font-semibold text-slate-900">
                 {report.static_info.declared_permissions.length}
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {report.static_info.declared_permissions.length ? report.static_info.declared_permissions.map((permission) => (
-                  <span key={permission} className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
-                    {permission}
-                  </span>
-                )) : <span className="text-sm text-slate-500">暂无</span>}
+              <div className="mt-3">
+                <PermissionList
+                  codes={report.static_info.declared_permissions}
+                  details={report.permission_details}
+                />
               </div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-sm font-semibold text-slate-900">已授予</div>
+              <div className="text-sm font-semibold text-slate-900">已授予权限</div>
               <div className="mt-2 text-2xl font-semibold text-slate-900">
                 {report.permission_summary.granted_permissions.length}
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {report.permission_summary.granted_permissions.length ? report.permission_summary.granted_permissions.map((permission) => (
-                  <span key={permission} className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                    {permission}
-                  </span>
-                )) : <span className="text-sm text-slate-500">暂无</span>}
+              <div className="mt-3">
+                <PermissionList
+                  codes={report.permission_summary.granted_permissions}
+                  details={report.permission_details}
+                  tone="success"
+                />
               </div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-sm font-semibold text-slate-900">授予失败</div>
+              <div className="text-sm font-semibold text-slate-900">授予失败权限</div>
               <div className="mt-2 text-2xl font-semibold text-slate-900">
                 {report.permission_summary.failed_permissions.length}
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {report.permission_summary.failed_permissions.length ? report.permission_summary.failed_permissions.map((permission) => (
-                  <span key={permission} className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700">
-                    {permission}
-                  </span>
-                )) : <span className="text-sm text-slate-500">暂无</span>}
+              <div className="mt-3">
+                <PermissionList
+                  codes={report.permission_summary.failed_permissions}
+                  details={report.permission_details}
+                  tone="failed"
+                />
               </div>
             </div>
           </div>
         </SectionCard>
 
         <SectionCard title="关键截图">
-          {report.screenshots.length ? (
+          {orderedScreenshots.length ? (
             <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-              {report.screenshots.map((item) => (
+              {orderedScreenshots.map((item) => (
                 <article
                   key={item.id}
                   className="rounded-2xl border border-slate-200 overflow-hidden bg-slate-50"

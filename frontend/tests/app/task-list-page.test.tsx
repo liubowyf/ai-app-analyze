@@ -226,13 +226,13 @@ describe("TaskListPage", () => {
     render(<TaskListPage />);
 
     expect(
-      await screen.findByRole("columnheader", { name: "分析 APK 名称 / 时间" })
+      await screen.findByRole("columnheader", { name: "APK / APP 信息" })
     ).toBeInTheDocument();
     const taskTable = screen.getByRole("table");
     expect(taskTable).toHaveClass("table-fixed");
     expect(taskTable).not.toHaveClass("whitespace-nowrap");
     expect(
-      screen.queryByRole("columnheader", { name: "任务 ID / 时间" })
+      screen.queryByRole("columnheader", { name: "APP 信息" })
     ).not.toBeInTheDocument();
     expect(screen.getByText("jubao-wallet.apk")).toBeInTheDocument();
     expect(screen.getByText("haoyun-wallet.apk")).toBeInTheDocument();
@@ -243,8 +243,17 @@ describe("TaskListPage", () => {
     expect(screen.getByText("com.demo.jubao")).toBeInTheDocument();
     expect(screen.queryByText("task-completed-001")).not.toBeInTheDocument();
     expect(screen.getByText("运行状态")).toBeInTheDocument();
+    const runtimeHeading = screen.getByText("运行状态");
+    const filterSelect = screen.getByLabelText("状态筛选");
+    expect(
+      runtimeHeading.compareDocumentPosition(filterSelect) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
     expect(screen.getByText("2 / 3")).toBeInTheDocument();
     expect(screen.getByText("当前有分析任务在运行")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: "提交人" })
+    ).not.toBeInTheDocument();
     expect(
       screen
         .getAllByText("动态分析中")
@@ -294,6 +303,9 @@ describe("TaskListPage", () => {
         risk_level: undefined,
       });
     });
+
+    expect(screen.getByRole("option", { name: "全部状态" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "全部风险" })).toBeInTheDocument();
 
     fireEvent.change(
       screen.getByPlaceholderText("搜索任务ID、应用名称或包名..."),

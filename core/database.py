@@ -1,5 +1,7 @@
 """Database connection and session management."""
+import json
 import ssl
+from pathlib import Path
 from typing import Generator
 
 from sqlalchemy import create_engine, inspect, text
@@ -58,6 +60,57 @@ def _ensure_tasks_table_columns(connection) -> None:
         connection.execute(text(ddl))
 
 
+def _seed_android_permission_catalog(connection) -> None:
+    """Seed Android permission catalog from the checked-in JSON dataset."""
+    from models.analysis_tables import AndroidPermissionCatalogTable
+
+    inspector = inspect(connection)
+    try:
+        if "android_permission_catalog" not in inspector.get_table_names():
+            return
+    except Exception:
+        return
+
+    count = connection.execute(
+        text("SELECT COUNT(*) FROM android_permission_catalog")
+    ).scalar()
+    if count and int(count) > 0:
+        return
+
+    catalog_path = (
+        Path(__file__).resolve().parents[1] / "data" / "android_permission_catalog.json"
+    )
+    if not catalog_path.exists():
+        return
+
+    try:
+        rows = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+
+    if not isinstance(rows, list) or not rows:
+        return
+
+    payload = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        code = str(row.get("code") or "").strip()
+        if not code:
+            continue
+        payload.append(
+            {
+                "code": code,
+                "description_en": row.get("description_en"),
+                "description_zh": row.get("description_zh"),
+                "source_url": row.get("source_url"),
+            }
+        )
+
+    if payload:
+        connection.execute(AndroidPermissionCatalogTable.__table__.insert(), payload)
+
+
 def ensure_schema_ready() -> None:
     """Create tables under a MySQL advisory lock.
 
@@ -79,6 +132,7 @@ def ensure_schema_ready() -> None:
         try:
             Base.metadata.create_all(bind=connection)
             _ensure_tasks_table_columns(connection)
+            _seed_android_permission_catalog(connection)
             connection.commit()
         finally:
             connection.execute(unlock_sql, {"name": SCHEMA_LOCK_NAME})

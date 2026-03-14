@@ -232,6 +232,18 @@ class ScreenshotTable(Base):
     task = relationship("Task", back_populates="screenshots_table")
 
 
+class AndroidPermissionCatalogTable(Base):
+    """Android permission catalog seeded from official Manifest.permission docs."""
+
+    __tablename__ = "android_permission_catalog"
+
+    code: Mapped[str] = Column(String(255), primary_key=True)
+    description_en: Mapped[Optional[str]] = Column(Text, nullable=True)
+    description_zh: Mapped[Optional[str]] = Column(Text, nullable=True)
+    source_url: Mapped[Optional[str]] = Column(String(500), nullable=True)
+    updated_at: Mapped[datetime] = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class RedroidLeaseTable(Base):
     """Lease one redroid slot to one dynamic task at a time."""
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
 import socket
 from datetime import datetime, timezone
@@ -93,6 +94,16 @@ def _clean(value: Optional[str]) -> Optional[str]:
     return stripped
 
 
+def _normalize_ip(value: Optional[str]) -> Optional[str]:
+    cleaned = _clean(value)
+    if cleaned is None:
+        return None
+    try:
+        return str(ipaddress.ip_address(cleaned))
+    except Exception:
+        return None
+
+
 def _iso8601(value: Optional[str]) -> Optional[str]:
     cleaned = _clean(value)
     if cleaned is None:
@@ -105,7 +116,7 @@ def _iso8601(value: Optional[str]) -> Optional[str]:
 
 def _build_observation(*, domain: Optional[str], ip: Optional[str], source_type: str, ts: Optional[str], protocol: Optional[str], transport: Optional[str]) -> Optional[dict[str, Any]]:
     domain = _clean(domain)
-    ip = _clean(ip)
+    ip = _normalize_ip(ip)
     if not domain and not ip:
         return None
     seen_at = _iso8601(ts)

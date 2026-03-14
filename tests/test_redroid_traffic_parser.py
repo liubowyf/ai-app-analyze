@@ -23,6 +23,16 @@ DNS_LOG = """#separator \\x09
 #close	2026-03-12-00-00-02
 """
 
+DNS_LOG_WITH_CNAME = """#separator \\x09
+#set_separator	,
+#empty_field	(empty)
+#unset_field	-
+#path	dns
+#open	2026-03-12-00-00-00
+1700000000.1\tuid1\t172.17.0.2\t53000\t1.1.1.1\t53\tudp\t1234\tstaevent.xyz\t1\tA\t0\tNOERROR\tF\tF\tF\tF\t4e0ff7d2d1135811a03589a62c784c73dx73dx23y.cname88.com\t60.0\tF
+#close\t2026-03-12-00-00-02
+"""
+
 SSL_LOG = """#separator \\x09
 #set_separator	,
 #empty_field	(empty)
@@ -124,3 +134,13 @@ def test_parse_zeek_outputs_extracts_dns_and_tcp_from_tcpdump_text():
     connectivity_row = next(item for item in domains if item["domain"] == "connectivitycheck.gstatic.com")
     assert connectivity_row["hit_count"] >= 1
     assert connectivity_row["ip_count"] == 1
+
+
+def test_parse_zeek_outputs_ignores_non_ip_dns_answer_values():
+    parsed = parse_zeek_outputs(dns_log=DNS_LOG_WITH_CNAME)
+
+    observations = parsed["observations"]
+    cname_row = next(item for item in observations if item["domain"] == "staevent.xyz")
+
+    assert cname_row["source_type"] == "dns"
+    assert cname_row["ip"] is None
