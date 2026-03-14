@@ -237,7 +237,7 @@ tmux attach -t intelligent-app-frontend
 | `MYSQL_URL` | MySQL 连接串 |
 | `REDIS_BROKER_URL` | Dramatiq 使用的 Redis Broker |
 | `MINIO_ENDPOINT` | MinIO 地址 |
-| `REDROID_HOST_AGENT_BASE_URL` | host-agent 节点 `redroid-host-agent` 地址 |
+| `REDROID_HOST_AGENT_BASE_URL` | `redroid-host-agent` 服务地址 |
 | `REDROID_HOST_AGENT_TOKEN` | `redroid-host-agent` 鉴权 token |
 | `REDROID_SLOTS_JSON` | 可用的 Redroid 槽位定义 |
 | `ADB_INSTALL_TIMEOUT_SECONDS` | APK 安装超时 |
@@ -251,11 +251,11 @@ tmux attach -t intelligent-app-frontend
 
 ## 三节点生产部署
 
-生产环境按固定节点拆分：
+生产环境按固定角色拆分：
 
-- `<frontend-node>`：`frontend`
-- `<api-node>`：`api`
-- `<worker-node>`：`worker`
+- `frontend node`
+- `api node`
+- `worker node`
 
 调度链路：
 
@@ -279,10 +279,10 @@ docker compose -f deploy/worker/docker-compose.yml up -d --build
 - 只需把变更文件同步到目标节点源码目录，然后重启对应服务
 
 ```bash
-rsync -av api/ core/ models/ modules/ workers/ devops@<api-node>:/home/devops/ai-app-analyze/
+rsync -av api/ core/ models/ modules/ workers/ <api-node>:/home/devops/ai-app-analyze/
 docker compose -f deploy/backend/docker-compose.yml restart api
 
-rsync -av core/ models/ modules/ workers/ devops@<worker-node>:/home/devops/ai-app-analyze/
+rsync -av core/ models/ modules/ workers/ <worker-node>:/home/devops/ai-app-analyze/
 docker compose -f deploy/worker/docker-compose.yml restart worker
 ```
 

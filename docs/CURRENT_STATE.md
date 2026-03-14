@@ -25,7 +25,7 @@
 3. Worker 执行静态分析
 4. Worker 根据 `ANALYSIS_BACKEND=redroid_remote` 调用远端 redroid 动态分析
 5. redroid 动态分析流程：
-   - ADB 连接 `<host-agent-node>:16555`
+   - ADB 连接远端 redroid slot
    - 安装 APK
    - 启动 App
    - AI 驱动页面探索、点击、输入
@@ -42,22 +42,20 @@
 - API：`http://127.0.0.1:8000`
 
 ### 生产三节点部署目标
-- `frontend`：`<frontend-node>`
-- `api`：`<api-node>`
-- `worker`：`<worker-node>`
+- `frontend node`
+- `api node`
+- `worker node`
 - 生产链路：`用户 -> frontend -> api -> worker -> redroid-host-agent`
 
 ### redroid 分析节点
-- `redroid-1`：`<host-agent-node>:16555`
-- `redroid-2`：`<host-agent-node>:16556`
-- `redroid-3`：`<host-agent-node>:16557`
+- 远端 redroid slots：`redroid-1 / redroid-2 / redroid-3`
 - host-agent：`http://<host-agent-node>:18080`
 - 容器：`redroid-1 / redroid-2 / redroid-3`
 
 ### 数据与存储
-- MySQL：`<host-agent-node>:3306`
-- Redis：`<infra-node>:6379`
-- MinIO：`<infra-node>:9000`
+- MySQL
+- Redis
+- MinIO
 
 ## 5. 当前环境变量基线
 - `ANALYSIS_BACKEND=redroid_remote`
@@ -170,9 +168,9 @@ docker compose -f deploy/worker/docker-compose.yml up -d --build
 ```
 
 节点职责：
-- `<frontend-node>` 只运行前端，`NEXT_PUBLIC_API_BASE_URL` 指向 `http://<api-node>:8000`
-- `<api-node>` 只运行 API
-- `<worker-node>` 只运行 Worker
+- `frontend node` 只运行前端，`NEXT_PUBLIC_API_BASE_URL` 指向 API 节点
+- `api node` 只运行 API
+- `worker node` 只运行 Worker
 
 增量发布约定：
 - `deploy/backend/docker-compose.yml` 与 `deploy/worker/docker-compose.yml` 均通过 `APP_SOURCE_DIR` 挂载宿主机源码目录到容器 `/app`

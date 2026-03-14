@@ -15,10 +15,10 @@
 
 ## 1. 节点角色
 
-- `<frontend-node>`：`frontend`
-- `<api-node>`：`api`
-- `<worker-node>`：`worker`
-- `<host-agent-node>`：`redroid-host-agent`
+- `frontend node`
+- `api node`
+- `worker node`
+- `redroid-host-agent node`
 
 生产链路：
 
@@ -26,31 +26,6 @@
 - `frontend` -> `api`
 - `api` -> MySQL / Redis / MinIO
 - `worker` -> Redis / MySQL / MinIO / AI / `redroid-host-agent`
-
-## 1.1 服务器连接方式
-
-内网三节点当前通过公网跳板机反向隧道访问，推荐直接使用以下连接命令：
-
-```bash
-ssh -p <frontend-port> devops@<jump-host>   # frontend
-ssh -p <api-port> devops@<jump-host>   # api
-ssh -p <worker-port> devops@<jump-host>   # worker
-```
-
-如果本机已配置 `~/.ssh/config`，可直接使用：
-
-```bash
-ssh <frontend-alias>   # frontend
-ssh <api-alias>   # api
-ssh <worker-alias>   # worker
-```
-
-注意：
-
-- 仓库文档不记录服务器密码
-- 当前连接口令和完整连接维护信息统一保存在外部运维文档：
-  - `<ops-connection-doc>`
-- 生产发版前，如发现隧道不可用，先检查各节点 `ssh-tunnel.service`
 
 ## 2. 发版分级
 
@@ -71,10 +46,10 @@ ssh <worker-alias>   # worker
 推荐命令：
 
 ```bash
-rsync -av api/ core/ models/ modules/ workers/ devops@<api-node>:/home/devops/ai-app-analyze/
+rsync -av api/ core/ models/ modules/ workers/ <api-node>:/home/devops/ai-app-analyze/
 docker compose -f deploy/backend/docker-compose.yml restart api
 
-rsync -av core/ models/ modules/ workers/ devops@<worker-node>:/home/devops/ai-app-analyze/
+rsync -av core/ models/ modules/ workers/ <worker-node>:/home/devops/ai-app-analyze/
 docker compose -f deploy/worker/docker-compose.yml restart worker
 ```
 
@@ -121,7 +96,7 @@ docker compose -f deploy/worker/docker-compose.yml up -d --build
 
 ## 4. 节点环境变量
 
-### 4.1 frontend
+### 4.1 frontend node
 
 文件：
 
@@ -131,7 +106,7 @@ docker compose -f deploy/worker/docker-compose.yml up -d --build
 
 - `NEXT_PUBLIC_API_BASE_URL=http://<api-node>:8000`
 
-### 4.2 api
+### 4.2 api node
 
 文件：
 
@@ -148,7 +123,7 @@ docker compose -f deploy/worker/docker-compose.yml up -d --build
 - `REDROID_HOST_AGENT_TOKEN`
 - `REDROID_SLOTS_JSON`
 
-### 4.3 worker
+### 4.3 worker node
 
 文件：
 
