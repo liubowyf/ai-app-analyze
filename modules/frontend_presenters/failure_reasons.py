@@ -22,8 +22,6 @@ def present_failure_reason(raw_reason: Any) -> str | None:
         return "环境配置错误：未配置可用的 Redroid 设备槽位"
     if "each redroid_slots_json item requires adb_serial and container_name" in lowered:
         return "环境配置错误：Redroid 设备槽位缺少必要字段"
-    if "redroid_ssh_user is required" in lowered:
-        return "环境配置错误：未配置 Redroid SSH 连接账号"
     if "redroid_host_agent_base_url is required" in lowered:
         return "环境配置错误：未配置 Redroid 宿主机 Agent 地址"
     if "host agent unavailable" in lowered or "agent_unreachable" in lowered:

@@ -50,11 +50,6 @@ class Settings(BaseSettings):
     TRAFFIC_PROXY_PORT_END: int = 18129
     TRAFFIC_PROXY_LEASE_TTL_SECONDS: int = 3900
     REDROID_ADB_SERIAL: str = "<host-agent-node>:16555"
-    REDROID_SSH_HOST: str = "<host-agent-node>"
-    REDROID_SSH_PORT: int = 22
-    REDROID_SSH_USER: str = ""
-    REDROID_SSH_KEY_PATH: str = ""
-    REDROID_SSH_PASSWORD: str = ""
     REDROID_HOST_AGENT_BASE_URL: str = ""
     REDROID_HOST_AGENT_TOKEN: str = ""
     REDROID_HOST_AGENT_TIMEOUT_SECONDS: int = 15

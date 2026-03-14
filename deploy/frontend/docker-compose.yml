@@ -1,6 +1,7 @@
 services:
   frontend:
     container_name: apk-analysis-frontend
+    image: apk-analysis/frontend:d889aee
     build:
       context: ../../frontend
       dockerfile: Dockerfile

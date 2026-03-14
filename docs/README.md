@@ -15,3 +15,9 @@
 3. `deploy/redroid-host-agent/docker-compose.yml`
    - `redroid-host-agent` 的 compose 部署入口
    - 当前 host-agent 环境变量与挂载边界
+
+如果要执行生产发版，再看：
+
+4. `docs/RELEASE_GUIDE.md`
+   - 当前唯一有效的生产发版文档
+   - 包含初始化部署、增量发布、依赖补丁发布、完整镜像发布和回滚方式

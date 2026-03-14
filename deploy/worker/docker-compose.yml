@@ -1,6 +1,6 @@
 services:
-  api:
-    container_name: apk-analysis-api
+  worker:
+    container_name: apk-analysis-worker
     image: apk-analysis/backend:d889aee-fix3
     build:
       context: ../..
@@ -10,13 +10,9 @@ services:
         required: false
     environment:
       PYTHONPATH: /app
-      API_HOST: ${API_HOST:-0.0.0.0}
-      API_PORT: ${API_PORT:-8000}
       APP_SOURCE_DIR: ${APP_SOURCE_DIR:-/home/devops/ai-app-analyze}
     volumes:
       - ${APP_SOURCE_DIR:-/home/devops/ai-app-analyze}:/app:ro
     command: >-
-      sh -lc "uvicorn api.main:app --host ${API_HOST:-0.0.0.0} --port ${API_PORT:-8000}"
-    ports:
-      - "${API_PORT:-8000}:${API_PORT:-8000}"
+      sh -lc "dramatiq workers.task_actor --queues default,static,dynamic,report"
     restart: unless-stopped

@@ -11,6 +11,7 @@ alembic==1.13.1
 
 # Task Queue
 dramatiq==2.0.1
+redis==5.0.1
 
 # Object Storage
 minio==7.2.3

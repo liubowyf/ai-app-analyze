@@ -124,3 +124,25 @@ def test_config_parses_redroid_slots_json(monkeypatch):
 
     assert [slot["name"] for slot in settings.redroid_slots] == ["redroid-1", "redroid-2", "redroid-3"]
     assert settings.redroid_slots[2]["adb_serial"] == "<host-agent-node>:16557"
+
+
+def test_config_no_longer_exposes_redroid_ssh_fields(monkeypatch):
+    """Host-agent mode should not keep legacy SSH settings on the config object."""
+    monkeypatch.delenv("REDROID_SSH_HOST", raising=False)
+    monkeypatch.delenv("REDROID_SSH_PORT", raising=False)
+    monkeypatch.delenv("REDROID_SSH_USER", raising=False)
+    monkeypatch.delenv("REDROID_SSH_KEY_PATH", raising=False)
+    monkeypatch.delenv("REDROID_SSH_PASSWORD", raising=False)
+
+    from core.config import Settings
+
+    settings = Settings(_env_file=None)
+
+    for field_name in (
+        "REDROID_SSH_HOST",
+        "REDROID_SSH_PORT",
+        "REDROID_SSH_USER",
+        "REDROID_SSH_KEY_PATH",
+        "REDROID_SSH_PASSWORD",
+    ):
+        assert not hasattr(settings, field_name)

@@ -41,6 +41,12 @@
 - 前端：`http://127.0.0.1:3000`
 - API：`http://127.0.0.1:8000`
 
+### 生产三节点部署目标
+- `frontend`：`<frontend-node>`
+- `api`：`<api-node>`
+- `worker`：`<worker-node>`
+- 生产链路：`用户 -> frontend -> api -> worker -> redroid-host-agent`
+
 ### redroid 分析节点
 - `redroid-1`：`<host-agent-node>:16555`
 - `redroid-2`：`<host-agent-node>:16556`
@@ -153,6 +159,31 @@ tmux attach -t intelligent-app-api
 tmux attach -t intelligent-app-worker
 tmux attach -t intelligent-app-frontend
 ```
+
+### 三节点生产部署
+各节点统一使用 `docker compose up -d --build` 初始化部署：
+
+```bash
+docker compose -f deploy/frontend/docker-compose.yml up -d --build
+docker compose -f deploy/backend/docker-compose.yml up -d --build
+docker compose -f deploy/worker/docker-compose.yml up -d --build
+```
+
+节点职责：
+- `<frontend-node>` 只运行前端，`NEXT_PUBLIC_API_BASE_URL` 指向 `http://<api-node>:8000`
+- `<api-node>` 只运行 API
+- `<worker-node>` 只运行 Worker
+
+增量发布约定：
+- `deploy/backend/docker-compose.yml` 与 `deploy/worker/docker-compose.yml` 均通过 `APP_SOURCE_DIR` 挂载宿主机源码目录到容器 `/app`
+- 只改 Python 代码且不新增依赖时，只同步代码到节点源码目录，再执行：
+
+```bash
+docker compose -f deploy/backend/docker-compose.yml restart api
+docker compose -f deploy/worker/docker-compose.yml restart worker
+```
+
+- 仅在新增 pip 依赖、系统依赖或修改 `Dockerfile.backend` 时，才需要重建 backend 镜像
 
 ## 10. 最小检查命令
 ```bash

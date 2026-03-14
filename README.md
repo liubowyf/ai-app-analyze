@@ -250,6 +250,72 @@ tmux attach -t intelligent-app-frontend
 - [`.env.example`](/Users/liubo/Desktop/重要项目/工程项目/智能APP分析系统/.env.example) 只保留配置项和占位值
 - 真实部署依赖、真实地址和密钥只应放在本地 [`.env`](/Users/liubo/Desktop/重要项目/工程项目/智能APP分析系统/.env)
 
+## 三节点生产部署
+
+生产环境按固定节点拆分：
+
+- `<frontend-node>`：`frontend`
+- `<api-node>`：`api`
+- `<worker-node>`：`worker`
+
+调度链路：
+
+- 用户 -> `frontend`
+- `frontend` -> `api`
+- `api` -> MySQL / Redis / MinIO
+- `worker` -> Redis / MySQL / MinIO / AI / `redroid-host-agent`
+
+各节点部署命令：
+
+```bash
+docker compose -f deploy/frontend/docker-compose.yml up -d --build
+docker compose -f deploy/backend/docker-compose.yml up -d --build
+docker compose -f deploy/worker/docker-compose.yml up -d --build
+```
+
+后端增量发布约定：
+
+- `api` 与 `worker` 容器会把 `${APP_SOURCE_DIR:-/home/devops/ai-app-analyze}` 挂载到容器内 `/app`
+- 只改 Python 代码且不新增依赖时，不需要重打 backend 镜像
+- 只需把变更文件同步到目标节点源码目录，然后重启对应服务
+
+```bash
+rsync -av api/ core/ models/ modules/ workers/ devops@<api-node>:/home/devops/ai-app-analyze/
+docker compose -f deploy/backend/docker-compose.yml restart api
+
+rsync -av core/ models/ modules/ workers/ devops@<worker-node>:/home/devops/ai-app-analyze/
+docker compose -f deploy/worker/docker-compose.yml restart worker
+```
+
+节点本地 `.env` 约定：
+
+- `deploy/frontend/.env`
+  - `NEXT_PUBLIC_API_BASE_URL=http://<api-node>:8000`
+- `deploy/backend/.env`
+  - `APP_SOURCE_DIR=/home/devops/ai-app-analyze`
+  - MySQL / Redis / MinIO / `API_TOKEN`
+  - `REDROID_HOST_AGENT_BASE_URL`
+  - `REDROID_SLOTS_JSON`
+- `deploy/worker/.env`
+  - `APP_SOURCE_DIR=/home/devops/ai-app-analyze`
+  - MySQL / Redis / MinIO / AI
+  - `REDROID_HOST_AGENT_BASE_URL`
+  - `REDROID_SLOTS_JSON`
+
+建议上线顺序：
+
+1. `api`
+2. `worker`
+3. `frontend`
+
+上线后最小检查：
+
+```bash
+curl -fsS http://<api-node>:8000/health
+curl -fsS http://<api-node>:8000/api/v1/frontend/runtime-status
+curl -I http://<frontend-node>:3000
+```
+
 ## 数据存储
 
 ### MySQL

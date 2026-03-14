@@ -11,6 +11,8 @@
    - 按问题定位到代码与文档
 3. `deploy/redroid-host-agent/docker-compose.yml`
    - 仅在需要核对 host-agent 节点 host-agent 部署方式与环境变量时读取
+4. `deploy/frontend/docker-compose.yml` / `deploy/backend/docker-compose.yml` / `deploy/worker/docker-compose.yml`
+   - 仅在需要核对 24/25/23 三节点生产部署时读取
 
 ## 不需要默认加载的内容
 - 历史方案、历史验证、历史迁移文档：已删除
@@ -27,6 +29,15 @@
 - `core/config.py`
   - 当前后端与基础设施配置
   - `ANALYSIS_BACKEND=redroid_remote`
+- `deploy/frontend/docker-compose.yml`
+  - frontend 节点前端部署入口
+  - 依赖 `NEXT_PUBLIC_API_BASE_URL`
+- `deploy/backend/docker-compose.yml`
+  - api 节点 API 部署入口
+  - 支持 `APP_SOURCE_DIR` 挂载源码做增量发布
+- `deploy/worker/docker-compose.yml`
+  - worker 节点 Worker 部署入口
+  - 支持 `APP_SOURCE_DIR` 挂载源码做增量发布
 - `api/main.py`
   - API 启动入口
 - `scripts/dev_up.sh`
@@ -156,4 +167,5 @@
 ## 后续上下文压缩原则
 - 默认只加载：`docs/CURRENT_STATE.md` + `docs/CONTEXT_INDEX.md`
 - 只有当问题涉及 host-agent 节点部署时，再加载 `deploy/redroid-host-agent/docker-compose.yml`
+- 只有当问题涉及 24/25/23 三节点生产部署时，再加载对应 `deploy/*/docker-compose.yml`
 - 只有当具体模块需要修复时，再打开对应代码文件
